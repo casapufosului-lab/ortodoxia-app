@@ -1,0 +1,21 @@
+export const FREE_DAILY_AI_LIMIT = 5;
+export const PREMIUM_DAILY_AI_LIMIT = 50;
+
+export type SubscriptionRow = {
+  status: string;
+  plan: string;
+  current_period_end: string | null;
+  cancel_at_period_end: boolean;
+};
+
+export function hasPremiumAccess(subscription: SubscriptionRow | null | undefined) {
+  if (!subscription || !['active', 'trialing'].includes(subscription.status)) return false;
+  if (!subscription.current_period_end) return true;
+  return new Date(subscription.current_period_end).getTime() > Date.now();
+}
+
+export function subscriptionPlanLabel(subscription: SubscriptionRow | null | undefined) {
+  if (!hasPremiumAccess(subscription)) return 'Plan Gratuit';
+  return subscription?.plan === 'annual' ? 'Premium Anual' : 'Premium Lunar';
+}
+

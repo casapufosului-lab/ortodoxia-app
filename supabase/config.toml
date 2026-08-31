@@ -1,0 +1,10 @@
+project_id = "pgjabfgibdpcomegkojg"
+
+[functions.orthodox-chat]
+verify_jwt = false
+
+[functions.generate-prayer-audio]
+verify_jwt = false
+
+[functions.send-daily-notifications]
+verify_jwt = false
