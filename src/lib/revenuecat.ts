@@ -1,9 +1,9 @@
 import { Platform } from 'react-native';
 import Purchases, {
-  LogLevel,
-  type CustomerInfo,
-  type Package,
+  LOG_LEVEL,
   PURCHASES_ERROR_CODE,
+  type CustomerInfo,
+  type PurchasesPackage,
 } from 'react-native-purchases';
 
 import { supabase } from '@/lib/supabase';
@@ -45,13 +45,12 @@ export function configureRevenueCat() {
   if (!apiKey) {
     // Fără cheie configurată, SDK-ul nu se poate inițializa; logăm doar în dev.
     if (__DEV__) {
-      // eslint-disable-next-line no-console
       console.warn('RevenueCat: lipsește cheia publică în .env.');
     }
     return;
   }
 
-  Purchases.setLogLevel(LogLevel.DEBUG);
+  Purchases.setLogLevel(LOG_LEVEL.DEBUG);
   Purchases.configure({ apiKey });
   configured = true;
 }
@@ -85,13 +84,16 @@ export async function clearRevenueCatUser() {
  * Caută pachetele disponibile în Offering-ul curent. În panoul RevenueCat,
  * Offering-ul "Premium" conține pachetele 'monthly' și 'annual'.
  */
-export async function getRevenueCatOfferings(): Promise<Package[] | null> {
+export async function getRevenueCatOfferings(): Promise<PurchasesPackage[] | null> {
   if (!isRevenueCatConfigured()) return null;
   const offerings = await Purchases.getOfferings();
   return offerings.current?.availablePackages ?? null;
 }
 
-export function packageForPlan(packages: Package[], plan: RevenueCatPlan): Package | null {
+export function packageForPlan(
+  packages: PurchasesPackage[],
+  plan: RevenueCatPlan,
+): PurchasesPackage | null {
   return packages.find((pkg) => pkg.identifier === plan) ?? null;
 }
 
@@ -99,8 +101,8 @@ export function packageForPlan(packages: Package[], plan: RevenueCatPlan): Packa
  * Generează textul de preț pentru un pachet, folosind datele din magazin
  * (produsul de bază). Returnează string-ul cu simbolul monedei și prețul.
  */
-export function packagePriceText(pkg: Package): string {
-  const product = pkg.storeProduct ?? pkg.product;
+export function packagePriceText(pkg: PurchasesPackage): string {
+  const product = pkg.product;
   if (product?.priceString) return product.priceString;
   if (product?.price != null) return `${product.price}`;
   return 'Preț în magazin';
@@ -110,7 +112,7 @@ export function packagePriceText(pkg: Package): string {
  * Efectuează cumpărarea unui pachet. Returnează CustomerInfo actualizat.
  * Aruncă o eroare dacă utilizatorul a anulat, cu codul specific.
  */
-export async function purchaseRevenueCatPackage(pkg: Package) {
+export async function purchaseRevenueCatPackage(pkg: PurchasesPackage) {
   const { customerInfo } = await Purchases.purchasePackage(pkg);
   return customerInfo;
 }

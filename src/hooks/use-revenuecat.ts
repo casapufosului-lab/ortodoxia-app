@@ -1,5 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import Purchases, { type CustomerInfo, type Package } from 'react-native-purchases';
+import Purchases, {
+  type CustomerInfo,
+  type CustomerInfoUpdateListener,
+  type PurchasesPackage,
+} from 'react-native-purchases';
 
 import {
   clearRevenueCatUser,
@@ -32,19 +36,17 @@ export function useRevenueCat() {
   const { user } = useAuth();
   const userId = user?.id ?? null;
 
-  const [packages, setPackages] = useState<Package[] | null>(null);
+  const [packages, setPackages] = useState<PurchasesPackage[] | null>(null);
   const [customerInfo, setCustomerInfo] = useState<CustomerInfo | null>(null);
   const [loading, setLoading] = useState(false);
   const [offeringsError, setOfferingsError] = useState('');
 
-  const userIdRef = useRef(userId);
-  userIdRef.current = userId;
+  const previousUserIdRef = useRef(userId);
 
   const syncToSupabase = useCallback(async (info: CustomerInfo) => {
-    const id = userIdRef.current;
-    if (!id) return;
-    await syncRevenueCatToSupabase(id, info);
-  }, []);
+    if (!userId) return;
+    await syncRevenueCatToSupabase(userId, info);
+  }, [userId]);
 
   const refresh = useCallback(async () => {
     if (!isRevenueCatConfigured()) {
@@ -78,30 +80,31 @@ export function useRevenueCat() {
   // Leagă utilizatorul autentificat de un App User ID în RevenueCat.
   useEffect(() => {
     if (!isRevenueCatConfigured()) return;
-    const id = userIdRef.current;
-    if (id) {
-      void identifyRevenueCatUser(id);
+    if (userId) {
+      void identifyRevenueCatUser(userId);
     }
   }, [userId]);
 
   // La deconectare, dezleagă utilizatorul de RevenueCat.
   useEffect(() => {
-    if (!isRevenueCatConfigured()) return;
-    if (userId === null && userIdRef.current !== null) {
+    if (isRevenueCatConfigured() && userId === null && previousUserIdRef.current !== null) {
       void clearRevenueCatUser();
     }
+    previousUserIdRef.current = userId;
   }, [userId]);
 
   // Abonează-te la actualizările CustomerInfo (ex: cumpărare făcută în altă parte,
   // revocare, restaurare). Nu sunt împinse activ, deci este doar o sursă suplimentară.
   useEffect(() => {
     if (!isRevenueCatConfigured()) return;
-    const listener = (info: CustomerInfo) => {
+    const listener: CustomerInfoUpdateListener = (info: CustomerInfo) => {
       setCustomerInfo(info);
       void syncToSupabase(info);
     };
-    const token = Purchases.addCustomerInfoUpdateListener(listener);
-    return () => Purchases.removeCustomerInfoUpdateListener(token);
+    Purchases.addCustomerInfoUpdateListener(listener);
+    return () => {
+      Purchases.removeCustomerInfoUpdateListener(listener);
+    };
   }, [syncToSupabase]);
 
   const activeRow: SubscriptionRow | null = customerInfo
