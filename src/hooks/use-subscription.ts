@@ -8,10 +8,13 @@ import {
   subscriptionPlanLabel,
   type SubscriptionRow,
 } from '@/lib/subscription';
+import { isRevenueCatConfigured } from '@/lib/revenuecat';
+import { useRevenueCat } from '@/hooks/use-revenuecat';
 import { useAuth } from '@/providers/auth-provider';
 
 export function useSubscription() {
   const { user } = useAuth();
+  const revenueCat = useRevenueCat();
   const [subscription, setSubscription] = useState<SubscriptionRow | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
@@ -47,16 +50,21 @@ export function useSubscription() {
     return () => clearTimeout(timeoutId);
   }, [refresh]);
 
-  const isPremium = hasPremiumAccess(subscription);
+  // Când RevenueCat este configurat, sursa autoritativă pentru Premium este
+  // entitlement-ul din CustomerInfo (sincronizat și în Supabase).
+  const rcActive = isRevenueCatConfigured() ? revenueCat.activeRow : null;
+  const effectiveSubscription = rcActive ?? subscription;
+  const isPremium = hasPremiumAccess(effectiveSubscription);
 
   return {
-    subscription,
+    subscription: effectiveSubscription,
     isPremium,
     isLoading,
     error,
-    planLabel: subscriptionPlanLabel(subscription),
+    planLabel: subscriptionPlanLabel(effectiveSubscription),
     dailyAiLimit: isPremium ? PREMIUM_DAILY_AI_LIMIT : FREE_DAILY_AI_LIMIT,
     refresh,
   };
 }
+
 

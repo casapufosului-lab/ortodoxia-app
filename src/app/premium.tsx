@@ -1,9 +1,10 @@
 import { router } from 'expo-router';
-import { StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 import { useState } from 'react';
 
 import { Card, PageHeader, PrimaryButton, Screen, SecondaryButton } from '@/components/mvp-ui';
 import { palette } from '@/constants/palette';
+import { useRevenueCat } from '@/hooks/use-revenuecat';
 import { useSubscription } from '@/hooks/use-subscription';
 import { useAuth } from '@/providers/auth-provider';
 
@@ -11,16 +12,35 @@ const benefits = ['50 de mesaje AI pe zi, în loc de 5', 'Conținutul de bază r
 
 export default function PremiumScreen() {
   const { user } = useAuth();
-  const { dailyAiLimit, error, isLoading, isPremium, planLabel, subscription } = useSubscription();
-  const [purchaseMessage, setPurchaseMessage] = useState('');
+  const { dailyAiLimit, isLoading, isPremium, planLabel, subscription } = useSubscription();
+  const { buy, loading, offeringsError, priceFor, restore } = useRevenueCat();
+  const [purchaseResult, setPurchaseResult] = useState<{ ok: boolean; message: string } | null>(null);
+  const [busyPlan, setBusyPlan] = useState<'monthly' | 'annual' | 'restore' | null>(null);
 
-  const showStoreStatus = () => {
-    if (!user) {
-      router.push('/auth?returnTo=/premium');
-      return;
-    }
+  const monthlyPrice = priceFor('monthly');
+  const annualPrice = priceFor('annual');
 
-    setPurchaseMessage('Plata Apple și Google se va deschide după conectarea magazinului oficial. Momentan pregătim integrarea abonamentului.');
+  const requireUser = () => {
+    if (!user) { router.push('/auth?returnTo=/premium'); return true; }
+    return false;
+  };
+
+  const purchase = async (plan: 'monthly' | 'annual') => {
+    if (requireUser() || busyPlan) return;
+    setPurchaseResult(null);
+    setBusyPlan(plan);
+    const result = await buy(plan);
+    setPurchaseResult(result);
+    setBusyPlan(null);
+  };
+
+  const handleRestore = async () => {
+    if (requireUser() || busyPlan) return;
+    setPurchaseResult(null);
+    setBusyPlan('restore');
+    const result = await restore();
+    setPurchaseResult(result);
+    setBusyPlan(null);
   };
 
   return (
@@ -31,8 +51,8 @@ export default function PremiumScreen() {
         <Text style={styles.statusValue}>{isLoading ? 'Se verifică…' : planLabel}</Text>
         <Text style={styles.statusBody}>{isPremium ? `${dailyAiLimit} de mesaje AI disponibile în fiecare zi.` : '5 mesaje AI pe zi. Rugăciunile, calendarul și conținutul zilnic rămân gratuite.'}</Text>
         {subscription?.current_period_end && isPremium ? <Text style={styles.expiry}>Valabil până la {new Date(subscription.current_period_end).toLocaleDateString('ro-RO')}.</Text> : null}
-        {error ? <Text style={styles.error}>{error}</Text> : null}
-        {purchaseMessage ? <Text accessibilityLiveRegion="polite" style={styles.purchaseMessage}>{purchaseMessage}</Text> : null}
+        {offeringsError ? <Text style={styles.error}>{offeringsError}</Text> : null}
+        {purchaseResult ? <Text accessibilityLiveRegion="polite" style={purchaseResult.ok ? styles.successMessage : styles.errorMessage}>{purchaseResult.message}</Text> : null}
       </Card>
       <Card style={styles.hero}>
         <Text style={styles.cross}>☦</Text>
@@ -40,16 +60,18 @@ export default function PremiumScreen() {
       </Card>
       <Card>
         <Text style={styles.plan}>Lunar</Text>
-        <Text style={styles.introPrice}>9,99 lei/lună</Text>
-        <Text style={styles.price}>Apoi 24,99 lei/lună. Abonamentul se reînnoiește automat până îl oprești.</Text>
-        <PrimaryButton label={user ? 'Activează planul lunar' : 'Autentifică-te pentru Premium'} onPress={showStoreStatus} />
+        <Text style={styles.introPrice}>{monthlyPrice ?? 'Preț în magazin'}</Text>
+        <Text style={styles.price}>Abonamentul se reînnoiește automat până îl oprești din magazin.</Text>
+        <PrimaryButton label={user ? (busyPlan === 'monthly' ? 'Se procesează…' : 'Activează planul lunar') : 'Autentifică-te pentru Premium'} onPress={() => void purchase('monthly')} />
       </Card>
       <Card>
         <Text style={styles.plan}>Anual</Text>
-        <Text style={styles.price}>Prețul anual se afișează în magazinul aplicației</Text>
-        <PrimaryButton label={user ? 'Activează planul anual' : 'Autentifică-te pentru Premium'} onPress={showStoreStatus} />
+        <Text style={styles.introPrice}>{annualPrice ?? 'Preț în magazin'}</Text>
+        <Text style={styles.price}>Abonamentul se reînnoiește automat până îl oprești din magazin.</Text>
+        <PrimaryButton label={user ? (busyPlan === 'annual' ? 'Se procesează…' : 'Activează planul anual') : 'Autentifică-te pentru Premium'} onPress={() => void purchase('annual')} />
       </Card>
-      <SecondaryButton label="Restaurează cumpărăturile" onPress={showStoreStatus} />
+      <SecondaryButton label={busyPlan === 'restore' ? 'Se restaurează…' : 'Restaurează cumpărăturile'} onPress={() => void handleRestore()} />
+      {loading ? <View style={styles.loadingRow}><ActivityIndicator color={palette.blue} size="small" /><Text style={styles.loadingText}>Se procesează plata…</Text></View> : null}
       <Text style={styles.note}>Plățile se procesează securizat prin App Store sau Google Play.</Text>
     </Screen>
   );
@@ -63,7 +85,8 @@ const styles = StyleSheet.create({
   statusBody: { color: palette.muted, fontSize: 14, lineHeight: 21, textAlign: 'center' },
   expiry: { color: palette.blue, fontSize: 13, fontWeight: '700' },
   error: { color: palette.danger, fontSize: 13, textAlign: 'center' },
-  purchaseMessage: { color: palette.blue, fontSize: 14, fontWeight: '700', lineHeight: 20, textAlign: 'center' },
+  errorMessage: { color: palette.danger, fontSize: 14, fontWeight: '700', lineHeight: 20, textAlign: 'center' },
+  successMessage: { color: palette.success, fontSize: 14, fontWeight: '700', lineHeight: 20, textAlign: 'center' },
   cross: { color: palette.gold, fontSize: 34, textAlign: 'center', marginBottom: 4 },
   benefitRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   check: { color: palette.gold, fontSize: 18, fontWeight: '800' },
@@ -71,5 +94,7 @@ const styles = StyleSheet.create({
   plan: { color: palette.ink, fontSize: 20, fontWeight: '800' },
   introPrice: { color: palette.goldDark, fontSize: 20, fontWeight: '800' },
   price: { color: palette.muted, fontSize: 14 },
+  loadingRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
+  loadingText: { color: palette.muted, fontSize: 13 },
   note: { color: palette.muted, fontSize: 12, textAlign: 'center' },
 });
