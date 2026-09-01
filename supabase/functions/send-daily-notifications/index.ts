@@ -78,7 +78,7 @@ Deno.serve(async (req: Request) => {
     const calendar = calendarResult.data;
     const bodyParts = [`${contentResult.data.verse_text} (${contentResult.data.verse_source})`];
     if (calendar?.title) bodyParts.push(calendar.title);
-    if (calendar?.feast_rank === 'red-cross') bodyParts.push('Astăzi este zi cu cruce roșie.');
+    if (calendar?.feast_rank === 'cruce roșie') bodyParts.push('Astăzi este zi cu cruce roșie.');
     bodyParts.push('Deschide aplicația pentru mesajul zilei.');
     const deliveredDeviceIds = new Set((deliveriesResult.data ?? []).map((delivery) => delivery.device_id));
     const pendingDevices = (devicesResult.data ?? []).filter((device) => !deliveredDeviceIds.has(device.id));
