@@ -53,7 +53,7 @@ export default function CalendarScreen() {
       monthStart: toDateKey(viewedYear, monthIndex, 1),
       year: viewedYear,
     };
-  }, [currentDateKey, monthOffset, region.locale, region.timeZone, today]);
+  }, [currentDateKey, monthOffset, region.locale, region.timeZone]);
   const selectionKey = `${countryCode}:${calendarCode ?? 'neales'}`;
   const viewSelectionKey = `${selectionKey}:${calendarView.monthStart}`;
   const [selection, setSelection] = useState({ key: viewSelectionKey, day: calendarView.currentDay });
