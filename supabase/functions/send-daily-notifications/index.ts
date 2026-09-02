@@ -1,9 +1,13 @@
 import { createClient } from 'npm:@supabase/supabase-js@2';
 
+// ─── CORS ───────────────────────────────────────────────────────────────────
+
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'content-type, x-cron-secret',
 };
+
+// ─── Types ──────────────────────────────────────────────────────────────────
 
 type Preference = {
   user_id: string;
@@ -14,23 +18,42 @@ type Preference = {
   calendar_code: string | null;
 };
 
-function json(body: Record<string, unknown>, status = 200) {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-  });
-}
+type NotificationType = 'daily' | 'sunday' | 'red_cross';
 
-function localNow(timezone: string) {
+type DailyContent = {
+  verse_text: string;
+  verse_source: string;
+  parable_title: string;
+};
+
+type CalendarDay = {
+  title: string | null;
+  saints: string[];
+  feast_rank: string | null;
+  fasting_note: string | null;
+};
+
+type Device = {
+  id: string;
+  expo_push_token: string;
+};
+
+// ─── Pure helpers ───────────────────────────────────────────────────────────
+
+const DEFAULT_TIMEZONE = 'Europe/Bucharest';
+
+/** Compute local date and time in the user's timezone. */
+export function localNow(timezone: string, now: Date = new Date()) {
+  const tz = timezone || DEFAULT_TIMEZONE;
   const parts = new Intl.DateTimeFormat('en-CA', {
-    timeZone: timezone || 'Europe/Bucharest',
+    timeZone: tz,
     year: 'numeric',
     month: '2-digit',
     day: '2-digit',
     hour: '2-digit',
     minute: '2-digit',
     hourCycle: 'h23',
-  }).formatToParts(new Date());
+  }).formatToParts(now);
   const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
   return {
     date: `${values.year}-${values.month}-${values.day}`,
@@ -38,17 +61,74 @@ function localNow(timezone: string) {
   };
 }
 
+/** Returns true if `now` is a Sunday in the given timezone. */
+export function isSunday(timezone: string, now: Date = new Date()): boolean {
+  const tz = timezone || DEFAULT_TIMEZONE;
+  const weekday = new Intl.DateTimeFormat('en-US', {
+    timeZone: tz,
+    weekday: 'long',
+  }).format(now);
+  return weekday === 'Sunday';
+}
+
+/** Priority: red_cross > sunday > daily. ONE notification per user per day. */
+export function determineNotificationType(
+  feastRank: string | null | undefined,
+  sunday: boolean,
+): NotificationType {
+  if (feastRank === 'cruce roșie') return 'red_cross';
+  if (sunday) return 'sunday';
+  return 'daily';
+}
+
+/** Check if configured HH:MM matches current local HH:MM. */
+export function isNotificationDue(configuredTime: string, localTime: string): boolean {
+  return configuredTime.slice(0, 5) === localTime;
+}
+
+/** Build notification body from verified content only. Never fabricates. */
+export function buildNotificationBody(
+  type: NotificationType,
+  content: DailyContent,
+  calendar: CalendarDay | null,
+): string {
+  const parts = [`${content.verse_text} (${content.verse_source})`];
+  if (calendar?.title) parts.push(calendar.title);
+  if (type === 'red_cross') parts.push('Astăzi este zi cu cruce roșie.');
+  parts.push('Deschide aplicația pentru mesajul zilei.');
+  return parts.join(' ');
+}
+
+// ─── Response helper ────────────────────────────────────────────────────────
+
+function json(body: Record<string, unknown>, status = 200) {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+  });
+}
+
 Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
   if (req.method !== 'POST') return json({ error: 'Metodă neacceptată.' }, 405);
-  const cronSecret = Deno.env.get('NOTIFICATION_CRON_SECRET');
-  if (!cronSecret || req.headers.get('x-cron-secret') !== cronSecret) return json({ error: 'Acces neautorizat.' }, 401);
 
+  // ── Authorization: cron secret ──
+  const cronSecret = Deno.env.get('NOTIFICATION_CRON_SECRET');
+  if (!cronSecret || req.headers.get('x-cron-secret') !== cronSecret) {
+    return json({ error: 'Acces neautorizat.' }, 401);
+  }
+
+  // ── Supabase admin client (service role, internal only) ──
   const supabaseUrl = Deno.env.get('SUPABASE_URL');
   const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
-  if (!supabaseUrl || !serviceRoleKey) return json({ error: 'Serviciul nu este configurat.' }, 503);
-  const admin = createClient(supabaseUrl, serviceRoleKey, { auth: { persistSession: false, autoRefreshToken: false } });
+  if (!supabaseUrl || !serviceRoleKey) {
+    return json({ error: 'Serviciul nu este configurat.' }, 503);
+  }
+  const admin = createClient(supabaseUrl, serviceRoleKey, {
+    auth: { persistSession: false, autoRefreshToken: false },
+  });
 
+  // ── Fetch all enabled preferences (no per-user cron) ──
   const { data: preferences, error: preferencesError } = await admin
     .from('notification_preferences')
     .select('user_id, daily_time, timezone, country_code, language_code, calendar_code')
@@ -58,54 +138,121 @@ Deno.serve(async (req: Request) => {
   let eligible = 0;
   let sent = 0;
   let skipped = 0;
+
   for (const preference of (preferences ?? []) as Preference[]) {
-    const now = localNow(preference.timezone);
-    const configuredMinute = preference.daily_time.slice(0, 5);
-    if (configuredMinute !== now.time) continue;
+    const timezone = preference.timezone || DEFAULT_TIMEZONE;
+
+    // ── Local date and time in user's timezone ──
+    const now = localNow(timezone);
+    if (!isNotificationDue(preference.daily_time, now.time)) continue;
     eligible += 1;
 
-    const [contentResult, calendarResult, devicesResult, deliveriesResult] = await Promise.all([
-      admin.from('daily_content').select('verse_text, verse_source, parable_title').eq('country_code', preference.country_code).eq('language_code', preference.language_code).eq('content_date', now.date).eq('is_published', true).maybeSingle(),
-      admin.from('calendar_days').select('title, saints, fasting_note, feast_rank').eq('country_code', preference.country_code).eq('language_code', preference.language_code).eq('calendar_code', preference.calendar_code).eq('calendar_date', now.date).eq('is_published', true).maybeSingle(),
-      admin.from('notification_devices').select('id, expo_push_token').eq('user_id', preference.user_id).eq('is_active', true),
-      admin.from('notification_deliveries').select('device_id').eq('content_date', now.date),
+    // ── Determine notification type from local date and calendar ──
+    const sunday = isSunday(timezone);
+    const [contentResult, calendarResult, devicesResult] = await Promise.all([
+      admin
+        .from('daily_content')
+        .select('verse_text, verse_source, parable_title')
+        .eq('country_code', preference.country_code)
+        .eq('language_code', preference.language_code)
+        .eq('content_date', now.date)
+        .eq('is_published', true)
+        .maybeSingle(),
+      preference.calendar_code
+        ? admin
+            .from('calendar_days')
+            .select('title, saints, feast_rank, fasting_note')
+            .eq('country_code', preference.country_code)
+            .eq('language_code', preference.language_code)
+            .eq('calendar_code', preference.calendar_code)
+            .eq('calendar_date', now.date)
+            .eq('is_published', true)
+            .maybeSingle()
+        : Promise.resolve({ data: null, error: null }),
+      admin
+        .from('notification_devices')
+        .select('id, expo_push_token')
+        .eq('user_id', preference.user_id)
+        .eq('is_active', true),
     ]);
-    if (contentResult.error || devicesResult.error || deliveriesResult.error || !contentResult.data) {
+
+    // ── Skip if no published content — never fabricate ──
+    if (contentResult.error || !contentResult.data) {
+      skipped += 1;
+      continue;
+    }
+    if (devicesResult.error) {
       skipped += 1;
       continue;
     }
 
-    const calendar = calendarResult.data;
-    const bodyParts = [`${contentResult.data.verse_text} (${contentResult.data.verse_source})`];
-    if (calendar?.title) bodyParts.push(calendar.title);
-    if (calendar?.feast_rank === 'cruce roșie') bodyParts.push('Astăzi este zi cu cruce roșie.');
-    bodyParts.push('Deschide aplicația pentru mesajul zilei.');
-    const deliveredDeviceIds = new Set((deliveriesResult.data ?? []).map((delivery) => delivery.device_id));
-    const pendingDevices = (devicesResult.data ?? []).filter((device) => !deliveredDeviceIds.has(device.id));
+    const devices = (devicesResult.data ?? []) as Device[];
+    if (devices.length === 0) {
+      skipped += 1;
+      continue;
+    }
+
+    const calendar = calendarResult.data as CalendarDay | null;
+
+    // ── Notification type: exactly one per user per day ──
+    const notificationType = determineNotificationType(calendar?.feast_rank, sunday);
+
+    // ── Build notification body from verified content ──
+    const body = buildNotificationBody(notificationType, contentResult.data as DailyContent, calendar);
+
+    // ── Atomic reservation: prevents duplicate sends across concurrent workers ──
+    const deviceIds = devices.map((d) => d.id);
+    const { data: reservedRows, error: reserveError } = await admin.rpc(
+      'reserve_notification_deliveries',
+      {
+        p_device_ids: deviceIds,
+        p_content_date: now.date,
+        p_notification_type: notificationType,
+      },
+    );
+
+    if (reserveError) {
+      skipped += 1;
+      continue;
+    }
+
+    // Only send to devices that were NEWLY reserved (not duplicates)
+    const reservedSet = new Set(
+      (reservedRows ?? []).map((row: { device_id: string }) => row.device_id),
+    );
+    const pendingDevices = devices.filter((d) => reservedSet.has(d.id));
+
+    if (pendingDevices.length === 0) {
+      skipped += 1;
+      continue;
+    }
+
+    // ── Push messages via Expo Push API ──
     const messages = pendingDevices.map((device) => ({
       to: device.expo_push_token,
       title: 'Mesajul zilei',
-      body: bodyParts.join(' '),
-      data: { url: '/', contentDate: now.date },
+      body,
+      data: { url: '/', contentDate: now.date, notificationType },
       channelId: 'daily-content',
       sound: 'default',
     }));
-    if (messages.length === 0) {
-      skipped += 1;
-      continue;
-    }
 
     const response = await fetch('https://exp.host/--/api/v2/push/send', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(messages),
     });
+
     if (!response.ok) {
+      // Send failed — release reservation so next cron can retry
+      await admin.rpc('release_notification_reservation', {
+        p_device_ids: pendingDevices.map((d) => d.id),
+        p_content_date: now.date,
+      });
       skipped += 1;
       continue;
     }
-    const deliveryRows = pendingDevices.map((device) => ({ device_id: device.id, content_date: now.date }));
-    await admin.from('notification_deliveries').upsert(deliveryRows, { onConflict: 'device_id,content_date', ignoreDuplicates: true });
+
     sent += messages.length;
   }
 
