@@ -26,6 +26,7 @@ export default function RootLayout() {
             <Stack.Screen name="auth" options={{ title: 'Contul meu', presentation: 'modal' }} />
             <Stack.Screen name="reset-confirmation" options={{ title: 'Verifică emailul', presentation: 'modal' }} />
             <Stack.Screen name="premium" options={{ title: 'Premium', presentation: 'modal' }} />
+            <Stack.Screen name="live" options={{ title: 'Slujbe LIVE' }} />
           </Stack>
         </ThemeProvider>
       </AuthProvider>

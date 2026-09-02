@@ -157,6 +157,23 @@ export default function HomeScreen() {
           </Card>
         </>
       )}
+      <SectionTitle>Slujbe LIVE</SectionTitle>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel="Slujbe LIVE — Urmărește Sfânta Liturghie în direct"
+        onPress={() => router.push('/live')}
+        style={({ pressed }) => [styles.liveCard, pressed && styles.pressed]}
+      >
+        <View style={styles.liveHeader}>
+          <Text style={styles.liveCross}>▶</Text>
+          <View style={styles.liveFlex}>
+            <Text style={styles.liveTitle}>Slujbe LIVE</Text>
+            <Text style={styles.liveSubtitle}>Urmărește Sfânta Liturghie în direct</Text>
+            <Text style={styles.liveLocation}>București • Iași • Putna • Sihăstria • Cluj</Text>
+          </View>
+          <Text style={styles.liveArrow}>›</Text>
+        </View>
+      </Pressable>
       <PrimaryButton label="Întreabă ghidul AI" onPress={() => router.push('/chat')} />
     </Screen>
   );
@@ -184,4 +201,19 @@ const styles = StyleSheet.create({
   errorCard: { borderColor: palette.danger },
   errorText: { color: palette.danger, fontSize: 14, lineHeight: 20 },
   retry: { color: palette.blue, fontWeight: '800' },
+  liveCard: {
+    backgroundColor: palette.paper,
+    borderColor: palette.line,
+    borderWidth: 1,
+    borderRadius: 18,
+    padding: 16,
+  },
+  liveHeader: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  liveCross: { color: palette.goldDark, fontSize: 22, fontWeight: '800' },
+  liveFlex: { flex: 1, gap: 3 },
+  liveTitle: { color: palette.ink, fontSize: 17, fontWeight: '800' },
+  liveSubtitle: { color: palette.muted, fontSize: 14, lineHeight: 20, flexShrink: 1 },
+  liveLocation: { color: palette.goldDark, fontSize: 12, lineHeight: 17 },
+  liveArrow: { color: palette.muted, fontSize: 22, fontWeight: '700' },
+  pressed: { opacity: 0.75 },
 });

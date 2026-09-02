@@ -46,7 +46,8 @@
     "android": "expo start --android",
     "ios": "expo start --ios",
     "web": "expo start --web",
-    "lint": "expo lint"
+    "lint": "expo lint",
+    "test:live": "node --test tests/live-services.test.mjs"
   },
   "private": true
 }
