@@ -1,4 +1,4 @@
-import { router } from 'expo-router';
+import { useFocusEffect, router } from 'expo-router';
 import { createAudioPlayer, type AudioPlayer } from 'expo-audio';
 import * as Speech from 'expo-speech';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -83,6 +83,20 @@ export default function PrayersScreen() {
     audioPlayerRef.current?.release();
     audioPlayerRef.current = null;
   }, []);
+
+  // Oprește audio-ul când utilizatorul părăsește tabul Rugăciuni.
+  // Tab-urile Expo Router rămân montate, deci unmount-ul clasic nu se declanșează.
+  useFocusEffect(
+    useCallback(() => {
+      return () => {
+        void Speech.stop();
+        audioPlayerRef.current?.pause();
+        audioPlayerRef.current?.release();
+        audioPlayerRef.current = null;
+        setSpeakingId(null);
+      };
+    }, []),
+  );
 
   const filtered = useMemo(() => {
     const normalizedQuery = normalizeSearchText(query);

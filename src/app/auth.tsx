@@ -7,6 +7,25 @@ import { palette } from '@/constants/palette';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/providers/auth-provider';
 
+/** Mapăm erorile Supabase la mesaje prietenoase în limba română. */
+function friendlyAuthError(error: unknown): string {
+  if (!(error instanceof Error)) return 'Încearcă din nou.';
+  const msg = error.message.toLowerCase();
+  if (msg.includes('invalid login') || msg.includes('email or password') || msg.includes('invalid credentials')) {
+    return 'Email sau parolă incorectă.';
+  }
+  if (msg.includes('already registered') || msg.includes('already been registered') || msg.includes('user already')) {
+    return 'Există deja un cont cu acest email.';
+  }
+  if (msg.includes('not confirmed') || msg.includes('email not confirmed')) {
+    return 'Emailul nu a fost confirmat. Verifică mesajul primit pe email.';
+  }
+  if (msg.includes('password')) {
+    return 'Parola nu îndeplinește cerințele minime.';
+  }
+  return 'A apărut o eroare. Încearcă din nou.';
+}
+
 function hasRecoveryRedirect() {
   if (Platform.OS !== 'web' || typeof window === 'undefined') return false;
 
@@ -107,7 +126,7 @@ export default function AuthScreen() {
 
       router.replace(destination);
     } catch (error) {
-      Alert.alert('Autentificarea nu a reușit', error instanceof Error ? error.message : 'Încearcă din nou.');
+      Alert.alert('Autentificarea nu a reușit', friendlyAuthError(error));
     } finally {
       setLoading(false);
     }
@@ -128,14 +147,14 @@ export default function AuthScreen() {
         : undefined;
       const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), redirectTo ? { redirectTo } : undefined);
       if (error) {
-        setResetMessage({ type: 'error', text: `Nu am putut trimite mesajul: ${error.message}` });
-        Alert.alert('Nu am putut trimite mesajul', error.message);
+        setResetMessage({ type: 'error', text: 'Nu am putut trimite mesajul: ' + friendlyAuthError(error) });
+        Alert.alert('Nu am putut trimite mesajul', friendlyAuthError(error));
       } else {
         setResetMessage({ type: 'success', text: 'Mesaj trimis. Verifică emailul pentru instrucțiunile de resetare.' });
         router.replace('/reset-confirmation' as never);
       }
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Încearcă din nou.';
+      const message = friendlyAuthError(error);
       setResetMessage({ type: 'error', text: `Nu am putut trimite mesajul: ${message}` });
       Alert.alert('Nu am putut trimite mesajul', message);
     } finally {

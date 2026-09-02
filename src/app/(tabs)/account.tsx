@@ -11,6 +11,22 @@ import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/providers/auth-provider';
 import { useLocalization } from '@/providers/localization-provider';
 
+/** Mapăm erorile Supabase la mesaje prietenoase în limba română. */
+function friendlyDbError(error: unknown): string {
+  if (!(error instanceof Error)) return 'Încearcă din nou.';
+  const msg = error.message.toLowerCase();
+  if (msg.includes('duplicate') || msg.includes('unique') || msg.includes('already exists')) {
+    return 'Deja există o valoare pentru acest câmp.';
+  }
+  if (msg.includes('jwt') || msg.includes('unauthorized') || msg.includes('permission denied')) {
+    return 'Sesiunea ta a expirat. Autentifică-te din nou.';
+  }
+  if (msg.includes('network') || msg.includes('failed to fetch') || msg.includes('connection')) {
+    return 'Verifică conexiunea la internet și încearcă din nou.';
+  }
+  return 'A apărut o eroare. Încearcă din nou.';
+}
+
 export default function AccountScreen() {
   const { isLoading, user, signOut } = useAuth();
   const { dailyAiLimit, error: planError, isLoading: isPlanLoading, isPremium, planLabel } = useSubscription();
@@ -43,7 +59,7 @@ export default function AccountScreen() {
       .single()
       .then(({ data, error }) => {
         if (!active) return;
-        if (error) Alert.alert('Profil indisponibil', error.message);
+        if (error) Alert.alert('Profil indisponibil', friendlyDbError(error));
         else setDisplayName(data?.display_name ?? '');
       });
 
@@ -68,7 +84,7 @@ export default function AccountScreen() {
     setSaving(false);
     if (error) {
       setSaveMessage({ type: 'error', text: 'Profilul nu a fost salvat. Încearcă din nou.' });
-      Alert.alert('Profilul nu a fost salvat', error.message);
+      Alert.alert('Profilul nu a fost salvat', friendlyDbError(error));
     } else {
       setSaveMessage({ type: 'success', text: 'Profil salvat.' });
       Alert.alert('Profil salvat');
@@ -79,7 +95,7 @@ export default function AccountScreen() {
     try {
       await signOut();
     } catch (error) {
-      Alert.alert('Deconectarea nu a reușit', error instanceof Error ? error.message : 'Încearcă din nou.');
+      Alert.alert('Deconectarea nu a reușit', friendlyDbError(error));
     }
   };
 
@@ -112,7 +128,7 @@ export default function AccountScreen() {
       setNotificationsEnabled(true);
       setNotificationMessage('Notificările zilnice sunt active pentru ora 10:00.');
     } catch (error) {
-      setNotificationMessage(error instanceof Error ? error.message : 'Notificările nu au putut fi activate.');
+      setNotificationMessage('Notificările nu au putut fi activate. ' + friendlyDbError(error));
     } finally {
       setNotificationBusy(false);
     }

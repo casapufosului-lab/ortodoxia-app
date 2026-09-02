@@ -58,7 +58,7 @@ export function useRevenueCat() {
       setCustomerInfo(info);
       setOfferingsError('');
     } catch {
-      setOfferingsError('Ofertele de abonament nu au putut fi incarcate. Incearca din nou.');
+      setOfferingsError('Ofertele de abonament nu au putut fi încărcate. Încearcă din nou.');
     }
   }, []);
 
@@ -110,7 +110,7 @@ export function useRevenueCat() {
       }
       const pkg = packageForPlan(packages, plan);
       if (!pkg) {
-        return { ok: false, message: 'Planul ales nu este disponibil in magazin.', cancelled: false };
+        return { ok: false, message: 'Planul ales nu este disponibil în magazin.', cancelled: false };
       }
 
       setLoading(true);
@@ -120,9 +120,9 @@ export function useRevenueCat() {
         return { ok: true, message: 'Abonamentul Premium a fost activat.' };
       } catch (error) {
         if (isPurchaseCancelledError(error)) {
-          return { ok: false, message: 'Cumpararea a fost anulata.', cancelled: true };
+          return { ok: false, message: 'Cumpărarea a fost anulată.', cancelled: true };
         }
-        return { ok: false, message: 'Cumpararea nu a reusit. Incearca din nou.', cancelled: false };
+        return { ok: false, message: 'Cumpărarea nu a reușit. Încearcă din nou.', cancelled: false };
       } finally {
         setLoading(false);
       }
@@ -140,10 +140,10 @@ export function useRevenueCat() {
       const info = await restoreRevenueCatPurchases();
       setCustomerInfo(info);
       return isPremiumActive(info)
-        ? { ok: true, message: 'Cumparaturile tale au fost restaurate.' }
-        : { ok: true, message: 'Nu am gasit cumparaturi de restaurat.' };
+        ? { ok: true, message: 'Cumpărăturile tale au fost restaurate.' }
+        : { ok: true, message: 'Nu am găsit cumpărături de restaurat.' };
     } catch {
-      return { ok: false, message: 'Restaurarea nu a reusit. Incearca din nou.', cancelled: false };
+      return { ok: false, message: 'Restaurarea nu a reușit. Încearcă din nou.', cancelled: false };
     } finally {
       setLoading(false);
     }
