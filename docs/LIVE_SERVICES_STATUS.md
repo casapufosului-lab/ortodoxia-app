@@ -1,8 +1,10 @@
 # Slujbe LIVE — Surse și servicii
 
-> Stare: **LIVE-B** — backend de detecție dinamică finalizat local (Edge Function
-> `live-services-status` + cache persistent). LIVE-A (registru permanent + UI)
-> este complet. LIVE-C conectează UI-ul la backend.
+> Stare: **LIVE-C** — UI conectat la backend-ul live-services-status. Include
+> client fetch Edge Function, decizie playback (EMBED / EXTERNAL / OFFICIAL),
+> player YouTube (WebView nativ + fallback web iframe), per-source status
+> semantics și UX error/retry. Toate fazele LIVE-A, LIVE-B și LIVE-C sunt
+> completate local.
 
 ## Principii
 
@@ -227,6 +229,12 @@ Google, stack traces, date personale.
 | `src/live/live-service-access.ts` | Validare URL și deschidere sigură |
 | `src/app/live.tsx` | Ecran dedicat „Slujbe LIVE” |
 | `tests/live-services.test.mjs` | Teste focalizate LIVE-A |
+| `tests/live-services-c.test.mjs` | Teste analiză statică LIVE-C (24 verificări) |
+| `src/live/live-status-client.ts` | Client fetch Edge Function (live-services-status) + validare răspuns |
+| `src/live/live-playback.ts` | Decizie playback (EMBED/EXTERNAL_CURRENT/OFFICIAL_SOURCE) + URL YouTube |
+| `src/live/youtube-embed.tsx` | Barrel/TS-resolve stub (re-exportă .native pentru TypeScript) |
+| `src/live/youtube-embed.native.tsx` | Player YouTube WebView (React Native) |
+| `src/live/youtube-embed.web.tsx` | Player YouTube iframe fallback (web) |
 | `supabase/functions/live-services-status/index.ts` | Edge Function entry (GET/OPTIONS, wiring) |
 | `supabase/functions/live-services-status/sources.ts` | Registru server canonic (legat de LIVE-A prin test de drift) |
 | `supabase/functions/live-services-status/youtube.ts` | Client YouTube Data API (search.list + videos.list) |
