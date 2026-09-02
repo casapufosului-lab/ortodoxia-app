@@ -248,8 +248,13 @@ export default function AccountScreen() {
       </Card>
       <SectionTitle>Despre aplicație</SectionTitle>
       <Card>
+        <Pressable accessibilityRole="button" onPress={() => router.push('/privacy' as string)}>
+          <Text style={styles.rowLink}>Politica de confidențialitate</Text>
+        </Pressable>
+        <Pressable accessibilityRole="button" onPress={() => router.push('/terms' as string)}>
+          <Text style={styles.rowLink}>Termeni și condiții</Text>
+        </Pressable>
         <Text style={styles.row}>Surse și responsabilitate editorială</Text>
-        <Text style={styles.row}>Confidențialitate și termeni</Text>
         <Text style={styles.row}>Ajutor și contact</Text>
       </Card>
     </Screen>
@@ -289,6 +294,7 @@ const styles = StyleSheet.create({
   calendarOptionMetaSelected: { color: '#D7E0EA' },
   calendarOptionDescription: { color: palette.muted, fontSize: 12, lineHeight: 17, marginTop: 4 },
   row: { color: palette.ink, fontSize: 15, paddingVertical: 6 },
+  rowLink: { color: palette.blue, fontSize: 15, paddingVertical: 6 },
   notificationActive: { color: palette.success, fontSize: 13, fontWeight: '700' },
   notificationInactive: { color: palette.muted, fontSize: 13, fontWeight: '700' },
   notificationMessage: { color: palette.blue, fontSize: 13, lineHeight: 19 },

@@ -27,6 +27,8 @@ export default function RootLayout() {
             <Stack.Screen name="reset-confirmation" options={{ title: 'Verifică emailul', presentation: 'modal' }} />
             <Stack.Screen name="premium" options={{ title: 'Premium', presentation: 'modal' }} />
             <Stack.Screen name="live" options={{ title: 'Slujbe LIVE' }} />
+            <Stack.Screen name="privacy" options={{ title: 'Politică de confidențialitate' }} />
+            <Stack.Screen name="terms" options={{ title: 'Termeni și condiții' }} />
           </Stack>
         </ThemeProvider>
       </AuthProvider>

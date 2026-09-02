@@ -1,5 +1,5 @@
 import { router } from 'expo-router';
-import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useState } from 'react';
 
 import { Card, PageHeader, PrimaryButton, Screen, SecondaryButton } from '@/components/mvp-ui';
@@ -70,9 +70,26 @@ export default function PremiumScreen() {
         <Text style={styles.price}>Abonamentul se reînnoiește automat până îl oprești din magazin.</Text>
         <PrimaryButton label={user ? (busyPlan === 'annual' ? 'Se procesează…' : 'Activează planul anual') : 'Autentifică-te pentru Premium'} onPress={() => void purchase('annual')} />
       </Card>
+      <Card style={styles.disclosure}>
+        <Text style={styles.disclosureTitle}>Informații despre abonament</Text>
+        <Text style={styles.disclosureText}>• Abonamentul se reînnoiește automat până la anulare.</Text>
+        <Text style={styles.disclosureText}>• Anularea se face din Setări → Abonamente, în contul App Store sau Google Play.</Text>
+        <Text style={styles.disclosureText}>• Dezinstalarea aplicației NU anulează abonamentul.</Text>
+        <Text style={styles.disclosureText}>• După anulare, accesul Premium rămâne activ până la sfârșitul perioadei plătite.</Text>
+        <Text style={styles.disclosureText}>• Restituirile sunt gestionate de Apple sau Google, nu de Ortodoxia.</Text>
+      </Card>
       <SecondaryButton label={busyPlan === 'restore' ? 'Se restaurează…' : 'Restaurează cumpărăturile'} onPress={() => void handleRestore()} />
       {loading ? <View style={styles.loadingRow}><ActivityIndicator color={palette.blue} size="small" /><Text style={styles.loadingText}>Se procesează plata…</Text></View> : null}
       <Text style={styles.note}>Plățile se procesează securizat prin App Store sau Google Play.</Text>
+      <View style={styles.legalLinks}>
+        <Pressable accessibilityRole="button" onPress={() => router.push('/privacy' as any)}>
+          <Text style={styles.legalLink}>Politica de confidențialitate</Text>
+        </Pressable>
+        <Text style={styles.legalDivider}>·</Text>
+        <Pressable accessibilityRole="button" onPress={() => router.push('/terms' as any)}>
+          <Text style={styles.legalLink}>Termeni și condiții</Text>
+        </Pressable>
+      </View>
     </Screen>
   );
 }
@@ -97,4 +114,10 @@ const styles = StyleSheet.create({
   loadingRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
   loadingText: { color: palette.muted, fontSize: 13 },
   note: { color: palette.muted, fontSize: 12, textAlign: 'center' },
+  disclosure: { backgroundColor: palette.blueSoft, borderColor: palette.blueSoft },
+  disclosureTitle: { color: palette.ink, fontSize: 14, fontWeight: '800', marginBottom: 6 },
+  disclosureText: { color: palette.ink, fontSize: 13, lineHeight: 19 },
+  legalLinks: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingTop: 4 },
+  legalLink: { color: palette.blue, fontSize: 13, fontWeight: '700' },
+  legalDivider: { color: palette.muted, fontSize: 13 },
 });
