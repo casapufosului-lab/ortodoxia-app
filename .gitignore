@@ -48,3 +48,8 @@ example
 # generated native folders
 /ios
 /android
+
+# local scratch (session notes, temporary outputs, local verification scripts)
+/work/*
+!/work/CALENDAR_MD_STATUS.md
+!/work/REVENUECAT_SETUP_CHECKLIST.md
