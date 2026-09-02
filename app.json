@@ -2,15 +2,20 @@
   "expo": {
     "name": "Ortodoxia",
     "slug": "ortodoxia-app",
+    "description": "Ghid creștin-ortodox: calendar, rugăciuni, mesajul zilei, slujbe live și chat AI.",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "ortodoxia",
     "userInterfaceStyle": "automatic",
     "ios": {
-      "icon": "./assets/expo.icon"
+      "icon": "./assets/expo.icon",
+      "bundleIdentifier": "ro.ortodoxia.app",
+      "buildNumber": "1"
     },
     "android": {
+      "package": "ro.ortodoxia.app",
+      "versionCode": 1,
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
