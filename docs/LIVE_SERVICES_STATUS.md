@@ -205,9 +205,11 @@ Google, stack traces, date personale.
 ### Secret viitor (extern, NU în code)
 
 - `YOUTUBE_DATA_API_KEY` — se adaugă doar în Supabase → Edge Functions →
-  Secrets (nu în `.env` Expo, nu în Git, nu în răspunsuri). Când lipsește,
-  funcția nu crapă și întoarce UNKNOWN sanitizat; adăugarea secretului NU
-  necesită rescriere de cod.
+  Secrets (nu în Git, nu în răspunsuri). SERVER-SIDE ONLY: `.env.example`
+  conține doar placeholder-ul `YOUTUBE_DATA_API_KEY=` pentru documentare,
+  NU trebuie folosit prefixul `EXPO_PUBLIC_` și NU se expune în codul client
+  React Native. Când lipsește asociat în Supabase, funcția nu crapă și
+  întoarce UNKNOWN sanitizat; adăugarea secretului NU necesită rescriere de cod.
 
 ### Pași viitori (externi)
 

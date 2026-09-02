@@ -127,9 +127,10 @@ test('config.toml registers live-services-status function', () => {
   assert.ok(configToml.includes('verify_jwt = false'));
 });
 
-test('.env.example does not contain a YouTube API key', () => {
-  assert.ok(!envExample.includes('YOUTUBE_DATA_API_KEY'), 'key belongs only in Supabase secrets');
+test('.env.example contains YouTube placeholder without a real key value', () => {
+  assert.ok(envExample.includes('YOUTUBE_DATA_API_KEY='), 'placeholder must exist in .env.example for documentation');
   assert.ok(!envExample.includes('AIza'), 'must not contain any real key value');
+  assert.ok(!envExample.includes('EXPO_PUBLIC_YOUTUBE'), 'must not use EXPO_PUBLIC_ prefix (server-side only)');
 });
 
 test('every server source has id, channelId, enabled, supportsDynamicLiveDetection', () => {
