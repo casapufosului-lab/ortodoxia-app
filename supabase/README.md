@@ -24,6 +24,19 @@ Nu folosi cheia `service_role` și nu o introduce în aplicație.
 - Aplicația nu poate activa singură Premium. Scrierea în tabelă rămâne rezervată sistemului de plăți de pe server.
 - Plățile Apple și Google nu sunt încă conectate.
 
+## Slujbe LIVE
+
+- Codul funcției este în `functions/live-services-status/` (entry `index.ts`).
+- Sursele și Channel ID-urile canonicale server-side sunt în
+  `functions/live-services-status/sources.ts`, sincronizate cu registrul client
+  (`src/live/live-services.ts`) printr-un test de drift.
+- Secretul `YOUTUBE_DATA_API_KEY` se adaugă numai în Supabase, Edge Functions,
+  Secrets. Nu se adaugă în `.env`-ul aplicației Expo și nu se expune clientului.
+- Migrarea `migrations/20260902100000_add_live_service_status_cache.sql` creează
+  tabela `live_service_status_cache` cu RLS deny pentru clienți (scrie doar
+  service role). Se aplică local până la deploy; nu este aplicată live.
+- Teste mock: `npm run test:live-backend` (nu apelează YouTube real).
+
 ## Verificare minimă
 
 - toate cele nouă tabele există în schema `public`;

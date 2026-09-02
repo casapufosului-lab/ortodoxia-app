@@ -47,7 +47,8 @@
     "ios": "expo start --ios",
     "web": "expo start --web",
     "lint": "expo lint",
-    "test:live": "node --test tests/live-services.test.mjs"
+    "test:live": "node --test tests/live-services.test.mjs",
+    "test:live-backend": "node --test supabase/functions/live-services-status/tests/live-status.test.mjs supabase/functions/live-services-status/tests/drift.test.mjs"
   },
   "private": true
 }
