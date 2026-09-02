@@ -128,7 +128,8 @@ Deno.serve(async (req: Request) => {
     if (usageResult.error || subscriptionResult.error) return json({ error: 'Limita zilnică nu a putut fi verificată.' }, 500);
     const subscription = subscriptionResult.data;
     const periodIsActive = !subscription?.current_period_end || new Date(subscription.current_period_end).getTime() > Date.now();
-    const isPremium = Boolean(subscription && ['active', 'trialing'].includes(subscription.status) && periodIsActive);
+    // 'canceled' păstrează accesul până la sfârșitul perioadei plătite.
+    const isPremium = Boolean(subscription && ['active', 'trialing', 'canceled'].includes(subscription.status) && periodIsActive);
     dailyLimit = isPremium ? PREMIUM_DAILY_AI_LIMIT : FREE_DAILY_AI_LIMIT;
     usedMessages = usageResult.data?.ai_messages ?? 0;
   } else {

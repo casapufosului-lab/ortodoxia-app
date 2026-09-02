@@ -6,8 +6,6 @@ import Purchases, {
   type PurchasesPackage,
 } from 'react-native-purchases';
 
-import { supabase } from '@/lib/supabase';
-
 /**
  * Cheia publică de pe platformă (App specific key) din panoul RevenueCat.
  * Pentru hibride (React Native) există câte o cheie publică separată pentru
@@ -162,25 +160,6 @@ export function customerInfoToSubscriptionRow(info: CustomerInfo | null | undefi
     current_period_end: currentPeriodEnd,
     cancel_at_period_end: !willRenew,
   };
-}
-
-/**
- * Sincronizează starea abonamentului în Supabase (tabelul `subscriptions`),
- * sursa folosită de funcțiile edge pentru limitele AI. Apelat după o cumpărare,
- * o restaurare sau o schimbare de CustomerInfo.
- */
-export async function syncRevenueCatToSupabase(userId: string, info: CustomerInfo) {
-  const row = customerInfoToSubscriptionRow(info);
-  if (!row) return;
-
-  await supabase.from('subscriptions').upsert({
-    user_id: userId,
-    status: row.status,
-    plan: row.plan === 'annual' ? 'annual' : 'monthly',
-    provider: Platform.OS === 'ios' ? 'apple' : 'google',
-    current_period_end: row.current_period_end,
-    cancel_at_period_end: row.cancel_at_period_end,
-  });
 }
 
 /** Verifică dacă o eroare reprezintă o anulare a cumpărării de către utilizator. */

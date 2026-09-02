@@ -9,7 +9,9 @@ export type SubscriptionRow = {
 };
 
 export function hasPremiumAccess(subscription: SubscriptionRow | null | undefined) {
-  if (!subscription || !['active', 'trialing'].includes(subscription.status)) return false;
+  if (!subscription) return false;
+  // 'canceled' păstrează accesul până la sfârșitul perioadei plătite.
+  if (!['active', 'trialing', 'canceled'].includes(subscription.status)) return false;
   if (!subscription.current_period_end) return true;
   return new Date(subscription.current_period_end).getTime() > Date.now();
 }

@@ -17,7 +17,6 @@ import {
   packagePriceText,
   purchaseRevenueCatPackage,
   restoreRevenueCatPurchases,
-  syncRevenueCatToSupabase,
   type RevenueCatPlan,
 } from '@/lib/revenuecat';
 import type { SubscriptionRow } from '@/lib/subscription';
@@ -28,9 +27,9 @@ type PurchaseResult =
   | { ok: false; message: string; cancelled: boolean };
 
 /**
- * Expune starea și acțiunile RevenueCat (ofrande, abonament activ, cumpărare,
- * restaurare). Se integrează cu utilizatorul Supabase și sincronizează starea
- * în tabelul `subscriptions`.
+ * Expune starea si actiunile RevenueCat (ofrande, abonament activ, cumparare,
+ * restaurare). Se integreaza cu utilizatorul Supabase. Sincronizarea in tabelul
+ * subscriptions se face server-side prin webhook-ul RevenueCat.
  */
 export function useRevenueCat() {
   const { user } = useAuth();
@@ -42,11 +41,6 @@ export function useRevenueCat() {
   const [offeringsError, setOfferingsError] = useState('');
 
   const previousUserIdRef = useRef(userId);
-
-  const syncToSupabase = useCallback(async (info: CustomerInfo) => {
-    if (!userId) return;
-    await syncRevenueCatToSupabase(userId, info);
-  }, [userId]);
 
   const refresh = useCallback(async () => {
     if (!isRevenueCatConfigured()) {
@@ -63,11 +57,10 @@ export function useRevenueCat() {
       setPackages(available);
       setCustomerInfo(info);
       setOfferingsError('');
-      await syncToSupabase(info);
     } catch {
-      setOfferingsError('Ofrandele de abonament nu au putut fi încărcate. Încearcă din nou.');
+      setOfferingsError('Ofertele de abonament nu au putut fi incarcate. Incearca din nou.');
     }
-  }, [syncToSupabase]);
+  }, []);
 
   useEffect(() => {
     configureRevenueCat();
@@ -77,7 +70,7 @@ export function useRevenueCat() {
     return () => clearTimeout(timeoutId);
   }, [refresh]);
 
-  // Leagă utilizatorul autentificat de un App User ID în RevenueCat.
+  // Leaga utilizatorul autentificat de un App User ID in RevenueCat.
   useEffect(() => {
     if (!isRevenueCatConfigured()) return;
     if (userId) {
@@ -85,7 +78,7 @@ export function useRevenueCat() {
     }
   }, [userId]);
 
-  // La deconectare, dezleagă utilizatorul de RevenueCat.
+  // La deconectare, dezleaga utilizatorul de RevenueCat.
   useEffect(() => {
     if (isRevenueCatConfigured() && userId === null && previousUserIdRef.current !== null) {
       void clearRevenueCatUser();
@@ -93,19 +86,18 @@ export function useRevenueCat() {
     previousUserIdRef.current = userId;
   }, [userId]);
 
-  // Abonează-te la actualizările CustomerInfo (ex: cumpărare făcută în altă parte,
-  // revocare, restaurare). Nu sunt împinse activ, deci este doar o sursă suplimentară.
+  // Aboneaza-te la actualizarile CustomerInfo (ex: cumparare facuta in alta parte,
+  // revocare, restaurare). Nu sunt impinse activ, deci este doar o sursa suplimentara.
   useEffect(() => {
     if (!isRevenueCatConfigured()) return;
     const listener: CustomerInfoUpdateListener = (info: CustomerInfo) => {
       setCustomerInfo(info);
-      void syncToSupabase(info);
     };
     Purchases.addCustomerInfoUpdateListener(listener);
     return () => {
       Purchases.removeCustomerInfoUpdateListener(listener);
     };
-  }, [syncToSupabase]);
+  }, []);
 
   const activeRow: SubscriptionRow | null = customerInfo
     ? (customerInfoToSubscriptionRow(customerInfo) as SubscriptionRow | null)
@@ -118,25 +110,24 @@ export function useRevenueCat() {
       }
       const pkg = packageForPlan(packages, plan);
       if (!pkg) {
-        return { ok: false, message: 'Planul ales nu este disponibil în magazin.', cancelled: false };
+        return { ok: false, message: 'Planul ales nu este disponibil in magazin.', cancelled: false };
       }
 
       setLoading(true);
       try {
         const info = await purchaseRevenueCatPackage(pkg);
         setCustomerInfo(info);
-        await syncToSupabase(info);
         return { ok: true, message: 'Abonamentul Premium a fost activat.' };
       } catch (error) {
         if (isPurchaseCancelledError(error)) {
-          return { ok: false, message: 'Cumpărarea a fost anulată.', cancelled: true };
+          return { ok: false, message: 'Cumpararea a fost anulata.', cancelled: true };
         }
-        return { ok: false, message: 'Cumpărarea nu a reușit. Încearcă din nou.', cancelled: false };
+        return { ok: false, message: 'Cumpararea nu a reusit. Incearca din nou.', cancelled: false };
       } finally {
         setLoading(false);
       }
     },
-    [packages, syncToSupabase],
+    [packages],
   );
 
   const restore = useCallback(async (): Promise<PurchaseResult> => {
@@ -148,16 +139,15 @@ export function useRevenueCat() {
     try {
       const info = await restoreRevenueCatPurchases();
       setCustomerInfo(info);
-      await syncToSupabase(info);
       return isPremiumActive(info)
-        ? { ok: true, message: 'Cumpărăturile tale au fost restaurate.' }
-        : { ok: true, message: 'Nu am găsit cumpărături de restaurat.' };
+        ? { ok: true, message: 'Cumparaturile tale au fost restaurate.' }
+        : { ok: true, message: 'Nu am gasit cumparaturi de restaurat.' };
     } catch {
-      return { ok: false, message: 'Restaurarea nu a reușit. Încearcă din nou.', cancelled: false };
+      return { ok: false, message: 'Restaurarea nu a reusit. Incearca din nou.', cancelled: false };
     } finally {
       setLoading(false);
     }
-  }, [syncToSupabase]);
+  }, []);
 
   const priceFor = useCallback(
     (plan: RevenueCatPlan) => {

@@ -12,7 +12,7 @@ const benefits = ['50 de mesaje AI pe zi, în loc de 5', 'Conținutul de bază r
 
 export default function PremiumScreen() {
   const { user } = useAuth();
-  const { dailyAiLimit, isLoading, isPremium, planLabel, subscription } = useSubscription();
+  const { dailyAiLimit, isLoading, isPremium, planLabel, revenueCatActive, subscription } = useSubscription();
   const { buy, loading, offeringsError, priceFor, restore } = useRevenueCat();
   const [purchaseResult, setPurchaseResult] = useState<{ ok: boolean; message: string } | null>(null);
   const [busyPlan, setBusyPlan] = useState<'monthly' | 'annual' | 'restore' | null>(null);
@@ -48,8 +48,8 @@ export default function PremiumScreen() {
       <PageHeader eyebrow="Abonament" title="Ortodoxia Premium" subtitle="Mai multe întrebări AI, cu o limită clară pentru controlul costurilor." />
       <Card style={styles.statusCard}>
         <Text style={styles.statusLabel}>Planul tău</Text>
-        <Text style={styles.statusValue}>{isLoading ? 'Se verifică…' : planLabel}</Text>
-        <Text style={styles.statusBody}>{isPremium ? `${dailyAiLimit} de mesaje AI disponibile în fiecare zi.` : '5 mesaje AI pe zi. Rugăciunile, calendarul și conținutul zilnic rămân gratuite.'}</Text>
+        <Text style={styles.statusValue}>{isLoading ? 'Se verifică…' : isPremium ? planLabel : revenueCatActive && revenueCatActive.plan === 'annual' ? 'Premium Anual' : revenueCatActive ? 'Premium Lunar' : planLabel}</Text>
+        <Text style={styles.statusBody}>{isPremium ? `${dailyAiLimit} de mesaje AI disponibile în fiecare zi.` : revenueCatActive ? 'Premium activ — sincronizarea durează câteva secunde.' : '5 mesaje AI pe zi. Rugăciunile, calendarul și conținutul zilnic rămân gratuite.'}</Text>
         {subscription?.current_period_end && isPremium ? <Text style={styles.expiry}>Valabil până la {new Date(subscription.current_period_end).toLocaleDateString('ro-RO')}.</Text> : null}
         {offeringsError ? <Text style={styles.error}>{offeringsError}</Text> : null}
         {purchaseResult ? <Text accessibilityLiveRegion="polite" style={purchaseResult.ok ? styles.successMessage : styles.errorMessage}>{purchaseResult.message}</Text> : null}
