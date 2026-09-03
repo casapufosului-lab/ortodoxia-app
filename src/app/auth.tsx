@@ -9,7 +9,7 @@ import { useAuth } from '@/providers/auth-provider';
 
 /** Mapăm erorile Supabase la mesaje prietenoase în limba română. */
 function friendlyAuthError(error: unknown): string {
-  if (!(error instanceof Error)) return 'Încearcă din nou.';
+  if (!(error instanceof Error)) return 'A apărut o eroare. Încearcă din nou.';
   const msg = error.message.toLowerCase();
   if (msg.includes('invalid login') || msg.includes('email or password') || msg.includes('invalid credentials')) {
     return 'Email sau parolă incorectă.';
@@ -22,6 +22,15 @@ function friendlyAuthError(error: unknown): string {
   }
   if (msg.includes('password')) {
     return 'Parola nu îndeplinește cerințele minime.';
+  }
+  if (msg.includes('expired')) {
+    return 'Link-ul de resetare a expirat. Te rugăm să ceri unul nou.';
+  }
+  if (msg.includes('invalid') || msg.includes('token')) {
+    return 'Link-ul de resetare este invalid. Te rugăm să ceri unul nou.';
+  }
+  if (msg.includes('network') || msg.includes('fetch')) {
+    return 'Eroare de conexiune. Verifică internetul și încearcă din nou.';
   }
   return 'A apărut o eroare. Încearcă din nou.';
 }
@@ -133,6 +142,7 @@ export default function AuthScreen() {
   };
 
   const sendResetEmail = async () => {
+    if (loading) return; // FIX: Prevent duplicate submit
     setResetMessage(null);
     if (!email.trim() || !email.includes('@')) {
       setResetMessage({ type: 'error', text: 'Introdu mai întâi o adresă de email validă.' });
