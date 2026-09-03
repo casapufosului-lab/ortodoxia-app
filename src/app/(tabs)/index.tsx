@@ -104,7 +104,7 @@ export default function HomeScreen() {
 
       setDailyContent(dailyResult.data as DailyContent);
       setCalendarDay(calendarResult.data as CalendarDay);
-    } catch (e) {
+    } catch {
       setErrorMessage('A apărut o eroare neașteptată.');
     } finally {
       isLoadingRef.current = false;

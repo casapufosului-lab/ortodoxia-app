@@ -94,7 +94,7 @@ export default function AccountScreen() {
         setSaveMessage({ type: 'success', text: 'Profil salvat.' });
         Alert.alert('Profil salvat');
       }
-    } catch (error) {
+    } catch {
       setSaveMessage({ type: 'error', text: 'A apărut o eroare neașteptată.' });
       Alert.alert('Eroare', 'A apărut o eroare neașteptată.');
     } finally {
