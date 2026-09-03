@@ -156,7 +156,7 @@ export function useRevenueCat() {
       setCustomerInfo(info);
       return isPremiumActive(info)
         ? { ok: true, message: 'Cumpărăturile tale au fost restaurate.' }
-        : { ok: true, message: 'Nu am găsit cumpărături de restaurat.' };
+        : { ok: false, message: 'Nu am găsit cumpărături de restaurat.', cancelled: false };
     } catch {
       if (!mountedRef.current) return { ok: false, message: 'Restaurarea nu a reușit. Încearcă din nou.', cancelled: false };
       return { ok: false, message: 'Restaurarea nu a reușit. Încearcă din nou.', cancelled: false };

@@ -1,6 +1,6 @@
 import { router } from 'expo-router';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
-import { useRef, useState } from 'react';
+import { useRef, useState, useEffect } from 'react';
 
 import { Card, PageHeader, PrimaryButton, Screen, SecondaryButton } from '@/components/mvp-ui';
 import { palette } from '@/constants/palette';
@@ -19,6 +19,11 @@ export default function PremiumScreen() {
   // Guard sincron împotriva dublelor atingeri în același tick: starea React
   // `busyPlan` nu poate împiedica două apeluri înainte de re-render.
   const busyRef = useRef(false);
+  // Guard împotriva mutărilor de stare React după demontarea ecranului.
+  const mountedRef = useRef(true);
+  useEffect(() => {
+    return () => { mountedRef.current = false; };
+  }, []);
 
   const monthlyPrice = priceFor('monthly');
   const annualPrice = priceFor('annual');
@@ -35,10 +40,11 @@ export default function PremiumScreen() {
     setBusyPlan(plan);
     try {
       const result = await buy(plan);
+      if (!mountedRef.current) return;
       setPurchaseResult(result);
     } finally {
       busyRef.current = false;
-      setBusyPlan(null);
+      if (mountedRef.current) setBusyPlan(null);
     }
   };
 
@@ -49,10 +55,11 @@ export default function PremiumScreen() {
     setBusyPlan('restore');
     try {
       const result = await restore();
+      if (!mountedRef.current) return;
       setPurchaseResult(result);
     } finally {
       busyRef.current = false;
-      setBusyPlan(null);
+      if (mountedRef.current) setBusyPlan(null);
     }
   };
 
@@ -95,11 +102,11 @@ export default function PremiumScreen() {
       {loading ? <View style={styles.loadingRow}><ActivityIndicator color={palette.blue} size="small" /><Text style={styles.loadingText}>Se procesează plata…</Text></View> : null}
       <Text style={styles.note}>Plățile se procesează securizat prin App Store sau Google Play.</Text>
       <View style={styles.legalLinks}>
-        <Pressable accessibilityRole="button" onPress={() => router.push('/privacy' as any)}>
+        <Pressable accessibilityRole="button" onPress={() => router.push('/privacy')}>
           <Text style={styles.legalLink}>Politica de confidențialitate</Text>
         </Pressable>
         <Text style={styles.legalDivider}>·</Text>
-        <Pressable accessibilityRole="button" onPress={() => router.push('/terms' as any)}>
+        <Pressable accessibilityRole="button" onPress={() => router.push('/terms')}>
           <Text style={styles.legalLink}>Termeni și condiții</Text>
         </Pressable>
       </View>
