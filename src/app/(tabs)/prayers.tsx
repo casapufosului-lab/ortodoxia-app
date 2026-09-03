@@ -38,8 +38,10 @@ export default function PrayersScreen() {
   const audioPlayerRef = useRef<AudioPlayer | null>(null);
   const audioStartingRef = useRef(false);
   const speechRequestRef = useRef(0);
+  const loadRequestRef = useRef(0);
 
   const loadPrayers = useCallback(async () => {
+    const requestId = ++loadRequestRef.current;
     setIsLoading(true);
     setErrorMessage('');
 
@@ -51,10 +53,12 @@ export default function PrayersScreen() {
         .order('sort_order', { ascending: true });
 
       if (error) {
+        if (loadRequestRef.current !== requestId) return;
         setErrorMessage('Nu am putut încărca rugăciunile. Încearcă din nou.');
         return;
       }
 
+      if (loadRequestRef.current !== requestId) return;
       setPrayers(data ?? []);
 
       if (user) {
@@ -64,17 +68,23 @@ export default function PrayersScreen() {
           .eq('user_id', user.id);
 
         if (favoritesError) {
+          if (loadRequestRef.current !== requestId) return;
           setErrorMessage('Rugăciunile s-au încărcat, dar favoritele nu au putut fi citite.');
         } else {
+          if (loadRequestRef.current !== requestId) return;
           setFavoriteIds((favorites ?? []).map((favorite) => favorite.prayer_id));
         }
       } else {
+        if (loadRequestRef.current !== requestId) return;
         setFavoriteIds([]);
       }
     } catch {
+      if (loadRequestRef.current !== requestId) return;
       setErrorMessage('Nu am putut încărca rugăciunile. Încearcă din nou.');
     } finally {
-      setIsLoading(false);
+      if (loadRequestRef.current === requestId) {
+        setIsLoading(false);
+      }
     }
   }, [user]);
 
@@ -84,6 +94,8 @@ export default function PrayersScreen() {
   }, [loadPrayers]);
 
   useEffect(() => () => {
+    loadRequestRef.current += 1;
+    speechRequestRef.current += 1;
     void Speech.stop();
     audioPlayerRef.current?.release();
     audioPlayerRef.current = null;

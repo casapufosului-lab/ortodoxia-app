@@ -75,6 +75,7 @@ test('loadPrayers always clears loading spinner via finally', () => {
   const finallyIdx = body.indexOf('finally {');
   assert.ok(finallyIdx !== -1, 'must have finally');
   const finallyBlock = body.slice(finallyIdx);
+  assert.ok(finallyBlock.includes('if (loadRequestRef.current === requestId)'), 'finally must guard loading clear');
   assert.ok(finallyBlock.includes('setIsLoading(false)'), 'finally must clear loading');
 });
 
@@ -84,4 +85,27 @@ test('loadPrayers failure shows a Romanian error', () => {
   assert.ok(body.includes('} catch {'), 'must have catch');
   const catchBlock = body.slice(body.indexOf('} catch {'));
   assert.ok(catchBlock.includes("'Nu am putut încărca rugăciunile. Încearcă din nou.'"), 'catch must show Romanian error');
+  assert.ok(catchBlock.includes('if (loadRequestRef.current !== requestId) return;'), 'catch must guard stale');
+});
+
+test('loadPrayers guards all state updates by request identity', () => {
+  const loadStart = src.indexOf('const loadPrayers = useCallback(async () => {');
+  const body = src.slice(loadStart, src.indexOf('}, [user]);', loadStart));
+  assert.ok(body.includes('const requestId = ++loadRequestRef.current;'), 'must create request identity');
+  const staleGuard = 'if (loadRequestRef.current !== requestId) return;';
+  const guardCount = body.split(staleGuard).length - 1;
+  assert.ok(guardCount >= 5, `must guard all state updates (found ${guardCount} guards)`);
+  assert.ok(body.includes('setIsLoading(true)'), 'must set loading');
+});
+
+test('unmount cleanup invalidates stale load and speech identities', () => {
+  const unmountStart = src.indexOf('useEffect(() => () => {');
+  assert.ok(unmountStart !== -1, 'must have unmount effect');
+  const unmountEnd = src.indexOf('}, []);', unmountStart);
+  const unmountBody = src.slice(unmountStart, unmountEnd + 5);
+  assert.ok(unmountBody.includes('loadRequestRef.current += 1;'), 'must invalidate stale load requests');
+  assert.ok(unmountBody.includes('speechRequestRef.current += 1;'), 'must invalidate stale speech callbacks');
+  assert.ok(unmountBody.includes('void Speech.stop();'), 'must stop speech on cleanup');
+  assert.ok(unmountBody.includes('audioPlayerRef.current?.release();'), 'must release player on cleanup');
+  assert.ok(unmountBody.includes('audioPlayerRef.current = null;'), 'must clear player ref on cleanup');
 });
