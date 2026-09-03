@@ -1,11 +1,12 @@
 import { router } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { Alert, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Alert, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { Card, PageHeader, PrimaryButton, Screen, SecondaryButton, SectionTitle } from '@/components/mvp-ui';
 import { palette } from '@/constants/palette';
 import { useSubscription } from '@/hooks/use-subscription';
 import { SUPPORTED_REGIONS } from '@/i18n/config';
+import { requestAccountDeletion } from '@/lib/account-deletion';
 import { registerForPushNotificationsAsync } from '@/lib/notifications';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/providers/auth-provider';
@@ -47,6 +48,8 @@ export default function AccountScreen() {
   const [notificationBusy, setNotificationBusy] = useState(false);
   const [notificationsEnabled, setNotificationsEnabled] = useState(false);
   const [notificationMessage, setNotificationMessage] = useState('');
+  const [deleteBusy, setDeleteBusy] = useState(false);
+  const [deleteError, setDeleteError] = useState('');
 
   useEffect(() => {
     if (!user) return;
@@ -96,6 +99,55 @@ export default function AccountScreen() {
       await signOut();
     } catch (error) {
       Alert.alert('Deconectarea nu a reușit', friendlyDbError(error));
+    }
+  };
+
+  const handleDeleteAccount = () => {
+    // First confirmation — explain what will happen.
+    Alert.alert(
+      'Șterge contul?',
+      'Această acțiune este permanentă și nu poate fi anulată.\n\n• Toate datele contului vor fi șterse\n• Favoritele, conversațiile AI și istoricul vor fi eliminate\n• Contul nu mai poate fi recuperat\n\nAnularea abonamentului se face separat din App Store / Google Play.',
+      [
+        { text: 'Anulează', style: 'cancel' },
+        {
+          text: 'Continuă',
+          style: 'destructive',
+          // Second confirmation — explicit final step.
+          onPress: () => {
+            Alert.alert(
+              'Ești sigur?',
+              'Confirmă pentru a șterge definitiv contul și toate datele asociate. Această acțiune nu poate fi anulată.',
+              [
+                { text: 'Anulează', style: 'cancel' },
+                {
+                  text: 'Șterge contul',
+                  style: 'destructive',
+                  onPress: () => void executeDeleteAccount(),
+                },
+              ],
+            );
+          },
+        },
+      ],
+    );
+  };
+
+  const executeDeleteAccount = async () => {
+    if (deleteBusy) return; // prevent double-submit
+    setDeleteBusy(true);
+    setDeleteError('');
+    try {
+      await requestAccountDeletion();
+      // Account deleted — sign out locally and navigate away.
+      await signOut();
+      router.replace('/');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Contul nu a putut fi șters. Încearcă din nou.';
+      setDeleteError(message);
+      Alert.alert('Eroare', message);
+    } finally {
+      // Only reset busy state if we didn't sign out (signOut triggers re-render).
+      setDeleteBusy(false);
     }
   };
 
@@ -257,6 +309,34 @@ export default function AccountScreen() {
         <Text style={styles.row}>Surse și responsabilitate editorială</Text>
         <Text style={styles.row}>Ajutor și contact</Text>
       </Card>
+      {user ? (
+        <>
+          <SectionTitle>Zona periculoasă</SectionTitle>
+          <Card style={styles.dangerCard}>
+            <Text style={styles.dangerDescription}>
+              Ștergerea contului elimină permanent profilul, favoritele, conversațiile AI și datele asociate. Această acțiune nu poate fi anulată.
+            </Text>
+            {deleteBusy ? (
+              <View style={styles.dangerLoadingRow}>
+                <ActivityIndicator color={palette.danger} size="small" />
+                <Text style={styles.dangerLoadingText}>Se șterge contul…</Text>
+              </View>
+            ) : (
+              <Pressable
+                accessibilityRole="button"
+                disabled={deleteBusy}
+                onPress={() => void handleDeleteAccount()}
+                style={({ pressed }) => [styles.dangerButton, pressed && styles.pressed]}
+              >
+                <Text style={styles.dangerButtonText}>Șterge contul</Text>
+              </Pressable>
+            )}
+            {deleteError ? (
+              <Text accessibilityLiveRegion="polite" style={styles.dangerError}>{deleteError}</Text>
+            ) : null}
+          </Card>
+        </>
+      ) : null}
     </Screen>
   );
 }
@@ -298,4 +378,12 @@ const styles = StyleSheet.create({
   notificationActive: { color: palette.success, fontSize: 13, fontWeight: '700' },
   notificationInactive: { color: palette.muted, fontSize: 13, fontWeight: '700' },
   notificationMessage: { color: palette.blue, fontSize: 13, lineHeight: 19 },
+  dangerCard: { borderColor: palette.danger },
+  dangerDescription: { color: palette.muted, fontSize: 14, lineHeight: 21 },
+  dangerButton: { backgroundColor: palette.danger, minHeight: 48, borderRadius: 14, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 18 },
+  dangerButtonText: { color: '#FFFFFF', fontSize: 15, fontWeight: '700' },
+  dangerLoadingRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
+  dangerLoadingText: { color: palette.danger, fontSize: 13, fontWeight: '700' },
+  dangerError: { color: palette.danger, fontSize: 13, fontWeight: '700', textAlign: 'center' },
+  pressed: { opacity: 0.75 },
 });
