@@ -36,41 +36,45 @@ export default function PrayersScreen() {
   const [isLoading, setIsLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState('');
   const audioPlayerRef = useRef<AudioPlayer | null>(null);
+  const audioStartingRef = useRef(false);
 
   const loadPrayers = useCallback(async () => {
     setIsLoading(true);
     setErrorMessage('');
 
-    const { data, error } = await supabase
-      .from('prayers')
-      .select('id, category, title, body, editorial_source, audio_path')
-      .eq('is_published', true)
-      .order('sort_order', { ascending: true });
+    try {
+      const { data, error } = await supabase
+        .from('prayers')
+        .select('id, category, title, body, editorial_source, audio_path')
+        .eq('is_published', true)
+        .order('sort_order', { ascending: true });
 
-    if (error) {
-      setErrorMessage('Nu am putut încărca rugăciunile. Încearcă din nou.');
-      setIsLoading(false);
-      return;
-    }
-
-    setPrayers(data ?? []);
-
-    if (user) {
-      const { data: favorites, error: favoritesError } = await supabase
-        .from('favorites')
-        .select('prayer_id')
-        .eq('user_id', user.id);
-
-      if (favoritesError) {
-        setErrorMessage('Rugăciunile s-au încărcat, dar favoritele nu au putut fi citite.');
-      } else {
-        setFavoriteIds((favorites ?? []).map((favorite) => favorite.prayer_id));
+      if (error) {
+        setErrorMessage('Nu am putut încărca rugăciunile. Încearcă din nou.');
+        return;
       }
-    } else {
-      setFavoriteIds([]);
-    }
 
-    setIsLoading(false);
+      setPrayers(data ?? []);
+
+      if (user) {
+        const { data: favorites, error: favoritesError } = await supabase
+          .from('favorites')
+          .select('prayer_id')
+          .eq('user_id', user.id);
+
+        if (favoritesError) {
+          setErrorMessage('Rugăciunile s-au încărcat, dar favoritele nu au putut fi citite.');
+        } else {
+          setFavoriteIds((favorites ?? []).map((favorite) => favorite.prayer_id));
+        }
+      } else {
+        setFavoriteIds([]);
+      }
+    } catch {
+      setErrorMessage('Nu am putut încărca rugăciunile. Încearcă din nou.');
+    } finally {
+      setIsLoading(false);
+    }
   }, [user]);
 
   useEffect(() => {
@@ -137,44 +141,56 @@ export default function PrayersScreen() {
       return;
     }
 
-    await Speech.stop();
-    audioPlayerRef.current?.pause();
-    audioPlayerRef.current?.release();
-    audioPlayerRef.current = null;
-    setSpeakingId(prayer.id);
+    if (audioStartingRef.current) return;
 
-    if (prayer.audio_path) {
-      try {
+    audioStartingRef.current = true;
+    try {
+      await Speech.stop();
+      audioPlayerRef.current?.pause();
+      audioPlayerRef.current?.release();
+      audioPlayerRef.current = null;
+      setSpeakingId(prayer.id);
+
+      if (prayer.audio_path) {
         const { data } = supabase.storage.from('prayer-audio').getPublicUrl(prayer.audio_path);
         const player = createAudioPlayer(data.publicUrl, { updateInterval: 250 });
         audioPlayerRef.current = player;
         player.addListener('playbackStatusUpdate', (status) => {
+          if (audioPlayerRef.current !== player) return;
+          if (status.error) {
+            player.release();
+            audioPlayerRef.current = null;
+            setSpeakingId((currentId) => currentId === prayer.id ? null : currentId);
+            setErrorMessage('Fișierul audio nu a putut porni. Încearcă din nou.');
+            return;
+          }
           if (!status.didJustFinish) return;
           player.release();
-          if (audioPlayerRef.current === player) audioPlayerRef.current = null;
+          audioPlayerRef.current = null;
           setSpeakingId((currentId) => currentId === prayer.id ? null : currentId);
         });
         player.play();
         return;
-      } catch {
-        audioPlayerRef.current?.release();
-        audioPlayerRef.current = null;
-        setSpeakingId(null);
-        setErrorMessage('Fișierul audio nu a putut porni. Încearcă din nou.');
-        return;
       }
-    }
 
-    Speech.speak(`${prayer.title}. ${prayer.body}`, {
-      language: 'ro-RO',
-      rate: 0.85,
-      onDone: () => setSpeakingId(null),
-      onStopped: () => setSpeakingId(null),
-      onError: () => {
-        setSpeakingId(null);
-        setErrorMessage('Citirea audio nu a putut porni pe acest dispozitiv.');
-      },
-    });
+      Speech.speak(`${prayer.title}. ${prayer.body}`, {
+        language: 'ro-RO',
+        rate: 0.85,
+        onDone: () => setSpeakingId(null),
+        onStopped: () => setSpeakingId(null),
+        onError: () => {
+          setSpeakingId(null);
+          setErrorMessage('Citirea audio nu a putut porni pe acest dispozitiv.');
+        },
+      });
+    } catch {
+      audioPlayerRef.current?.release();
+      audioPlayerRef.current = null;
+      setSpeakingId(null);
+      setErrorMessage('Fișierul audio nu a putut porni. Încearcă din nou.');
+    } finally {
+      audioStartingRef.current = false;
+    }
   };
 
   return (
