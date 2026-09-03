@@ -197,6 +197,10 @@ export default function ChatScreen() {
         role: 'assistant',
         text: data.reply,
       }]);
+    } catch {
+      setErrorMessage('Serviciul nu este disponibil momentan. Verifică conexiunea și încearcă din nou.');
+      setMessages((current) => current.filter((m) => m.id !== optimisticId));
+      setInput(clean);
     } finally {
       isSendingRef.current = false;
       setIsSending(false);

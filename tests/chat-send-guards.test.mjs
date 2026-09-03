@@ -119,3 +119,62 @@ test('send function contains no console.log or console.warn', () => {
   assert.ok(!sendBody.includes('console.log'), 'send must not contain console.log');
   assert.ok(!sendBody.includes('console.warn'), 'send must not contain console.warn');
 });
+
+// Helper: find the outer catch block text (the one immediately before finally)
+function findOuterCatchBlock() {
+  const sendStart = src.indexOf('const send = async () => {');
+  const finallyIdx = src.indexOf('finally {', sendStart);
+  assert.ok(finallyIdx !== -1, 'finally block must exist');
+  // Search backwards from finallyIdx for '} catch {'
+  const sendBody = src.slice(sendStart, finallyIdx);
+  const lastCatchIdx = sendBody.lastIndexOf('} catch {');
+  assert.ok(lastCatchIdx !== -1, 'outer catch block must exist before finally');
+  return sendBody.slice(lastCatchIdx);
+}
+
+// 11. Thrown exception recovery: catch block exists for async failures
+test('catch block exists between try and finally for thrown exceptions', () => {
+  const sendStart = src.indexOf('const send = async () => {');
+  const tryIdx = src.indexOf('try {', sendStart);
+  const finallyIdx = src.indexOf('finally {', sendStart);
+  const sendBody = src.slice(sendStart, finallyIdx);
+  const catchIdx = sendBody.lastIndexOf('} catch {');
+  assert.ok(tryIdx !== -1, 'try block must exist');
+  assert.ok(catchIdx !== -1, 'catch block must exist after try');
+  assert.ok(finallyIdx !== -1, 'finally block must exist');
+  assert.ok(tryIdx - sendStart < catchIdx, 'catch must come after try');
+  assert.ok(catchIdx < finallyIdx - sendStart, 'finally must come after catch');
+});
+
+// 12. Thrown exception: removes optimistic message
+test('catch block removes optimistic message on thrown exception', () => {
+  const catchBlock = findOuterCatchBlock();
+  assert.ok(
+    catchBlock.includes('.filter(') && catchBlock.includes('optimisticId'),
+    'catch block must remove optimistic message via filter(optimisticId)',
+  );
+});
+
+// 13. Thrown exception: restores input for retry
+test('catch block restores input on thrown exception', () => {
+  const catchBlock = findOuterCatchBlock();
+  assert.ok(catchBlock.includes('setInput(clean)'), 'catch block must restore input via setInput(clean)');
+});
+
+// 14. Thrown exception: shows Romanian error message
+test('catch block sets a Romanian error message', () => {
+  const catchBlock = findOuterCatchBlock();
+  assert.ok(catchBlock.includes('setErrorMessage('), 'catch block must call setErrorMessage');
+  const hasRomanian = catchBlock.includes('Încearcă') || catchBlock.includes('disponibil')
+    || catchBlock.includes('conexiunea') || catchBlock.includes('eroare');
+  assert.ok(hasRomanian, 'catch block error message must be in Romanian');
+});
+
+// 15. Thrown exception: no assistant response added
+test('catch block does not add an assistant message', () => {
+  const catchBlock = findOuterCatchBlock();
+  assert.ok(
+    !catchBlock.includes("role: 'assistant'"),
+    'catch block must not add a fake assistant response',
+  );
+});
