@@ -1,5 +1,5 @@
 import { router } from 'expo-router';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { Card, PageHeader, PrimaryButton, Screen, SectionTitle } from '@/components/mvp-ui';
@@ -61,7 +61,9 @@ export default function CalendarScreen() {
   const [entries, setEntries] = useState<CalendarEntry[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState('');
+  const calendarRequestRef = useRef(0);
   const loadCalendar = useCallback(async () => {
+    const requestId = ++calendarRequestRef.current;
     setIsLoading(true);
     setErrorMessage('');
 
@@ -71,48 +73,61 @@ export default function CalendarScreen() {
       return;
     }
 
-    let { data, error } = await supabase
-      .from('calendar_days')
-      .select('calendar_date, feast_rank, saints, title, details, fasting_note, editorial_source')
-      .eq('country_code', countryCode)
-      .eq('language_code', region.languageCode)
-      .eq('calendar_code', calendarCode)
-      .eq('is_published', true)
-      .gte('calendar_date', calendarView.monthStart)
-      .lte('calendar_date', calendarView.monthEnd)
-      .order('calendar_date', { ascending: true });
-
-    const localizationSchemaMissing = error?.code === '42703'
-      || Boolean(error?.message.match(/(country_code|language_code|calendar_code).*does not exist/i));
-
-    if (localizationSchemaMissing && countryCode === 'RO') {
-      const legacyResult = await supabase
+    try {
+      let { data, error } = await supabase
         .from('calendar_days')
         .select('calendar_date, feast_rank, saints, title, details, fasting_note, editorial_source')
+        .eq('country_code', countryCode)
+        .eq('language_code', region.languageCode)
+        .eq('calendar_code', calendarCode)
         .eq('is_published', true)
         .gte('calendar_date', calendarView.monthStart)
         .lte('calendar_date', calendarView.monthEnd)
         .order('calendar_date', { ascending: true });
-      data = legacyResult.data;
-      error = legacyResult.error;
-    } else if (localizationSchemaMissing) {
-      data = [];
-      error = null;
-    }
 
-    if (error) {
+      const localizationSchemaMissing = error?.code === '42703'
+        || Boolean(error?.message.match(/(country_code|language_code|calendar_code).*does not exist/i));
+
+      if (localizationSchemaMissing && countryCode === 'RO') {
+        const legacyResult = await supabase
+          .from('calendar_days')
+          .select('calendar_date, feast_rank, saints, title, details, fasting_note, editorial_source')
+          .eq('is_published', true)
+          .gte('calendar_date', calendarView.monthStart)
+          .lte('calendar_date', calendarView.monthEnd)
+          .order('calendar_date', { ascending: true });
+        data = legacyResult.data;
+        error = legacyResult.error;
+      } else if (localizationSchemaMissing) {
+        data = [];
+        error = null;
+      }
+
+      if (error) {
+        if (calendarRequestRef.current !== requestId) return;
+        setEntries([]);
+        setErrorMessage('Calendarul nu a putut fi încărcat. Încearcă din nou.');
+      } else {
+        if (calendarRequestRef.current !== requestId) return;
+        setEntries(data ?? []);
+      }
+    } catch {
+      if (calendarRequestRef.current !== requestId) return;
       setEntries([]);
       setErrorMessage('Calendarul nu a putut fi încărcat. Încearcă din nou.');
-    } else {
-      setEntries(data ?? []);
+    } finally {
+      if (calendarRequestRef.current === requestId) {
+        setIsLoading(false);
+      }
     }
-
-    setIsLoading(false);
   }, [calendarCode, calendarView, countryCode, region.languageCode]);
 
   useEffect(() => {
     const timeoutId = setTimeout(() => void loadCalendar(), 0);
-    return () => clearTimeout(timeoutId);
+    return () => {
+      clearTimeout(timeoutId);
+      calendarRequestRef.current += 1;
+    };
   }, [loadCalendar]);
 
   const selectedDateKey = toDateKey(calendarView.year, calendarView.monthIndex, selectedDay);
