@@ -41,6 +41,34 @@ test('toggleAudio playback errors reset state via status.error', () => {
   assert.ok(listenerBody.includes("'Fișierul audio nu a putut porni. Încearcă din nou.'"), 'error path must show Romanian error');
 });
 
+test('toggleAudio speech callbacks guard stale requests', () => {
+  const toggleStart = src.indexOf('const toggleAudio = async');
+  const body = src.slice(toggleStart, src.indexOf('};', toggleStart));
+  assert.ok(body.includes('speechRequestRef.current += 1;'), 'must bump request id per toggle');
+  assert.ok(body.includes('const speechRequestId = speechRequestRef.current;'), 'must capture request id');
+
+  const speakIdx = body.indexOf('Speech.speak(');
+  assert.ok(speakIdx !== -1, 'must call Speech.speak');
+  const speakOptions = body.slice(speakIdx, body.indexOf('});', speakIdx));
+
+  const guard = 'if (speechRequestRef.current !== speechRequestId) return;';
+  const guardCount = speakOptions.split(guard).length - 1;
+  assert.ok(guardCount >= 3, `onDone/onStopped/onError must reject stale requests (found ${guardCount})`);
+});
+
+test('toggleAudio speech onError only acts on its own request', () => {
+  const toggleStart = src.indexOf('const toggleAudio = async');
+  const body = src.slice(toggleStart, src.indexOf('};', toggleStart));
+  const speakIdx = body.indexOf('Speech.speak(');
+  assert.ok(speakIdx !== -1, 'must call Speech.speak');
+  const speakOptions = body.slice(speakIdx, body.indexOf('});', speakIdx));
+  const onError = speakOptions.slice(speakOptions.indexOf('onError:'));
+  const onErrorGuard = 'if (speechRequestRef.current !== speechRequestId) return;';
+  assert.ok(onError.startsWith('onError: () => {\n') || onError.indexOf('onError:') === 0, 'onError must be an object callback');
+  assert.ok(onError.includes(onErrorGuard), 'onError must guard before acting');
+  assert.ok(onError.includes("setSpeakingId(null);"), 'onError clears speaking state only for valid request');
+  assert.ok(onError.includes("setErrorMessage('Citirea audio nu a putut porni pe acest dispozitiv.');"), 'onError keeps Romanian error');
+});
 test('loadPrayers always clears loading spinner via finally', () => {
   const loadStart = src.indexOf('const loadPrayers = useCallback(async () => {');
   const body = src.slice(loadStart, src.indexOf('}, [user]);', loadStart));

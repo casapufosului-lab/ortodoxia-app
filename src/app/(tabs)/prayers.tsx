@@ -37,6 +37,7 @@ export default function PrayersScreen() {
   const [errorMessage, setErrorMessage] = useState('');
   const audioPlayerRef = useRef<AudioPlayer | null>(null);
   const audioStartingRef = useRef(false);
+  const speechRequestRef = useRef(0);
 
   const loadPrayers = useCallback(async () => {
     setIsLoading(true);
@@ -144,6 +145,8 @@ export default function PrayersScreen() {
     if (audioStartingRef.current) return;
 
     audioStartingRef.current = true;
+    speechRequestRef.current += 1;
+    const speechRequestId = speechRequestRef.current;
     try {
       await Speech.stop();
       audioPlayerRef.current?.pause();
@@ -176,9 +179,16 @@ export default function PrayersScreen() {
       Speech.speak(`${prayer.title}. ${prayer.body}`, {
         language: 'ro-RO',
         rate: 0.85,
-        onDone: () => setSpeakingId(null),
-        onStopped: () => setSpeakingId(null),
+        onDone: () => {
+          if (speechRequestRef.current !== speechRequestId) return;
+          setSpeakingId(null);
+        },
+        onStopped: () => {
+          if (speechRequestRef.current !== speechRequestId) return;
+          setSpeakingId(null);
+        },
         onError: () => {
+          if (speechRequestRef.current !== speechRequestId) return;
           setSpeakingId(null);
           setErrorMessage('Citirea audio nu a putut porni pe acest dispozitiv.');
         },
