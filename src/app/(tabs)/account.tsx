@@ -46,6 +46,9 @@ export default function AccountScreen() {
   const [saving, setSaving] = useState(false);
   const [saveMessage, setSaveMessage] = useState<{ type: 'error' | 'success'; text: string } | null>(null);
   const isSavingRef = useRef(false);
+  const isNotificationRef = useRef(false);
+  const isSignOutRef = useRef(false);
+  const isDeleteRef = useRef(false);
   const [notificationBusy, setNotificationBusy] = useState(false);
   const [notificationsEnabled, setNotificationsEnabled] = useState(false);
   const [notificationMessage, setNotificationMessage] = useState('');
@@ -72,12 +75,21 @@ export default function AccountScreen() {
 
   useEffect(() => {
     if (!user) return;
+    let active = true;
     supabase
       .from('notification_preferences')
       .select('enabled')
       .eq('user_id', user.id)
       .maybeSingle()
-      .then(({ data }) => setNotificationsEnabled(Boolean(data?.enabled)));
+      .then(({ data, error }) => {
+        if (!active) return;
+        if (error) {
+          Alert.alert('Notificări indisponibile', friendlyDbError(error));
+        } else {
+          setNotificationsEnabled(Boolean(data?.enabled));
+        }
+      });
+    return () => { active = false; };
   }, [user]);
 
   const saveProfile = async () => {
@@ -104,10 +116,14 @@ export default function AccountScreen() {
   };
 
   const handleSignOut = async () => {
+    if (isSignOutRef.current) return;
+    isSignOutRef.current = true;
     try {
       await signOut();
     } catch (error) {
       Alert.alert('Deconectarea nu a reușit', friendlyDbError(error));
+    } finally {
+      isSignOutRef.current = false;
     }
   };
 
@@ -142,7 +158,8 @@ export default function AccountScreen() {
   };
 
   const executeDeleteAccount = async () => {
-    if (deleteBusy) return; // prevent double-submit
+    if (deleteBusy || isDeleteRef.current) return; // prevent double-submit
+    isDeleteRef.current = true;
     setDeleteBusy(true);
     setDeleteError('');
     try {
@@ -156,12 +173,14 @@ export default function AccountScreen() {
       Alert.alert('Eroare', message);
     } finally {
       // Only reset busy state if we didn't sign out (signOut triggers re-render).
+      isDeleteRef.current = false;
       setDeleteBusy(false);
     }
   };
 
   const enableNotifications = async () => {
-    if (!user || notificationBusy) return;
+    if (!user || notificationBusy || isNotificationRef.current) return;
+    isNotificationRef.current = true;
     setNotificationMessage('');
     setNotificationBusy(true);
     try {
@@ -191,6 +210,7 @@ export default function AccountScreen() {
     } catch (error) {
       setNotificationMessage('Notificările nu au putut fi activate. ' + friendlyDbError(error));
     } finally {
+      isNotificationRef.current = false;
       setNotificationBusy(false);
     }
   };
