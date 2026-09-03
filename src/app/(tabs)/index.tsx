@@ -1,5 +1,5 @@
 import { router } from 'expo-router';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { Card, PageHeader, PrimaryButton, Screen, SectionTitle } from '@/components/mvp-ui';
@@ -37,8 +37,11 @@ export default function HomeScreen() {
   const [calendarDay, setCalendarDay] = useState<CalendarDay | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState('');
+  const isLoadingRef = useRef(false);
 
   const loadHome = useCallback(async () => {
+    if (isLoadingRef.current) return;
+    isLoadingRef.current = true;
     setIsLoading(true);
     setErrorMessage('');
 
@@ -104,6 +107,7 @@ export default function HomeScreen() {
     } catch (e) {
       setErrorMessage('A apărut o eroare neașteptată.');
     } finally {
+      isLoadingRef.current = false;
       setIsLoading(false);
     }
   }, [calendarCode, countryCode, dateKey, region.languageCode]);

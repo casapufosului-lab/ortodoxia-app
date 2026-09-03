@@ -1,5 +1,5 @@
 import { router } from 'expo-router';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { Card, PageHeader, PrimaryButton, Screen, SecondaryButton, SectionTitle } from '@/components/mvp-ui';
@@ -45,6 +45,7 @@ export default function AccountScreen() {
   const [displayName, setDisplayName] = useState('');
   const [saving, setSaving] = useState(false);
   const [saveMessage, setSaveMessage] = useState<{ type: 'error' | 'success'; text: string } | null>(null);
+  const isSavingRef = useRef(false);
   const [notificationBusy, setNotificationBusy] = useState(false);
   const [notificationsEnabled, setNotificationsEnabled] = useState(false);
   const [notificationMessage, setNotificationMessage] = useState('');
@@ -80,7 +81,8 @@ export default function AccountScreen() {
   }, [user]);
 
   const saveProfile = async () => {
-    if (!user || saving) return;
+    if (!user || saving || isSavingRef.current) return;
+    isSavingRef.current = true;
     setSaveMessage(null);
     setSaving(true);
     try {
@@ -96,6 +98,7 @@ export default function AccountScreen() {
       setSaveMessage({ type: 'error', text: 'A apărut o eroare neașteptată.' });
       Alert.alert('Eroare', 'A apărut o eroare neașteptată.');
     } finally {
+      isSavingRef.current = false;
       setSaving(false);
     }
   };
