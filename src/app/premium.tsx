@@ -1,6 +1,6 @@
 import { router } from 'expo-router';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 
 import { Card, PageHeader, PrimaryButton, Screen, SecondaryButton } from '@/components/mvp-ui';
 import { palette } from '@/constants/palette';
@@ -16,6 +16,9 @@ export default function PremiumScreen() {
   const { buy, loading, offeringsError, priceFor, restore } = useRevenueCat();
   const [purchaseResult, setPurchaseResult] = useState<{ ok: boolean; message: string } | null>(null);
   const [busyPlan, setBusyPlan] = useState<'monthly' | 'annual' | 'restore' | null>(null);
+  // Guard sincron împotriva dublelor atingeri în același tick: starea React
+  // `busyPlan` nu poate împiedica două apeluri înainte de re-render.
+  const busyRef = useRef(false);
 
   const monthlyPrice = priceFor('monthly');
   const annualPrice = priceFor('annual');
@@ -26,21 +29,31 @@ export default function PremiumScreen() {
   };
 
   const purchase = async (plan: 'monthly' | 'annual') => {
-    if (requireUser() || busyPlan) return;
+    if (requireUser() || busyRef.current) return;
+    busyRef.current = true;
     setPurchaseResult(null);
     setBusyPlan(plan);
-    const result = await buy(plan);
-    setPurchaseResult(result);
-    setBusyPlan(null);
+    try {
+      const result = await buy(plan);
+      setPurchaseResult(result);
+    } finally {
+      busyRef.current = false;
+      setBusyPlan(null);
+    }
   };
 
   const handleRestore = async () => {
-    if (requireUser() || busyPlan) return;
+    if (requireUser() || busyRef.current) return;
+    busyRef.current = true;
     setPurchaseResult(null);
     setBusyPlan('restore');
-    const result = await restore();
-    setPurchaseResult(result);
-    setBusyPlan(null);
+    try {
+      const result = await restore();
+      setPurchaseResult(result);
+    } finally {
+      busyRef.current = false;
+      setBusyPlan(null);
+    }
   };
 
   return (

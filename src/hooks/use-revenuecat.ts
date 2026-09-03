@@ -41,6 +41,13 @@ export function useRevenueCat() {
   const [offeringsError, setOfferingsError] = useState('');
 
   const previousUserIdRef = useRef(userId);
+  const mountedRef = useRef(true);
+
+  useEffect(() => {
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
 
   const refresh = useCallback(async () => {
     if (!isRevenueCatConfigured()) {
@@ -53,11 +60,13 @@ export function useRevenueCat() {
         Purchases.getOfferings(),
         Purchases.getCustomerInfo(),
       ]);
+      if (!mountedRef.current) return;
       const available = offeringsResult.current?.availablePackages ?? null;
       setPackages(available);
       setCustomerInfo(info);
       setOfferingsError('');
     } catch {
+      if (!mountedRef.current) return;
       setOfferingsError('Ofertele de abonament nu au putut fi încărcate. Încearcă din nou.');
     }
   }, []);
@@ -116,15 +125,20 @@ export function useRevenueCat() {
       setLoading(true);
       try {
         const info = await purchaseRevenueCatPackage(pkg);
+        if (!mountedRef.current) return { ok: false, message: 'Cumpărarea nu a reușit. Încearcă din nou.', cancelled: false };
         setCustomerInfo(info);
-        return { ok: true, message: 'Abonamentul Premium a fost activat.' };
+        if (isPremiumActive(info)) {
+          return { ok: true, message: 'Abonamentul Premium a fost activat.' };
+        }
+        return { ok: false, message: 'Plata a fost procesată, dar Premium nu este încă activ. Verifică în câteva momente.', cancelled: false };
       } catch (error) {
+        if (!mountedRef.current) return { ok: false, message: 'Cumpărarea nu a reușit. Încearcă din nou.', cancelled: false };
         if (isPurchaseCancelledError(error)) {
           return { ok: false, message: 'Cumpărarea a fost anulată.', cancelled: true };
         }
         return { ok: false, message: 'Cumpărarea nu a reușit. Încearcă din nou.', cancelled: false };
       } finally {
-        setLoading(false);
+        if (mountedRef.current) setLoading(false);
       }
     },
     [packages],
@@ -138,14 +152,16 @@ export function useRevenueCat() {
     setLoading(true);
     try {
       const info = await restoreRevenueCatPurchases();
+      if (!mountedRef.current) return { ok: false, message: 'Restaurarea nu a reușit. Încearcă din nou.', cancelled: false };
       setCustomerInfo(info);
       return isPremiumActive(info)
         ? { ok: true, message: 'Cumpărăturile tale au fost restaurate.' }
         : { ok: true, message: 'Nu am găsit cumpărături de restaurat.' };
     } catch {
+      if (!mountedRef.current) return { ok: false, message: 'Restaurarea nu a reușit. Încearcă din nou.', cancelled: false };
       return { ok: false, message: 'Restaurarea nu a reușit. Încearcă din nou.', cancelled: false };
     } finally {
-      setLoading(false);
+      if (mountedRef.current) setLoading(false);
     }
   }, []);
 
