@@ -95,6 +95,21 @@ Deno.serve(async (req: Request) => {
   try {
     body = await req.json();
   } catch {
+  const { message, threadId, guestId } = body;
+  if (typeof message !== 'string' || message.trim().length === 0 || message.length > 2000) {
+    return json({ error: 'Mesajul este invalid.' }, 400);
+  }
+  let guestIdStr: string | null = null;
+  if (guestId) {
+    if (typeof guestId !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(guestId)) {
+        return json({ error: 'Identificator guest invalid.' }, 400);
+    }
+    guestIdStr = guestId;
+  }
+  if (!user && !guestIdStr) {
+      return json({ error: 'Identificator guest necesar.' }, 400);
+  }
+
     return json({ error: 'Cererea nu este validă.' }, 400);
   }
 
@@ -189,6 +204,21 @@ Deno.serve(async (req: Request) => {
     history = (historyResult.data ?? []) as Array<{ role: 'user' | 'assistant'; content: string }>;
   }
 
+  // 1. Rate limit and usage limit check
+  const usageDate = bucharestDateKey();
+  const isPremium = user ? (await admin.from('subscriptions').select('plan').eq('user_id', user.id).eq('status', 'active').maybeSingle()).data?.plan === 'annual' : false;
+  const dailyLimit = isPremium ? PREMIUM_DAILY_AI_LIMIT : FREE_DAILY_AI_LIMIT;
+
+  const { data: usageRow } = user
+    ? await admin.from('usage_daily').select('ai_messages').eq('user_id', user.id).eq('usage_date', usageDate).maybeSingle()
+    : await admin.from('guest_usage_daily').select('ai_messages').eq('guest_id', guestIdStr).eq('usage_date', usageDate).maybeSingle();
+
+  const usedMessages = usageRow?.ai_messages ?? 0;
+  if (usedMessages >= dailyLimit) {
+    return json({ error: 'Limita zilnică de mesaje AI a fost atinsă.' }, 429);
+  }
+
+  // 2. Call OpenAI
   const response = await fetch('https://api.openai.com/v1/responses', {
     method: 'POST',
     headers: {
@@ -202,7 +232,7 @@ Deno.serve(async (req: Request) => {
       reasoning: { effort: 'none' },
       text: { verbosity: 'low' },
       max_output_tokens: 700,
-      safety_identifier: user?.id ?? guestId,
+      safety_identifier: user?.id ?? guestIdStr,
       store: false,
     }),
   });
@@ -223,6 +253,7 @@ Deno.serve(async (req: Request) => {
     if (saveAssistantError) return json({ error: 'Răspunsul a fost generat, dar nu a putut fi salvat.' }, 500);
   }
 
+  // 3. Atomic usage increment
   const nextUsage = usedMessages + 1;
   const usageUpdateError = user
     ? (await admin
@@ -230,7 +261,7 @@ Deno.serve(async (req: Request) => {
       .upsert({ user_id: user.id, usage_date: usageDate, ai_messages: nextUsage }, { onConflict: 'user_id,usage_date' })).error
     : (await admin
       .from('guest_usage_daily')
-      .upsert({ guest_id: guestId, usage_date: usageDate, ai_messages: nextUsage }, { onConflict: 'guest_id,usage_date' })).error;
+      .upsert({ guest_id: guestIdStr, usage_date: usageDate, ai_messages: nextUsage }, { onConflict: 'guest_id,usage_date' })).error;
 
   if (usageUpdateError) console.error('Usage update failed', usageUpdateError.message);
 
