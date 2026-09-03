@@ -300,10 +300,10 @@ export default function AccountScreen() {
       </Card>
       <SectionTitle>Despre aplicație</SectionTitle>
       <Card>
-        <Pressable accessibilityRole="button" onPress={() => router.push('/privacy' as string)}>
+        <Pressable accessibilityRole="button" onPress={() => router.push('/privacy')}>
           <Text style={styles.rowLink}>Politica de confidențialitate</Text>
         </Pressable>
-        <Pressable accessibilityRole="button" onPress={() => router.push('/terms' as string)}>
+        <Pressable accessibilityRole="button" onPress={() => router.push('/terms')}>
           <Text style={styles.rowLink}>Termeni și condiții</Text>
         </Pressable>
         <Text style={styles.row}>Surse și responsabilitate editorială</Text>

@@ -7,7 +7,7 @@
  */
 
 import { useCallback, useEffect } from 'react';
-import { Modal, Pressable, StyleSheet, Text, View, type PlatformOSType } from 'react-native';
+import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { palette } from '@/constants/palette';
 

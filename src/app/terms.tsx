@@ -1,4 +1,4 @@
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ScrollView, StyleSheet, Text } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { palette } from '@/constants/palette';
 
@@ -67,10 +67,10 @@ export default function TermsScreen() {
         <Text style={styles.h3}>8.4 Restituiri</Text>
         <Text style={styles.p}>Restituirile sunt gestionate de Apple / Google conform politicilor acestora. Ortodoxia nu oferă restituiri directe. Pentru solicitări de restituire, contactați platforma de unde ați efectuat achiziția.</Text>
         <Text style={styles.h3}>8.5 Restaurare</Text>
-        <Text style={styles.p}>Funcția „Restaurează cumpărăturile" disponibilă în ecranul Premium reactivează drepturile de abonament existente, atunci când este suportat de platformă.</Text>
+        <Text style={styles.p}>Funcția &quot;Restaurează cumpărăturile&quot; disponibilă în ecranul Premium reactivează drepturile de abonament existente, atunci când este suportat de platformă.</Text>
 
         <Text style={styles.h2}>9. Limitarea răspunderii</Text>
-        <Text style={styles.p}>Aplicația este furnizată „așa cum este". În limita permisă de lege, Ortodoxia nu garantează că serviciul va fi neîntrerupt, lipsit de erori sau complet potrivit unui anumit scop. Nu ne asumăm răspunderea pentru daune indirecte, incidentale sau consecutive rezultate din utilizarea aplicației.</Text>
+        <Text style={styles.p}>Aplicația este furnizată &quot;așa cum este&quot;. În limita permisă de lege, Ortodoxia nu garantează că serviciul va fi neîntrerupt, lipsit de erori sau complet potrivit unui anumit scop. Nu ne asumăm răspunderea pentru daune indirecte, incidentale sau consecutive rezultate din utilizarea aplicației.</Text>
 
         <Text style={styles.h2}>10. Suspendare și restricționare</Text>
         <Text style={styles.p}>În caz de abuz, încălcare a acestor condiții sau solicitări din partea autorităților, ne rezervăm dreptul de a suspenda sau restrictiona accesul la cont sau la aplicație.</Text>

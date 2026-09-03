@@ -63,7 +63,7 @@ export default function LiveScreen() {
   }, []);
 
   // Single fetch on mount — no polling, no repeated effects
-  useEffect(() => { void loadStatuses(); }, [loadStatuses]);
+  useEffect(() => { loadStatuses(); }, [loadStatuses]);
 
   const closePlayer = useCallback(() => { setActivePlayerVideoId(null); }, []);
 

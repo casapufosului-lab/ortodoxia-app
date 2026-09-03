@@ -44,7 +44,7 @@ export default function PrivacyScreen() {
         <Text style={styles.p}>La cerere, aplicația poate genera audio pentru o rugăciune folosind OpenAI text-to-speech. Fișierul rezultat este stocat în Supabase Storage. Generarea are loc pe server.</Text>
 
         <Text style={styles.h3}>2.9 Starea serviciilor LIVE</Text>
-        <Text style={styles.p}>Pagina „Slujbe LIVE" afișează starea live a surselor video selectate. Verificarea este realizată pe server folosind YouTube Data API și este temporar cache-uită în tabelul `live_service_status_cache`. Nu sunt colectate date personale în legătură cu utilizarea acestei funcții.</Text>
+        <Text style={styles.p}>Pagina &quot;Slujbe LIVE&quot; afișează starea live a surselor video selectate. Verificarea este realizată pe server folosind YouTube Data API și este temporar cache-uită în tabelul `live_service_status_cache`. Nu sunt colectate date personale în legătură cu utilizarea acestei funcții.</Text>
 
         <Text style={styles.h3}>2.10 Loguri de erori</Text>
         <Text style={styles.p}>În cazul unor erori de conexiune, anumite loguri pot conține informații despre cererea eșuată. Aceste loguri nu conțin date personale în mod deliberat și nu sunt folosite în scopuri de analiză sau urmărire.</Text>
