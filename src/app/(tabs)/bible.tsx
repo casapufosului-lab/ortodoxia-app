@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Linking, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { Card, PageHeader, PrimaryButton, Screen, SectionTitle } from '@/components/mvp-ui';
@@ -50,34 +50,50 @@ export default function BibleScreen() {
   const [query, setQuery] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const requestRef = useRef(0);
   const book = books.find((item) => item.code === bookCode) ?? books[0];
 
   const loadChapter = useCallback(async () => {
+    const requestId = ++requestRef.current;
     setLoading(true);
     setError(null);
 
-    const { data, error: requestError } = await supabase
-      .from('bible_verses')
-      .select('verse, verse_text')
-      .eq('translation_id', BIBLE_SOURCE.id)
-      .eq('book_code', bookCode)
-      .eq('chapter', chapter)
-      .eq('is_published', true)
-      .order('verse', { ascending: true });
+    try {
+      const { data, error: requestError } = await supabase
+        .from('bible_verses')
+        .select('verse, verse_text')
+        .eq('translation_id', BIBLE_SOURCE.id)
+        .eq('book_code', bookCode)
+        .eq('chapter', chapter)
+        .eq('is_published', true)
+        .order('verse', { ascending: true });
 
-    if (requestError) {
+      if (requestError) {
+        if (requestRef.current !== requestId) return;
+        setVerses([]);
+        setError('Textul nu s-a putut încărca. Verifică internetul și încearcă din nou.');
+      } else {
+        if (requestRef.current !== requestId) return;
+        setVerses((data ?? []) as BibleVerse[]);
+      }
+    } catch {
+      if (requestRef.current !== requestId) return;
       setVerses([]);
       setError('Textul nu s-a putut încărca. Verifică internetul și încearcă din nou.');
-    } else {
-      setVerses((data ?? []) as BibleVerse[]);
+    } finally {
+      if (requestRef.current === requestId) {
+        setLoading(false);
+      }
     }
-    setLoading(false);
   }, [bookCode, chapter]);
 
   useEffect(() => {
     // Încărcarea pornește când utilizatorul schimbă cartea sau capitolul.
     // eslint-disable-next-line react-hooks/set-state-in-effect
     void loadChapter();
+    return () => {
+      requestRef.current += 1;
+    };
   }, [loadChapter]);
 
   const visibleVerses = useMemo(() => {
@@ -178,6 +194,8 @@ export default function BibleScreen() {
             <Text style={styles.errorText}>{error}</Text>
             <PrimaryButton label="Încearcă din nou" onPress={() => void loadChapter()} />
           </View>
+        ) : verses.length === 0 ? (
+          <Text style={styles.statusText}>Acest capitol nu are încă versete publicate.</Text>
         ) : visibleVerses.length === 0 ? (
           <Text style={styles.statusText}>Nu am găsit acest cuvânt în capitolul curent.</Text>
         ) : (
