@@ -6,7 +6,6 @@
  * No download, no proxy, no restream.
  */
 
-import { useCallback, useEffect } from 'react';
 import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { palette } from '@/constants/palette';
@@ -19,12 +18,6 @@ interface YouTubeEmbedProps {
 }
 
 export function YouTubeEmbed({ videoId, onClose }: YouTubeEmbedProps) {
-  const handleBack = useCallback(() => {
-    if (videoId) {
-      onClose();
-    }
-  }, [videoId, onClose]);
-
   if (!videoId) return null;
 
   const embedUrl = buildYouTubeEmbedUrl(videoId);
@@ -47,7 +40,6 @@ export function YouTubeEmbed({ videoId, onClose }: YouTubeEmbedProps) {
             <Text style={styles.closeText}>✕ Închide</Text>
           </Pressable>
         </View>
-        {/* eslint-disable-next-line react-native/no-inline-styles */}
         <iframe
           src={embedUrl}
           title="Player YouTube live"

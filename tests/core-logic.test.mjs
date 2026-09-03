@@ -84,15 +84,14 @@ test('no client-side subscription writes in src/', async () => {
     // Match any .from('subscriptions').insert/update/upsert/delete (allowing whitespace).
     const re = /\.from\(\s*['"]subscriptions['"]\s*\)\s*\.\s*(insert|update|upsert|delete)\s*\(/g;
     let m;
-    while ((_m = re.exec(src)) !== null) writes.push(`${file}: ${_m[1]}`);
+    while ((m = re.exec(src)) !== null) writes.push(`${file}: ${m[1]}`);
   }
   // Only SELECT reads are legitimate.
   const allSubRefs = [];
   const refRe = /\.from\(\s*['"]subscriptions['"]\s*\)/g;
   for (const file of files) {
     const src = readFileSync(file, 'utf8');
-    let m;
-    while ((_m = refRe.exec(src)) !== null) allSubRefs.push(`${file}`);
+    while (refRe.exec(src) !== null) allSubRefs.push(`${file}`);
   }
   assert.ok(allSubRefs.length > 0, 'expect at least one read reference to subscriptions');
   assert.deepEqual(writes, [], `unexpected subscription writes: ${writes.join('; ')}`);

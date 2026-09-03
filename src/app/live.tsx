@@ -63,7 +63,10 @@ export default function LiveScreen() {
   }, []);
 
   // Single fetch on mount — no polling, no repeated effects
-  useEffect(() => { loadStatuses(); }, [loadStatuses]);
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    void loadStatuses();
+  }, [loadStatuses]);
 
   const closePlayer = useCallback(() => { setActivePlayerVideoId(null); }, []);
 
