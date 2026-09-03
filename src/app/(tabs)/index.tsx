@@ -42,66 +42,70 @@ export default function HomeScreen() {
     setIsLoading(true);
     setErrorMessage('');
 
-    if (!calendarCode) {
-      setDailyContent(null);
-      setCalendarDay(null);
-      setIsLoading(false);
-      return;
-    }
+    try {
+      if (!calendarCode) {
+        setDailyContent(null);
+        setCalendarDay(null);
+        return;
+      }
 
-    let [dailyResult, calendarResult] = await Promise.all([
-      supabase
-        .from('daily_content')
-        .select('verse_text, verse_source, parable_title, parable_text, editorial_source')
-        .eq('country_code', countryCode)
-        .eq('language_code', region.languageCode)
-        .eq('content_date', dateKey)
-        .eq('is_published', true)
-        .maybeSingle(),
-      supabase
-        .from('calendar_days')
-        .select('title, saints, fasting_note')
-        .eq('country_code', countryCode)
-        .eq('language_code', region.languageCode)
-        .eq('calendar_code', calendarCode)
-        .eq('calendar_date', dateKey)
-        .eq('is_published', true)
-        .maybeSingle(),
-    ]);
-
-    const localizationSchemaMissing = [dailyResult.error, calendarResult.error].some((error) => (
-      error?.code === '42703' || Boolean(error?.message.match(/(country_code|language_code|calendar_code).*does not exist/i))
-    ));
-
-    if (localizationSchemaMissing && countryCode === 'RO') {
-      [dailyResult, calendarResult] = await Promise.all([
+      let [dailyResult, calendarResult] = await Promise.all([
         supabase
           .from('daily_content')
           .select('verse_text, verse_source, parable_title, parable_text, editorial_source')
+          .eq('country_code', countryCode)
+          .eq('language_code', region.languageCode)
           .eq('content_date', dateKey)
           .eq('is_published', true)
           .maybeSingle(),
         supabase
           .from('calendar_days')
           .select('title, saints, fasting_note')
+          .eq('country_code', countryCode)
+          .eq('language_code', region.languageCode)
+          .eq('calendar_code', calendarCode)
           .eq('calendar_date', dateKey)
           .eq('is_published', true)
           .maybeSingle(),
       ]);
-    } else if (localizationSchemaMissing) {
-      setDailyContent(null);
-      setCalendarDay(null);
+
+      const localizationSchemaMissing = [dailyResult.error, calendarResult.error].some((error) => (
+        error?.code === '42703' || Boolean(error?.message.match(/(country_code|language_code|calendar_code).*does not exist/i))
+      ));
+
+      if (localizationSchemaMissing && countryCode === 'RO') {
+        [dailyResult, calendarResult] = await Promise.all([
+          supabase
+            .from('daily_content')
+            .select('verse_text, verse_source, parable_title, parable_text, editorial_source')
+            .eq('content_date', dateKey)
+            .eq('is_published', true)
+            .maybeSingle(),
+          supabase
+            .from('calendar_days')
+            .select('title, saints, fasting_note')
+            .eq('calendar_date', dateKey)
+            .eq('is_published', true)
+            .maybeSingle(),
+        ]);
+      } else if (localizationSchemaMissing) {
+        setDailyContent(null);
+        setCalendarDay(null);
+        return;
+      }
+
+      if (dailyResult.error || calendarResult.error) {
+        setErrorMessage('Conținutul zilei nu a putut fi încărcat. Încearcă din nou.');
+        return;
+      }
+
+      setDailyContent(dailyResult.data as DailyContent);
+      setCalendarDay(calendarResult.data as CalendarDay);
+    } catch (e) {
+      setErrorMessage('A apărut o eroare neașteptată.');
+    } finally {
       setIsLoading(false);
-      return;
     }
-
-    if (dailyResult.error || calendarResult.error) {
-      setErrorMessage('Conținutul zilei nu a putut fi încărcat. Încearcă din nou.');
-    }
-
-    setDailyContent(dailyResult.data);
-    setCalendarDay(calendarResult.data);
-    setIsLoading(false);
   }, [calendarCode, countryCode, dateKey, region.languageCode]);
 
   useEffect(() => {

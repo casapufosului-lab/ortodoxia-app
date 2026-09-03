@@ -83,14 +83,20 @@ export default function AccountScreen() {
     if (!user || saving) return;
     setSaveMessage(null);
     setSaving(true);
-    const { error } = await supabase.from('profiles').update({ display_name: displayName.trim() }).eq('id', user.id);
-    setSaving(false);
-    if (error) {
-      setSaveMessage({ type: 'error', text: 'Profilul nu a fost salvat. Încearcă din nou.' });
-      Alert.alert('Profilul nu a fost salvat', friendlyDbError(error));
-    } else {
-      setSaveMessage({ type: 'success', text: 'Profil salvat.' });
-      Alert.alert('Profil salvat');
+    try {
+      const { error } = await supabase.from('profiles').update({ display_name: displayName.trim() }).eq('id', user.id);
+      if (error) {
+        setSaveMessage({ type: 'error', text: 'Profilul nu a fost salvat. Încearcă din nou.' });
+        Alert.alert('Profilul nu a fost salvat', friendlyDbError(error));
+      } else {
+        setSaveMessage({ type: 'success', text: 'Profil salvat.' });
+        Alert.alert('Profil salvat');
+      }
+    } catch (error) {
+      setSaveMessage({ type: 'error', text: 'A apărut o eroare neașteptată.' });
+      Alert.alert('Eroare', 'A apărut o eroare neașteptată.');
+    } finally {
+      setSaving(false);
     }
   };
 
