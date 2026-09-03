@@ -1,5 +1,5 @@
 import { FunctionsHttpError } from '@supabase/supabase-js';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { router } from 'expo-router';
 import { ActivityIndicator, KeyboardAvoidingView, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
@@ -45,6 +45,7 @@ export default function ChatScreen() {
   const [remaining, setRemaining] = useState(FREE_DAILY_AI_LIMIT);
   const [isLoading, setIsLoading] = useState(true);
   const [isSending, setIsSending] = useState(false);
+  const isSendingRef = useRef(false);
   const [errorMessage, setErrorMessage] = useState('');
 
   const ensureGuestId = useCallback(async () => {
@@ -140,8 +141,9 @@ export default function ChatScreen() {
   }, [loadConversation]);
 
   const send = async () => {
+    if (isSendingRef.current) return;
     const clean = input.trim();
-    if (!clean || isSending) return;
+    if (!clean) return;
 
     if (remaining <= 0) {
       setErrorMessage(`Ai folosit cele ${dailyLimit} de întrebări gratuite disponibile azi. Creează un cont pentru a continua.`);
@@ -157,41 +159,48 @@ export default function ChatScreen() {
     setMessages((current) => [...current, { id: optimisticId, role: 'user', text: clean }]);
     setInput('');
     setErrorMessage('');
+
+    isSendingRef.current = true;
     setIsSending(true);
 
-    const currentGuestId = user ? null : await ensureGuestId();
+    try {
+      const currentGuestId = user ? null : await ensureGuestId();
 
-    const { data, error } = await supabase.functions.invoke<ChatResponse>('orthodox-chat', {
-      body: { message: clean, threadId, guestId: currentGuestId },
-    });
+      const { data, error } = await supabase.functions.invoke<ChatResponse>('orthodox-chat', {
+        body: { message: clean, threadId, guestId: currentGuestId },
+      });
 
-    if (error || !data?.reply) {
-      let message = 'Răspunsul AI nu a putut fi generat. Încearcă din nou.';
-      if (error instanceof FunctionsHttpError) {
-        try {
-          const details = await error.context.json();
-          if (typeof details?.error === 'string') message = details.error;
-          if (typeof details?.remaining === 'number') setRemaining(details.remaining);
-          if (typeof details?.dailyLimit === 'number') setDailyLimit(details.dailyLimit);
-          if (error.context.status === 429 || message.includes('Ai folosit')) setRemaining(0);
-        } catch {
-          // Păstrăm mesajul simplu de mai sus.
+      if (error || !data?.reply) {
+        let message = 'Răspunsul AI nu a putut fi generat. Încearcă din nou.';
+        if (error instanceof FunctionsHttpError) {
+          try {
+            const details = await error.context.json();
+            if (typeof details?.error === 'string') message = details.error;
+            if (typeof details?.remaining === 'number') setRemaining(details.remaining);
+            if (typeof details?.dailyLimit === 'number') setDailyLimit(details.dailyLimit);
+            if (error.context.status === 429 || message.includes('Ai folosit')) setRemaining(0);
+          } catch {
+            // Păstrăm mesajul simplu de mai sus.
+          }
         }
+        setErrorMessage(message);
+        setMessages((current) => current.filter((m) => m.id !== optimisticId));
+        setInput(clean);
+        return;
       }
-      setErrorMessage(message);
-      setIsSending(false);
-      return;
-    }
 
-    setThreadId(data.threadId);
-    setDailyLimit(data.dailyLimit);
-    setRemaining(data.remaining);
-    setMessages((current) => [...current, {
-      id: `assistant-${Date.now()}`,
-      role: 'assistant',
-      text: data.reply,
-    }]);
-    setIsSending(false);
+      setThreadId(data.threadId);
+      setDailyLimit(data.dailyLimit);
+      setRemaining(data.remaining);
+      setMessages((current) => [...current, {
+        id: `assistant-${Date.now()}`,
+        role: 'assistant',
+        text: data.reply,
+      }]);
+    } finally {
+      isSendingRef.current = false;
+      setIsSending(false);
+    }
   };
 
   return (
