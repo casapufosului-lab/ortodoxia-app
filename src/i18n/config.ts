@@ -110,6 +110,7 @@ const ro = {
   'account.calendarRequired': 'Alege unul dintre cele două calendare pentru a continua.',
   'region.moldovaCalendarPending': 'Calendarul ales este salvat. Conținutul local va fi publicat numai după verificarea surselor bisericești.',
   'region.moldovaChooseCalendar': 'Alege calendarul bisericesc pentru Republica Moldova. Aplicația nu alege automat în locul tău.',
+  'calendar.moldovaUnavailable': 'Calendarul ortodox pentru Republica Moldova nu este disponibil momentan.',
 } as const;
 
 export type TranslationKey = keyof typeof ro;

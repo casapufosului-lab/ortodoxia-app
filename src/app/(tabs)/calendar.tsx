@@ -67,6 +67,12 @@ export default function CalendarScreen() {
     setIsLoading(true);
     setErrorMessage('');
 
+    if (countryCode === 'MD') {
+      setEntries([]);
+      setIsLoading(false);
+      return;
+    }
+
     if (!calendarCode) {
       setEntries([]);
       setIsLoading(false);
@@ -141,13 +147,20 @@ export default function CalendarScreen() {
         title="Calendar ortodox"
         subtitle={calendar ? calendar.label : 'Alege calendarul bisericesc pe care vrei să îl urmărești.'}
       />
-      {!calendarCode ? (
+      {countryCode === 'MD' ? (
+        <Card style={styles.chooseCalendarCard}>
+          <Text style={styles.chooseCalendarTitle}>Calendar indisponibil</Text>
+          <Text style={styles.note}>{t('calendar.moldovaUnavailable')}</Text>
+        </Card>
+      ) : !calendarCode ? (
         <Card style={styles.chooseCalendarCard}>
           <Text style={styles.chooseCalendarTitle}>{t('account.calendarRequired')}</Text>
           <Text style={styles.note}>{t('account.calendarDescription')}</Text>
           <PrimaryButton label="Alege calendarul" onPress={() => router.push('/account')} />
         </Card>
       ) : null}
+      {countryCode !== 'MD' ? (
+        <>
       {errorMessage ? (
         <Card style={styles.errorCard}>
           <Text style={styles.errorText}>{errorMessage}</Text>
@@ -222,6 +235,8 @@ export default function CalendarScreen() {
           <Text style={styles.note}>Nu există încă informații publicate pentru această zi.</Text>
         )}
       </Card>
+        </>
+      ) : null}
     </Screen>
   );
 }

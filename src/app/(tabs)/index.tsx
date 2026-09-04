@@ -153,16 +153,20 @@ export default function HomeScreen() {
             <Text style={styles.body}>{dailyContent?.parable_text ?? 'Un suflet atent primește cuvântul bun și îl transformă în faptă.'}</Text>
             {dailyContent?.editorial_source ? <Text style={styles.editorialSource}>{dailyContent.editorial_source}</Text> : null}
           </Card>
-          <SectionTitle>Astăzi în calendar</SectionTitle>
-          <Card>
-            <View style={styles.calendarRow}>
-              <View style={styles.dateBox}><Text style={styles.dateNumber}>{dayNumber}</Text></View>
-              <View style={styles.flex}>
-                <Text style={styles.calendarTitle}>{calendarDay?.title ?? 'Astăzi în calendarul ortodox'}</Text>
-                {calendarDay?.fasting_note ? <Text style={styles.fasting}>{calendarDay.fasting_note}</Text> : null}
-              </View>
-            </View>
-          </Card>
+          {countryCode !== 'MD' ? (
+            <>
+              <SectionTitle>Astăzi în calendar</SectionTitle>
+              <Card>
+                <View style={styles.calendarRow}>
+                  <View style={styles.dateBox}><Text style={styles.dateNumber}>{dayNumber}</Text></View>
+                  <View style={styles.flex}>
+                    <Text style={styles.calendarTitle}>{calendarDay?.title ?? 'Astăzi în calendarul ortodox'}</Text>
+                    {calendarDay?.fasting_note ? <Text style={styles.fasting}>{calendarDay.fasting_note}</Text> : null}
+                  </View>
+                </View>
+              </Card>
+            </>
+          ) : null}
         </>
       )}
       <SectionTitle>Slujbe LIVE</SectionTitle>
