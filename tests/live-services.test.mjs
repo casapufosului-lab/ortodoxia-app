@@ -134,8 +134,8 @@ test('live screen renders LIVE ACUM only when backend confirms LIVE (not hardcod
 test('Home screen has Slujbe LIVE navigation card', () => {
   const home = readFileSync(join(root, 'src/app/(tabs)/index.tsx'), 'utf8');
   assert.ok(home.includes("router.push('/live')"), 'must route to /live');
-  assert.ok(home.includes('Slujbe LIVE'), 'must show Slujbe LIVE title');
-  assert.ok(home.includes('Urmărește Sfânta Liturghie în direct'));
+  assert.ok(home.includes("t('home.liveSectionTitle')"), 'must show localized Slujbe LIVE title');
+  assert.ok(home.includes("t('home.liveSubtitle')"), 'must show localized live subtitle');
 });
 
 test('live screen exists and is registered in navigation', () => {

@@ -112,7 +112,7 @@ export default function CalendarScreen() {
       if (error) {
         if (calendarRequestRef.current !== requestId) return;
         setEntries([]);
-        setErrorMessage('Calendarul nu a putut fi încărcat. Încearcă din nou.');
+        setErrorMessage(t('calendar.loadError'));
       } else {
         if (calendarRequestRef.current !== requestId) return;
         setEntries(data ?? []);
@@ -120,13 +120,13 @@ export default function CalendarScreen() {
     } catch {
       if (calendarRequestRef.current !== requestId) return;
       setEntries([]);
-      setErrorMessage('Calendarul nu a putut fi încărcat. Încearcă din nou.');
+      setErrorMessage(t('calendar.loadError'));
     } finally {
       if (calendarRequestRef.current === requestId) {
         setIsLoading(false);
       }
     }
-  }, [calendarCode, calendarView, countryCode, region.languageCode]);
+  }, [calendarCode, calendarView, countryCode, region.languageCode, t]);
 
   useEffect(() => {
     const timeoutId = setTimeout(() => void loadCalendar(), 0);
@@ -143,20 +143,20 @@ export default function CalendarScreen() {
   return (
     <Screen>
       <PageHeader
-        eyebrow="An bisericesc"
-        title="Calendar ortodox"
-        subtitle={calendar ? calendar.label : 'Alege calendarul bisericesc pe care vrei să îl urmărești.'}
+        eyebrow={t('calendar.eyebrow')}
+        title={t('calendar.title')}
+        subtitle={calendar ? calendar.label : t('calendar.subtitleFallback')}
       />
       {countryCode === 'MD' ? (
         <Card style={styles.chooseCalendarCard}>
-          <Text style={styles.chooseCalendarTitle}>Calendar indisponibil</Text>
+          <Text style={styles.chooseCalendarTitle}>{t('calendar.unavailableTitle')}</Text>
           <Text style={styles.note}>{t('calendar.moldovaUnavailable')}</Text>
         </Card>
       ) : !calendarCode ? (
         <Card style={styles.chooseCalendarCard}>
           <Text style={styles.chooseCalendarTitle}>{t('account.calendarRequired')}</Text>
           <Text style={styles.note}>{t('account.calendarDescription')}</Text>
-          <PrimaryButton label="Alege calendarul" onPress={() => router.push('/account')} />
+          <PrimaryButton label={t('common.chooseCalendar')} onPress={() => router.push('/account')} />
         </Card>
       ) : null}
       {countryCode !== 'MD' ? (
@@ -165,30 +165,30 @@ export default function CalendarScreen() {
         <Card style={styles.errorCard}>
           <Text style={styles.errorText}>{errorMessage}</Text>
           <Pressable accessibilityRole="button" onPress={() => void loadCalendar()}>
-            <Text style={styles.retry}>Reîncearcă</Text>
+            <Text style={styles.retry}>{t('common.retry')}</Text>
           </Pressable>
         </Card>
       ) : null}
       <Card>
         <View style={styles.monthHeader}>
-          <Pressable accessibilityRole="button" accessibilityLabel="Luna anterioară" onPress={() => setMonthOffset((value) => value - 1)} style={styles.monthButton}>
+          <Pressable accessibilityRole="button" accessibilityLabel={t('calendar.previousMonth')} onPress={() => setMonthOffset((value) => value - 1)} style={styles.monthButton}>
             <Text style={styles.monthButtonText}>‹</Text>
           </Pressable>
           <Text style={styles.month}>{calendarView.month}</Text>
-          <Pressable accessibilityRole="button" accessibilityLabel="Luna următoare" onPress={() => setMonthOffset((value) => value + 1)} style={styles.monthButton}>
+          <Pressable accessibilityRole="button" accessibilityLabel={t('calendar.nextMonth')} onPress={() => setMonthOffset((value) => value + 1)} style={styles.monthButton}>
             <Text style={styles.monthButtonText}>›</Text>
           </Pressable>
         </View>
-        {monthOffset !== 0 ? <Pressable accessibilityRole="button" onPress={() => setMonthOffset(0)}><Text style={styles.todayLink}>Revino la luna curentă</Text></Pressable> : null}
+        {monthOffset !== 0 ? <Pressable accessibilityRole="button" onPress={() => setMonthOffset(0)}><Text style={styles.todayLink}>{t('calendar.backToCurrentMonth')}</Text></Pressable> : null}
         <View style={styles.legend}>
-          <Text style={styles.legendItem}><Text style={styles.redCross}>✝</Text> sărbătoare cu cruce roșie</Text>
-          <Text style={styles.legendItem}><Text style={styles.blackCross}>✝</Text> zi înscrisă în calendar</Text>
+          <Text style={styles.legendItem}><Text style={styles.redCross}>✝</Text> {t('calendar.redCrossLegend')}</Text>
+          <Text style={styles.legendItem}><Text style={styles.blackCross}>✝</Text> {t('calendar.documentedDayLegend')}</Text>
         </View>
         <View style={styles.grid}>{weekdays.map((day) => <Text key={day} style={styles.weekday}>{day}</Text>)}</View>
         {isLoading ? (
           <View style={styles.loading}>
             <ActivityIndicator color={palette.blue} />
-            <Text style={styles.note}>Se încarcă calendarul...</Text>
+            <Text style={styles.note}>{t('calendar.loading')}</Text>
           </View>
         ) : (
           <View style={styles.grid}>
@@ -197,7 +197,7 @@ export default function CalendarScreen() {
             ) : (
               <Pressable
                 accessibilityRole="button"
-                accessibilityLabel={`Selectează ziua ${day}`}
+                accessibilityLabel={`${t('calendar.selectDay')} ${day}`}
                 key={day}
                 onPress={() => setSelection({ key: viewSelectionKey, day })}
                 style={[styles.day, selectedDay === day && styles.selectedDay]}>
@@ -221,10 +221,10 @@ export default function CalendarScreen() {
       <SectionTitle>{selectedDay} {calendarView.month}</SectionTitle>
       <Card>
         {isLoading ? (
-          <Text style={styles.note}>Se încarcă informațiile zilei...</Text>
+          <Text style={styles.note}>{t('calendar.loadingDay')}</Text>
         ) : selectedEntry ? (
           <>
-            <Text style={styles.rank}>{selectedEntry.feast_rank ?? 'Pomenire'}</Text>
+            <Text style={styles.rank}>{selectedEntry.feast_rank ?? t('calendar.feastRankFallback')}</Text>
             <Text style={styles.feast}>{selectedEntry.title}</Text>
             {selectedEntry.saints.length > 0 ? <Text style={styles.saints}>{selectedEntry.saints.join('\n')}</Text> : null}
             {selectedEntry.details ? <Text style={styles.note}>{selectedEntry.details}</Text> : null}
@@ -232,7 +232,7 @@ export default function CalendarScreen() {
             {selectedEntry.editorial_source ? <Text style={styles.source}>{selectedEntry.editorial_source}</Text> : null}
           </>
         ) : (
-          <Text style={styles.note}>Nu există încă informații publicate pentru această zi.</Text>
+          <Text style={styles.note}>{t('calendar.emptyDay')}</Text>
         )}
       </Card>
         </>

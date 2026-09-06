@@ -38,7 +38,7 @@ test('toggleAudio playback errors reset state via status.error', () => {
   assert.ok(listenerBody.includes('player.release()'), 'error path must release');
   assert.ok(listenerBody.includes('audioPlayerRef.current = null;'), 'error path must clear ref');
   assert.ok(listenerBody.includes('setSpeakingId(') && listenerBody.includes('currentId'), 'error path must reset speakingId');
-  assert.ok(listenerBody.includes("'Fișierul audio nu a putut porni. Încearcă din nou.'"), 'error path must show Romanian error');
+  assert.ok(listenerBody.includes("setErrorMessage(t('prayers.audioStartError'))"), 'error path must set localized Romanian error');
 });
 
 test('toggleAudio speech callbacks guard stale requests', () => {
@@ -67,11 +67,11 @@ test('toggleAudio speech onError only acts on its own request', () => {
   assert.ok(onError.startsWith('onError: () => {\n') || onError.indexOf('onError:') === 0, 'onError must be an object callback');
   assert.ok(onError.includes(onErrorGuard), 'onError must guard before acting');
   assert.ok(onError.includes("setSpeakingId(null);"), 'onError clears speaking state only for valid request');
-  assert.ok(onError.includes("setErrorMessage('Citirea audio nu a putut porni pe acest dispozitiv.');"), 'onError keeps Romanian error');
+  assert.ok(onError.includes("setErrorMessage(t('prayers.audioUnavailableError'))"), 'onError sets localized Romanian error');
 });
 test('loadPrayers always clears loading spinner via finally', () => {
   const loadStart = src.indexOf('const loadPrayers = useCallback(async () => {');
-  const body = src.slice(loadStart, src.indexOf('}, [user]);', loadStart));
+  const body = src.slice(loadStart, src.indexOf('}, [t, user]);', loadStart));
   const finallyIdx = body.indexOf('finally {');
   assert.ok(finallyIdx !== -1, 'must have finally');
   const finallyBlock = body.slice(finallyIdx);
@@ -81,16 +81,16 @@ test('loadPrayers always clears loading spinner via finally', () => {
 
 test('loadPrayers failure shows a Romanian error', () => {
   const loadStart = src.indexOf('const loadPrayers = useCallback(async () => {');
-  const body = src.slice(loadStart, src.indexOf('}, [user]);', loadStart));
+  const body = src.slice(loadStart, src.indexOf('}, [t, user]);', loadStart));
   assert.ok(body.includes('} catch {'), 'must have catch');
   const catchBlock = body.slice(body.indexOf('} catch {'));
-  assert.ok(catchBlock.includes("'Nu am putut încărca rugăciunile. Încearcă din nou.'"), 'catch must show Romanian error');
+  assert.ok(catchBlock.includes("setErrorMessage(t('prayers.loadError'))"), 'catch must set localized Romanian error');
   assert.ok(catchBlock.includes('if (loadRequestRef.current !== requestId) return;'), 'catch must guard stale');
 });
 
 test('loadPrayers guards all state updates by request identity', () => {
   const loadStart = src.indexOf('const loadPrayers = useCallback(async () => {');
-  const body = src.slice(loadStart, src.indexOf('}, [user]);', loadStart));
+  const body = src.slice(loadStart, src.indexOf('}, [t, user]);', loadStart));
   assert.ok(body.includes('const requestId = ++loadRequestRef.current;'), 'must create request identity');
   const staleGuard = 'if (loadRequestRef.current !== requestId) return;';
   const guardCount = body.split(staleGuard).length - 1;

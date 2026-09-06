@@ -20,7 +20,7 @@ const src = readFileSync(bibleFile, 'utf8');
 function loadBody() {
   const loadStart = src.indexOf('const loadChapter = useCallback(async () => {');
   assert.ok(loadStart !== -1, 'loadChapter must exist');
-  const deps = '}, [bookCode, chapter]);';
+  const deps = '}, [bookCode, chapter, t]);';
   const end = src.indexOf(deps, loadStart);
   assert.ok(end !== -1, 'loadChapter dependency array must be found');
   return src.slice(loadStart, end + deps.length);
@@ -42,7 +42,7 @@ test('loadChapter handles thrown exceptions with deterministic loading cleanup',
   const catchIdx = body.indexOf('} catch {');
   const finallyIdx = body.indexOf('} finally {');
   const catchBlock = body.slice(catchIdx, finallyIdx);
-  assert.ok(catchBlock.includes('Textul nu s-a putut'), 'catch must show Romanian error');
+  assert.ok(catchBlock.includes("t('bible.loadError')"), 'catch must set localized loadError');
   const finallyBlock = body.slice(finallyIdx);
   assert.ok(finallyBlock.includes('if (requestRef.current === requestId)'), 'finally must only clear its own loading');
   assert.ok(finallyBlock.includes('setLoading(false)'), 'finally must clear loading');
@@ -61,15 +61,15 @@ test('loadChapter guards stale failure so it cannot replace newer content', () =
 });
 
 test('loadChapter reloads the current book and chapter via dependencies', () => {
-  assert.ok(src.includes('}, [bookCode, chapter]);'), 'deps must include bookCode and chapter');
+  assert.ok(src.includes('}, [bookCode, chapter, t]);'), 'deps must include bookCode, chapter, and t');
   const loadStart = src.indexOf('const loadChapter = useCallback(async () => {');
   assert.ok(src.indexOf('.eq(\'book_code\', bookCode)', loadStart) !== -1, 'must query current bookCode');
   assert.ok(src.indexOf('.eq(\'chapter\', chapter)', loadStart) !== -1, 'must query current chapter');
 });
 
 test('valid empty chapter is distinguished from search no-match', () => {
-  const emptyChapterMsg = 'Acest capitol nu are încă versete publicate.';
-  const searchNoMatchMsg = 'Nu am găsit acest cuvânt în capitolul curent.';
+  const emptyChapterMsg = "t('bible.emptyChapter')";
+  const searchNoMatchMsg = "t('bible.noSearchResults')";
   const emptyBranchIdx = src.indexOf(') : verses.length === 0 ? (');
   assert.ok(emptyBranchIdx !== -1, 'must have explicit empty-chapter branch');
   assert.ok(src.indexOf(emptyChapterMsg, emptyBranchIdx) !== -1, 'empty chapter must show its own message');

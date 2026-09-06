@@ -98,19 +98,19 @@ export default function HomeScreen() {
       }
 
       if (dailyResult.error || calendarResult.error) {
-        setErrorMessage('Conținutul zilei nu a putut fi încărcat. Încearcă din nou.');
+        setErrorMessage(t('home.loadError'));
         return;
       }
 
       setDailyContent(dailyResult.data as DailyContent);
       setCalendarDay(calendarResult.data as CalendarDay);
     } catch {
-      setErrorMessage('A apărut o eroare neașteptată.');
+      setErrorMessage(t('home.unexpectedError'));
     } finally {
       isLoadingRef.current = false;
       setIsLoading(false);
     }
-  }, [calendarCode, countryCode, dateKey, region.languageCode]);
+  }, [calendarCode, countryCode, dateKey, region.languageCode, t]);
 
   useEffect(() => {
     const timeoutId = setTimeout(() => void loadHome(), 0);
@@ -119,48 +119,48 @@ export default function HomeScreen() {
 
   return (
     <Screen>
-      <PageHeader eyebrow={dateLabel} title="Pace ție" subtitle={`${region.countryLabel} · Un loc simplu pentru rugăciune, calendar și întrebări.`} />
+      <PageHeader eyebrow={dateLabel} title={t('home.pageTitle')} subtitle={`${region.countryLabel} · ${t('home.pageSubtitle')}`} />
       {countryCode === 'MD' ? (
         <Card style={styles.noticeCard}>
           <Text style={styles.noticeTitle}>{calendar?.label ?? t('account.calendarRequired')}</Text>
           <Text style={styles.noticeText}>{calendar ? t('region.moldovaCalendarPending') : t('region.moldovaChooseCalendar')}</Text>
-          {!calendar ? <PrimaryButton label="Alege calendarul" onPress={() => router.push('/account')} /> : null}
+          {!calendar ? <PrimaryButton label={t('common.chooseCalendar')} onPress={() => router.push('/account')} /> : null}
         </Card>
       ) : null}
       {errorMessage ? (
         <Card style={styles.errorCard}>
           <Text style={styles.errorText}>{errorMessage}</Text>
           <Pressable accessibilityRole="button" onPress={() => void loadHome()}>
-            <Text style={styles.retry}>Reîncearcă</Text>
+            <Text style={styles.retry}>{t('common.retry')}</Text>
           </Pressable>
         </Card>
       ) : null}
       {isLoading ? (
         <View style={styles.loading}>
           <ActivityIndicator color={palette.blue} />
-          <Text style={styles.loadingText}>Se încarcă ziua de astăzi...</Text>
+          <Text style={styles.loadingText}>{t('home.loadingToday')}</Text>
         </View>
       ) : (
         <>
           <Card style={styles.heroCard}>
             <Text style={styles.cross}>☦</Text>
-            <Text style={styles.quote}>{dailyContent ? `„${dailyContent.verse_text}”` : '„Pacea Mea o dau vouă.”'}</Text>
-            <Text style={styles.source}>{dailyContent?.verse_source ?? 'Ioan 14, 27'}</Text>
+            <Text style={styles.quote}>{dailyContent ? `„${dailyContent.verse_text}”` : t('home.verseFallback')}</Text>
+            <Text style={styles.source}>{dailyContent?.verse_source ?? t('home.verseSourceFallback')}</Text>
           </Card>
-          <SectionTitle>Pilda zilei</SectionTitle>
+          <SectionTitle>{t('home.parableSectionTitle')}</SectionTitle>
           <Card>
-            <Text style={styles.cardTitle}>{dailyContent?.parable_title ?? 'Pilda semănătorului'}</Text>
+            <Text style={styles.cardTitle}>{dailyContent?.parable_title ?? t('home.parableTitleFallback')}</Text>
             <Text style={styles.body}>{dailyContent?.parable_text ?? 'Un suflet atent primește cuvântul bun și îl transformă în faptă.'}</Text>
             {dailyContent?.editorial_source ? <Text style={styles.editorialSource}>{dailyContent.editorial_source}</Text> : null}
           </Card>
           {countryCode !== 'MD' ? (
             <>
-              <SectionTitle>Astăzi în calendar</SectionTitle>
+              <SectionTitle>{t('home.calendarSectionTitle')}</SectionTitle>
               <Card>
                 <View style={styles.calendarRow}>
                   <View style={styles.dateBox}><Text style={styles.dateNumber}>{dayNumber}</Text></View>
                   <View style={styles.flex}>
-                    <Text style={styles.calendarTitle}>{calendarDay?.title ?? 'Astăzi în calendarul ortodox'}</Text>
+                    <Text style={styles.calendarTitle}>{calendarDay?.title ?? t('home.calendarDayFallback')}</Text>
                     {calendarDay?.fasting_note ? <Text style={styles.fasting}>{calendarDay.fasting_note}</Text> : null}
                   </View>
                 </View>
@@ -169,24 +169,24 @@ export default function HomeScreen() {
           ) : null}
         </>
       )}
-      <SectionTitle>Slujbe LIVE</SectionTitle>
+      <SectionTitle>{t('home.liveSectionTitle')}</SectionTitle>
       <Pressable
         accessibilityRole="button"
-        accessibilityLabel="Slujbe LIVE — Urmărește Sfânta Liturghie în direct"
+        accessibilityLabel={t('home.liveAccessibilityLabel')}
         onPress={() => router.push('/live')}
         style={({ pressed }) => [styles.liveCard, pressed && styles.pressed]}
       >
         <View style={styles.liveHeader}>
           <Text style={styles.liveCross}>▶</Text>
           <View style={styles.liveFlex}>
-            <Text style={styles.liveTitle}>Slujbe LIVE</Text>
-            <Text style={styles.liveSubtitle}>Urmărește Sfânta Liturghie în direct</Text>
-            <Text style={styles.liveLocation}>București • Iași • Putna • Sihăstria • Cluj</Text>
+            <Text style={styles.liveTitle}>{t('home.liveSectionTitle')}</Text>
+            <Text style={styles.liveSubtitle}>{t('home.liveSubtitle')}</Text>
+            <Text style={styles.liveLocation}>{t('home.liveLocations')}</Text>
           </View>
           <Text style={styles.liveArrow}>›</Text>
         </View>
       </Pressable>
-      <PrimaryButton label="Întreabă ghidul AI" onPress={() => router.push('/chat')} />
+      <PrimaryButton label={t('home.askAiGuide')} onPress={() => router.push('/chat')} />
     </Screen>
   );
 }

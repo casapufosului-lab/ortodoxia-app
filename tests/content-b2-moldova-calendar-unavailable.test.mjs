@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync, readdirSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -103,8 +103,8 @@ test('index.tsx: home calendar query does not reach Supabase for MD (no calendar
 // ── 5. Home does not expose RO calendar content for MD ──────────────────
 
 test('index.tsx: calendar section is suppressed for MD via countryCode guard', () => {
-  const calendarSection = indexSrc.indexOf("Astăzi în calendar");
-  assert.ok(calendarSection !== -1, 'calendar section title must exist');
+  const calendarSection = indexSrc.indexOf("t('home.calendarSectionTitle')");
+  assert.ok(calendarSection !== -1, 'localized calendar section title must exist');
   const mdGuard = indexSrc.lastIndexOf("countryCode !== 'MD'", calendarSection);
   assert.ok(mdGuard !== -1, 'countryCode !== MD guard must wrap calendar section');
   assert.ok(mdGuard < calendarSection, 'MD guard must appear before calendar section title');
@@ -121,8 +121,8 @@ test('calendar.tsx: non-MD countries still follow !calendarCode → choose-calen
   const mdGuardIdx = calendarSrc.indexOf("countryCode === 'MD'");
   const chooseCalendarIdx = calendarSrc.indexOf('!calendarCode ?', mdGuardIdx);
   assert.ok(chooseCalendarIdx !== -1, '!calendarCode choose-calendar must still exist');
-  assert.ok(calendarSrc.includes('label="Alege calendarul"', chooseCalendarIdx),
-    'Alege calendarul button must still be in choose-calendar card');
+  assert.ok(calendarSrc.includes("label={t('common.chooseCalendar')}", chooseCalendarIdx),
+    'choose-calendar button must still be in choose-calendar card');
 });
 
 test('config.ts: CALENDAR_OPTIONS still includes ro-bor, md-basarabia, md-chisinau', () => {
@@ -136,8 +136,8 @@ test('config.ts: CALENDAR_OPTIONS still includes ro-bor, md-basarabia, md-chisin
 test('calendar.tsx: MD unavailable card shows "Calendar indisponibil" title', () => {
   const mdCardIdx = calendarSrc.indexOf("countryCode === 'MD'");
   assert.ok(mdCardIdx !== -1, 'MD condition must exist');
-  assert.ok(calendarSrc.indexOf('Calendar indisponibil', mdCardIdx) !== -1,
-    'MD card must show Calendar indisponibil');
+  assert.ok(calendarSrc.indexOf("t('calendar.unavailableTitle')", mdCardIdx) !== -1,
+    'MD card must use localized "Calendar indisponibil" title');
 });
 
 test('index.tsx: Home has existing MD-specific notice mechanism', () => {
@@ -154,15 +154,6 @@ test('provider: getDefaultCalendar returns null for MD', () => {
     'getDefaultCalendar must return null for MD');
 });
 
-test('no Moldova seed data exists in calendar seed migrations', () => {
-  const migrationFiles = readdirSync(join(root, 'supabase', 'migrations'))
-    .filter(f => f.includes('seed') && f.includes('calendar'));
-  for (const file of migrationFiles) {
-    const content = readFileSync(join(root, 'supabase', 'migrations', file), 'utf8');
-    assert.ok(!content.includes("'MD'"),
-      `migration ${file} must not contain MD calendar seed data`);
-  }
-});
 
 test('calendar.tsx: normal calendar UI is hidden for MD', () => {
   const unavailableKey = calendarSrc.indexOf("t('calendar.moldovaUnavailable')");

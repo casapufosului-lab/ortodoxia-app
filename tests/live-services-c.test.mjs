@@ -21,7 +21,7 @@ const e = readFileSync(join(root, 'src/live/youtube-embed.native.tsx'), 'utf8');
 
 test('1. Home route opens Slujbe LIVE', () => {
   assert.ok(h.includes("router.push('/live')"));
-  assert.ok(h.includes('Slujbe LIVE'));
+  assert.ok(h.includes("t('home.liveSectionTitle')"));
 });
 test('2. Enabled sources render', () => {
   assert.ok(s.includes('getEnabledLiveSources'));

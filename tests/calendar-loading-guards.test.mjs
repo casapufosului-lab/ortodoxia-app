@@ -20,7 +20,7 @@ const src = readFileSync(calendarFile, 'utf8');
 function loadBody() {
   const loadStart = src.indexOf('const loadCalendar = useCallback(async () => {');
   assert.ok(loadStart !== -1, 'loadCalendar must exist');
-  const deps = '}, [calendarCode, calendarView, countryCode, region.languageCode]);';
+  const deps = '}, [calendarCode, calendarView, countryCode, region.languageCode, t]);';
   const end = src.indexOf(deps, loadStart);
   assert.ok(end !== -1, 'loadCalendar dependency array must be found');
   return src.slice(loadStart, end + deps.length);
@@ -43,7 +43,7 @@ test('loadCalendar handles thrown exceptions with deterministic loading cleanup'
   assert.ok(body.includes('} finally {'), 'must have finally');
   const catchIdx = body.indexOf('} catch {');
   const catchBlock = body.slice(catchIdx, body.indexOf('} finally {'));
-  assert.ok(catchBlock.includes("'Calendarul nu a putut fi încărcat. Încearcă din nou.'"), 'catch must show Romanian error');
+  assert.ok(catchBlock.includes("setErrorMessage(t('calendar.loadError'))"), 'catch must set localized Romanian error');
   const finallyBlock = body.slice(body.indexOf('} finally {'));
   assert.ok(finallyBlock.includes('if (calendarRequestRef.current === requestId)'), 'finally must only clear its own loading');
   assert.ok(finallyBlock.includes('setIsLoading(false)'), 'finally must clear loading');
@@ -65,7 +65,7 @@ test('loadCalendar guards stale failure so it cannot replace newer data', () => 
 
 // 4. Retry/navigation reload the currently displayed month (calendarView dep)
 test('loadCalendar reloads the current month via calendarView dependency', () => {
-  const depsLine = '}, [calendarCode, calendarView, countryCode, region.languageCode]);';
+  const depsLine = '}, [calendarCode, calendarView, countryCode, region.languageCode, t]);';
   assert.ok(src.includes(depsLine), 'loadCalendar deps must include calendarView');
   const loadStart = src.indexOf('const loadCalendar = useCallback(async () => {');
   assert.ok(src.indexOf('.gte(\'calendar_date\', calendarView.monthStart)', loadStart) !== -1, 'loadCalendar must query current monthStart');

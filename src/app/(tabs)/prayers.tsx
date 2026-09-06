@@ -6,6 +6,7 @@ import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput, View } from 
 
 import { Card, PageHeader, PrimaryButton, Screen } from '@/components/mvp-ui';
 import { palette } from '@/constants/palette';
+import { useLocalization } from '@/providers/localization-provider';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/providers/auth-provider';
 
@@ -28,6 +29,7 @@ function normalizeSearchText(value: string) {
 
 export default function PrayersScreen() {
   const { user } = useAuth();
+  const { t } = useLocalization();
   const [query, setQuery] = useState('');
   const [prayers, setPrayers] = useState<Prayer[]>([]);
   const [favoriteIds, setFavoriteIds] = useState<string[]>([]);
@@ -54,7 +56,7 @@ export default function PrayersScreen() {
 
       if (error) {
         if (loadRequestRef.current !== requestId) return;
-        setErrorMessage('Nu am putut încărca rugăciunile. Încearcă din nou.');
+        setErrorMessage(t('prayers.loadError'));
         return;
       }
 
@@ -69,7 +71,7 @@ export default function PrayersScreen() {
 
         if (favoritesError) {
           if (loadRequestRef.current !== requestId) return;
-          setErrorMessage('Rugăciunile s-au încărcat, dar favoritele nu au putut fi citite.');
+          setErrorMessage(t('prayers.favoritesError'));
         } else {
           if (loadRequestRef.current !== requestId) return;
           setFavoriteIds((favorites ?? []).map((favorite) => favorite.prayer_id));
@@ -80,13 +82,13 @@ export default function PrayersScreen() {
       }
     } catch {
       if (loadRequestRef.current !== requestId) return;
-      setErrorMessage('Nu am putut încărca rugăciunile. Încearcă din nou.');
+      setErrorMessage(t('prayers.loadError'));
     } finally {
       if (loadRequestRef.current === requestId) {
         setIsLoading(false);
       }
     }
-  }, [user]);
+  }, [t, user]);
 
   useEffect(() => {
     const timeoutId = setTimeout(() => void loadPrayers(), 0);
@@ -138,7 +140,7 @@ export default function PrayersScreen() {
 
     if (result.error) {
       setFavoriteIds((ids) => wasFavorite ? [...ids, prayerId] : ids.filter((id) => id !== prayerId));
-      setErrorMessage('Favoritul nu a fost salvat. Încearcă din nou.');
+      setErrorMessage(t('prayers.favoriteError'));
     } else {
       setErrorMessage('');
     }
@@ -176,7 +178,7 @@ export default function PrayersScreen() {
             player.release();
             audioPlayerRef.current = null;
             setSpeakingId((currentId) => currentId === prayer.id ? null : currentId);
-            setErrorMessage('Fișierul audio nu a putut porni. Încearcă din nou.');
+            setErrorMessage(t('prayers.audioStartError'));
             return;
           }
           if (!status.didJustFinish) return;
@@ -202,14 +204,14 @@ export default function PrayersScreen() {
         onError: () => {
           if (speechRequestRef.current !== speechRequestId) return;
           setSpeakingId(null);
-          setErrorMessage('Citirea audio nu a putut porni pe acest dispozitiv.');
+          setErrorMessage(t('prayers.audioUnavailableError'));
         },
       });
     } catch {
       audioPlayerRef.current?.release();
       audioPlayerRef.current = null;
       setSpeakingId(null);
-      setErrorMessage('Fișierul audio nu a putut porni. Încearcă din nou.');
+      setErrorMessage(t('prayers.audioStartError'));
     } finally {
       audioStartingRef.current = false;
     }
@@ -217,22 +219,22 @@ export default function PrayersScreen() {
 
   return (
     <Screen>
-      <PageHeader eyebrow="Bibliotecă" title="Rugăciuni" subtitle="Caută după titlu și păstrează rugăciunile apropiate inimii tale." />
-      <Text style={styles.aiVoiceNotice}>Înregistrările naturale sunt voci generate cu inteligență artificială.</Text>
-      <TextInput accessibilityLabel="Caută o rugăciune" placeholder="Caută o rugăciune" placeholderTextColor={palette.muted} value={query} onChangeText={setQuery} style={styles.search} />
-      <Text style={styles.searchHint}>Poți căuta cu sau fără diacritice, de exemplu: „tatal nostru”.</Text>
+      <PageHeader eyebrow={t('prayers.eyebrow')} title="Rugăciuni" subtitle={t('prayers.subtitle')} />
+      <Text style={styles.aiVoiceNotice}>{t('prayers.aiVoiceNotice')}</Text>
+      <TextInput accessibilityLabel={t('prayers.search')} placeholder={t('prayers.search')} placeholderTextColor={palette.muted} value={query} onChangeText={setQuery} style={styles.search} />
+      <Text style={styles.searchHint}>{t('prayers.searchHint')}</Text>
       {errorMessage ? (
         <Card style={styles.errorCard}>
           <Text style={styles.errorText}>{errorMessage}</Text>
           <Pressable accessibilityRole="button" onPress={() => void loadPrayers()}>
-            <Text style={styles.retry}>Reîncearcă</Text>
+            <Text style={styles.retry}>{t('common.retry')}</Text>
           </Pressable>
         </Card>
       ) : null}
       {isLoading ? (
         <View style={styles.loading}>
           <ActivityIndicator color={palette.blue} />
-          <Text style={styles.empty}>Se încarcă rugăciunile...</Text>
+          <Text style={styles.empty}>{t('prayers.loading')}</Text>
         </View>
       ) : (
         <View style={styles.list}>
@@ -250,13 +252,13 @@ export default function PrayersScreen() {
                     <Text style={styles.preview}>{isExpanded ? prayer.body : preview}</Text>
                     {prayer.editorial_source && isExpanded ? <Text style={styles.source}>{prayer.editorial_source}</Text> : null}
                     <Pressable accessibilityRole="button" onPress={() => setExpandedId(isExpanded ? null : prayer.id)}>
-                      <Text style={styles.readButton}>{isExpanded ? 'Închide' : 'Citește rugăciunea'}</Text>
+                      <Text style={styles.readButton}>{isExpanded ? t('prayers.close') : t('prayers.read')}</Text>
                     </Pressable>
-                    <Pressable accessibilityRole="button" accessibilityLabel={speakingId === prayer.id ? `Oprește ${prayer.title}` : `Ascultă ${prayer.title}`} onPress={() => void toggleAudio(prayer)}>
-                      <Text style={styles.audioButton}>{speakingId === prayer.id ? '■ Oprește' : '▶ Ascultă'}</Text>
+                    <Pressable accessibilityRole="button" accessibilityLabel={speakingId === prayer.id ? `${t('prayers.audioStopAccessibility')} ${prayer.title}` : `${t('prayers.audioPlayAccessibility')} ${prayer.title}`} onPress={() => void toggleAudio(prayer)}>
+                      <Text style={styles.audioButton}>{speakingId === prayer.id ? t('prayers.audioStop') : t('prayers.audioPlay')}</Text>
                     </Pressable>
                   </View>
-                  <Pressable accessibilityRole="button" accessibilityLabel={isFavorite ? 'Elimină din favorite' : 'Adaugă la favorite'} onPress={() => void toggleFavorite(prayer.id)}>
+                  <Pressable accessibilityRole="button" accessibilityLabel={isFavorite ? t('prayers.favoriteRemove') : t('prayers.favoriteAdd')} onPress={() => void toggleFavorite(prayer.id)}>
                     <Text style={[styles.favorite, isFavorite && styles.favoriteActive]}>{isFavorite ? '♥' : '♡'}</Text>
                   </Pressable>
                 </View>
@@ -265,8 +267,8 @@ export default function PrayersScreen() {
           })}
           {filtered.length === 0 ? (
             <View style={styles.noResults}>
-              <Text style={styles.empty}>{prayers.length === 0 ? 'Nu există încă rugăciuni publicate.' : 'Rugăciunea nu este încă în bibliotecă.'}</Text>
-              {prayers.length > 0 ? <PrimaryButton label="Întreabă Chatul" onPress={() => router.push('/chat')} /> : null}
+              <Text style={styles.empty}>{prayers.length === 0 ? t('prayers.empty') : t('prayers.notFound')}</Text>
+              {prayers.length > 0 ? <PrimaryButton label={t('prayers.askChat')} onPress={() => router.push('/chat')} /> : null}
             </View>
           ) : null}
         </View>

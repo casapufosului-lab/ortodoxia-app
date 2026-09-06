@@ -5,6 +5,7 @@ import { Card, PageHeader, PrimaryButton, Screen, SectionTitle } from '@/compone
 import { palette } from '@/constants/palette';
 import { BIBLE_SOURCE } from '@/data/bible-source';
 import { supabase } from '@/lib/supabase';
+import { useLocalization } from '@/providers/localization-provider';
 
 const books = [
   { code: 'MAT', label: 'Matei', chapters: 28 },
@@ -44,6 +45,7 @@ function normalizeSearchText(value: string) {
 }
 
 export default function BibleScreen() {
+  const { t } = useLocalization();
   const [bookCode, setBookCode] = useState<BookCode>('MAT');
   const [chapter, setChapter] = useState(1);
   const [verses, setVerses] = useState<BibleVerse[]>([]);
@@ -71,7 +73,7 @@ export default function BibleScreen() {
       if (requestError) {
         if (requestRef.current !== requestId) return;
         setVerses([]);
-        setError('Textul nu s-a putut încărca. Verifică internetul și încearcă din nou.');
+        setError(t('bible.loadError'));
       } else {
         if (requestRef.current !== requestId) return;
         setVerses((data ?? []) as BibleVerse[]);
@@ -79,13 +81,13 @@ export default function BibleScreen() {
     } catch {
       if (requestRef.current !== requestId) return;
       setVerses([]);
-      setError('Textul nu s-a putut încărca. Verifică internetul și încearcă din nou.');
+      setError(t('bible.loadError'));
     } finally {
       if (requestRef.current === requestId) {
         setLoading(false);
       }
     }
-  }, [bookCode, chapter]);
+  }, [bookCode, chapter, t]);
 
   useEffect(() => {
     // Încărcarea pornește când utilizatorul schimbă cartea sau capitolul.
@@ -112,22 +114,20 @@ export default function BibleScreen() {
     <Screen>
       <PageHeader
         eyebrow={`${BIBLE_SOURCE.name} · ${BIBLE_SOURCE.scope}`}
-        title="Biblia, aproape de tine"
-        subtitle="Alege cartea și capitolul pentru a citi în ritmul tău."
+        title={t('bible.title')}
+        subtitle={t('bible.subtitle')}
       />
 
       <Card style={styles.sourceCard}>
-        <Text style={styles.sourceLabel}>Sursa biblică</Text>
+        <Text style={styles.sourceLabel}>{t('bible.sourceLabel')}</Text>
         <Text style={styles.sourceTitle}>{BIBLE_SOURCE.name}</Text>
-        <Text style={styles.sourceText}>
-          Noul Testament, traducere în curs de revizuire și disponibilă în domeniul public. Nu este prezentată drept ediția sinodală ortodoxă.
-        </Text>
+        <Text style={styles.sourceText}>{t('bible.sourceDescription')}</Text>
         <Pressable accessibilityRole="link" onPress={() => void Linking.openURL(BIBLE_SOURCE.copyrightUrl)}>
-          <Text style={styles.sourceLink}>Vezi sursa și condițiile de folosire</Text>
+          <Text style={styles.sourceLink}>{t('bible.sourceLink')}</Text>
         </Pressable>
       </Card>
 
-      <SectionTitle>Carte</SectionTitle>
+      <SectionTitle>{t('bible.bookSection')}</SectionTitle>
       <View style={styles.bookGrid}>
         {books.map((item) => (
           <Pressable
@@ -141,7 +141,7 @@ export default function BibleScreen() {
         ))}
       </View>
 
-      <SectionTitle>Capitol</SectionTitle>
+      <SectionTitle>{t('bible.chapterSection')}</SectionTitle>
       <View style={styles.chapterRow}>
         {Array.from({ length: book.chapters }, (_, index) => index + 1).map((item) => (
           <Pressable
@@ -161,22 +161,22 @@ export default function BibleScreen() {
           disabled={chapter === 1}
           onPress={() => { setChapter((current) => Math.max(1, current - 1)); setQuery(''); }}
           style={[styles.navigationButton, chapter === 1 && styles.navigationButtonDisabled]}>
-          <Text style={styles.navigationText}>Capitolul anterior</Text>
+          <Text style={styles.navigationText}>{t('bible.previousChapter')}</Text>
         </Pressable>
         <Pressable
           accessibilityRole="button"
           disabled={chapter === book.chapters}
           onPress={() => { setChapter((current) => Math.min(book.chapters, current + 1)); setQuery(''); }}
           style={[styles.navigationButton, chapter === book.chapters && styles.navigationButtonDisabled]}>
-          <Text style={styles.navigationText}>Capitolul următor</Text>
+          <Text style={styles.navigationText}>{t('bible.nextChapter')}</Text>
         </Pressable>
       </View>
 
       <TextInput
-        accessibilityLabel="Caută în capitolul curent"
+        accessibilityLabel={t('bible.search')}
         autoCapitalize="none"
         onChangeText={setQuery}
-        placeholder="Caută în capitolul curent"
+        placeholder={t('bible.search')}
         placeholderTextColor={palette.muted}
         style={styles.searchInput}
         value={query}
@@ -187,17 +187,17 @@ export default function BibleScreen() {
         {loading ? (
           <View style={styles.statusBox}>
             <ActivityIndicator color={palette.blue} />
-            <Text style={styles.statusText}>Se încarcă textul...</Text>
+            <Text style={styles.statusText}>{t('bible.loading')}</Text>
           </View>
         ) : error ? (
           <View style={styles.statusBox}>
             <Text style={styles.errorText}>{error}</Text>
-            <PrimaryButton label="Încearcă din nou" onPress={() => void loadChapter()} />
+            <PrimaryButton label={t('bible.retry')} onPress={() => void loadChapter()} />
           </View>
         ) : verses.length === 0 ? (
-          <Text style={styles.statusText}>Acest capitol nu are încă versete publicate.</Text>
+          <Text style={styles.statusText}>{t('bible.emptyChapter')}</Text>
         ) : visibleVerses.length === 0 ? (
-          <Text style={styles.statusText}>Nu am găsit acest cuvânt în capitolul curent.</Text>
+          <Text style={styles.statusText}>{t('bible.noSearchResults')}</Text>
         ) : (
           <View style={styles.verseList}>
             {visibleVerses.map((item) => (
@@ -210,7 +210,7 @@ export default function BibleScreen() {
         )}
       </Card>
 
-      <PrimaryButton label="Deschide sursa originală" onPress={() => void Linking.openURL(BIBLE_SOURCE.sourceUrl)} />
+      <PrimaryButton label={t('bible.openSource')} onPress={() => void Linking.openURL(BIBLE_SOURCE.sourceUrl)} />
     </Screen>
   );
 }
