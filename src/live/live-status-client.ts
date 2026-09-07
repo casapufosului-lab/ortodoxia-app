@@ -82,8 +82,8 @@ export function validateSourceStatus(data: unknown): SourceStatusResponse | null
 
 // ─── Fetching ──────────────────────────────────────────────────────────────
 
-/** User-facing Romanian error for backend failure. */
-export const LIVE_STATUS_FETCH_ERROR = 'Nu am putut verifica transmisiunile acum.';
+/** User-facing error code for backend failure. */
+export const LIVE_STATUS_FETCH_ERROR_CODE = 'FETCH_FAILED';
 
 /**
  * Fetch live statuses for all enabled sources in a single Edge Function call.
@@ -98,12 +98,12 @@ export async function fetchLiveStatuses(): Promise<LiveStatusResult> {
 
   if (error || !data) {
     console.warn('live-services-status fetch failed:', error?.message ?? 'no data');
-    throw new Error(LIVE_STATUS_FETCH_ERROR);
+    throw new Error(LIVE_STATUS_FETCH_ERROR_CODE);
   }
 
   if (!data.sources || !Array.isArray(data.sources)) {
     console.warn('live-services-status: unexpected response shape');
-    throw new Error(LIVE_STATUS_FETCH_ERROR);
+    throw new Error(LIVE_STATUS_FETCH_ERROR_CODE);
   }
 
   const sources = (data.sources as unknown[])

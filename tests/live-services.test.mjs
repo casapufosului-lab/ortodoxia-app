@@ -117,7 +117,7 @@ test('ALLOWED_DOMAINS only contain plain hostnames', () => {
 test('safe URL validation checks HTTPS and domain allowlist', () => {
   assert.ok(accessSource.includes("parsed.protocol !== 'https:'"));
   assert.ok(accessSource.includes('isAllowedDomain(parsed.hostname)'));
-  assert.ok(accessSource.includes('Transmisiunea nu poate fi deschisă momentan'));
+  assert.ok(accessSource.includes('LIVE_OPEN_ERROR_CODE'));
 });
 
 test('live screen renders LIVE ACUM only when backend confirms LIVE (not hardcoded)', () => {

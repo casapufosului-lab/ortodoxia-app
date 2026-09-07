@@ -12,8 +12,8 @@ import type { PermanentLiveSource } from './types';
  * provider's own page.
  */
 
-/** User-facing Romanian error when a source cannot be opened. */
-export const LIVE_OPEN_ERROR = 'Transmisiunea nu poate fi deschisă momentan.';
+/** User-facing error code when a source cannot be opened. */
+export const LIVE_OPEN_ERROR_CODE = 'OPEN_FAILED';
 
 /** Validate that a URL is HTTPS and on the allowlist. */
 export function isValidSourceUrl(rawUrl: string): boolean {
@@ -34,16 +34,16 @@ export function isValidSourceUrl(rawUrl: string): boolean {
 
 /**
  * Attempt to open a permanent source's official channel/page.
- * Returns a human-readable error message (Romanian) on failure, or null on success.
+ * Returns a human-readable error code on failure, or null on success.
  */
 export async function openLiveSourceUrl(rawUrl: string): Promise<string | null> {
-  if (!isValidSourceUrl(rawUrl)) return LIVE_OPEN_ERROR;
+  if (!isValidSourceUrl(rawUrl)) return LIVE_OPEN_ERROR_CODE;
 
   try {
     await openBrowserAsync(rawUrl.trim(), { presentationStyle: WebBrowserPresentationStyle.AUTOMATIC });
     return null;
   } catch {
-    return LIVE_OPEN_ERROR;
+    return LIVE_OPEN_ERROR_CODE;
   }
 }
 

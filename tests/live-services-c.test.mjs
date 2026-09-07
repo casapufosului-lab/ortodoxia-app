@@ -33,7 +33,7 @@ test('3. Disabled sources filtered out', () => {
   assert.ok((sv.match(/enabled:\s*false/g) || []).length >= 1);
 });
 test('4. LIVE renders LIVE ACUM', () => {
-  assert.ok(s.includes("'LIVE ACUM'"));
+  assert.ok(s.includes("t('live.statusLive')"));
   assert.ok(s.includes("case 'live'"));
 });
 test('5. UNKNOWN never false negative', () => {
@@ -42,7 +42,7 @@ test('5. UNKNOWN never false negative', () => {
 });
 test('6. NOT_LIVE wording only for NOT_LIVE', () => {
   assert.ok(s.includes("case 'not_live'"));
-  assert.ok(s.includes('Momentan nu este LIVE'));
+  assert.ok(s.includes("t('live.statusNotLive')"));
 });
 test('7. No time-based LIVE heuristic', () => {
   assert.ok(!s.includes('getDay()'));
@@ -87,14 +87,14 @@ test('14. Close clears player', () => {
 test('15. Error caught and displayed', () => {
   assert.ok(s.includes('catch'));
   assert.ok(s.includes('setError'));
-  assert.ok(c.includes('Nu am putut verifica transmisiunile'));
+  assert.ok(c.includes('LIVE_STATUS_FETCH_ERROR_CODE'));
 });
 test('16. Loading terminates on failure', () => {
   assert.ok(s.includes('finally'));
   assert.ok(s.includes('setIsLoading(false)'));
 });
 test('17. Retry button calls loadStatuses', () => {
-  assert.ok(s.includes('Reîncearcă'));
+  assert.ok(s.includes("t('live.retry')"));
   assert.ok(s.includes('retryButton'));
   assert.ok(s.includes('loadStatuses'));
 });

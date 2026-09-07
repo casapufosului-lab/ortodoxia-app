@@ -367,6 +367,8 @@ const ro = {
   'live.loading': 'Se verifică transmisiunile…',
   'live.providerLabel': 'Furnizor: {provider}',
   'live.disclaimer': 'Transmisiunile aparțin surselor oficiale. Aplicația afișează starea live doar pe baza datelor primite de la server.',
+  'live.errorStatusFetch': 'Nu am putut verifica transmisiunile acum.',
+  'live.errorOpenSource': 'Transmisiunea nu poate fi deschisă momentan.',
 
   'resetConfirmation.title': 'Verifică emailul',
   'resetConfirmation.subtitle': 'Am trimis instrucțiunile pentru resetarea parolei.',

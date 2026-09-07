@@ -4,13 +4,12 @@ import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-nati
 import { Card, PageHeader, Screen } from '@/components/mvp-ui';
 import { palette } from '@/constants/palette';
 import {
-  LIVE_OPEN_ERROR,
+  LIVE_OPEN_ERROR_CODE,
   getOpenableUrlForSource,
   isValidSourceUrl,
   openLiveSourceUrl,
 } from '@/live/live-service-access';
 import {
-  LIVE_STATUS_FETCH_ERROR,
   fetchLiveStatuses,
   type SourceStatusResponse,
 } from '@/live/live-status-client';
@@ -57,12 +56,12 @@ export default function LiveScreen() {
       for (const s of result.sources) map.set(s.sourceId, s);
       setSourceStatuses(map);
     } catch {
-      setError(LIVE_STATUS_FETCH_ERROR);
+      setError(t('live.errorStatusFetch'));
     } finally {
       setIsLoading(false);
       isFetchingRef.current = false;
     }
-  }, []);
+  }, [t]);
 
   // Single fetch on mount — no polling, no repeated effects
   useEffect(() => {
@@ -87,17 +86,17 @@ export default function LiveScreen() {
       const url = buildYouTubeWatchUrl(vm.status.currentBroadcast.videoId);
       if (isValidSourceUrl(url)) {
         const openError = await openLiveSourceUrl(url);
-        if (openError) setError(openError);
+        if (openError === LIVE_OPEN_ERROR_CODE) setError(t('live.errorOpenSource'));
       } else {
-        setError(LIVE_OPEN_ERROR);
+        setError(t('live.errorOpenSource'));
       }
       return;
     }
     const url = getOpenableUrlForSource(vm.source);
-    if (!url) { setError(LIVE_OPEN_ERROR); return; }
+    if (!url) { setError(t('live.errorOpenSource')); return; }
     const openError = await openLiveSourceUrl(url);
-    if (openError) setError(openError);
-  }, []);
+    if (openError === LIVE_OPEN_ERROR_CODE) setError(t('live.errorOpenSource'));
+  }, [t]);
 
   function getStatusLabel(status: SourceStatusResponse | null): {
     text: string; color: string; emoji: string;
