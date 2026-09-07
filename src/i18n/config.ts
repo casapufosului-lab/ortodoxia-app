@@ -680,6 +680,7 @@ const en = {
   'account.loginForNotificationsButton': 'Sign in for notifications',
   'account.subscriptionSectionTitle': 'Subscription',
   'account.planChecking': 'Checking plan…',
+  'account.planError': 'The subscription status could not be verified.',
   'account.aiMessagesPerDay': 'You have {count} AI messages per day.',
   'account.freeMessagesPerDay': 'You have 5 AI messages per day. Basic content remains free.',
   'account.viewSubscriptionButton': 'View subscription',
