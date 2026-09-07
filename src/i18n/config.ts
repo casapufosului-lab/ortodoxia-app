@@ -353,6 +353,20 @@ const ro = {
   'premium.paymentNote': 'Plățile se procesează securizat prin App Store sau Google Play.',
   'premium.privacyPolicy': 'Politica de confidențialitate',
   'premium.terms': 'Termeni și condiții',
+
+  'live.eyebrow': 'Slujbe LIVE',
+  'live.title': 'Slujbe LIVE',
+  'live.subtitle': 'Urmărește Sfânta Liturghie în direct de la surse oficiale. Transmisiunile aparțin instituțiilor bisericești respective.',
+  'live.statusView': 'Vezi transmisiunile',
+  'live.statusLive': 'LIVE ACUM',
+  'live.statusNotLive': 'Momentan nu este LIVE',
+  'live.actionEmbed': 'Vezi în direct',
+  'live.actionExternal': 'Deschide pe YouTube',
+  'live.actionOfficial': 'Deschide sursa oficială',
+  'live.retry': 'Reîncearcă',
+  'live.loading': 'Se verifică transmisiunile…',
+  'live.providerLabel': 'Furnizor: {provider}',
+  'live.disclaimer': 'Transmisiunile aparțin surselor oficiale. Aplicația afișează starea live doar pe baza datelor primite de la server.',
 } as const;
 
 export type TranslationKey = keyof typeof ro;

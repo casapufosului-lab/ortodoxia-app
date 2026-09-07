@@ -18,6 +18,7 @@ import { buildYouTubeWatchUrl, determinePlaybackMode } from '@/live/live-playbac
 import { getEnabledLiveSources } from '@/live/live-services';
 import type { PermanentLiveSource } from '@/live/types';
 import { YouTubeEmbed } from '@/live/youtube-embed';
+import { useLocalization } from '@/providers/localization-provider';
 
 /**
  * Merged view model: permanent source + current backend status.
@@ -35,6 +36,7 @@ interface SourceViewModel {
  * and provides offline/error/retry UX.
  */
 export default function LiveScreen() {
+  const { t } = useLocalization();
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [sourceStatuses, setSourceStatuses] = useState<Map<string, SourceStatusResponse>>(
@@ -100,53 +102,53 @@ export default function LiveScreen() {
   function getStatusLabel(status: SourceStatusResponse | null): {
     text: string; color: string; emoji: string;
   } {
-    if (!status) return { text: 'Vezi transmisiunile', color: palette.muted, emoji: '▶' };
+    if (!status) return { text: t('live.statusView'), color: palette.muted, emoji: '▶' };
     switch (status.status) {
       case 'live':
-        return { text: 'LIVE ACUM', color: palette.danger, emoji: '🔴' };
+        return { text: t('live.statusLive'), color: palette.danger, emoji: '🔴' };
       case 'not_live':
-        return { text: 'Momentan nu este LIVE', color: palette.muted, emoji: '○' };
+        return { text: t('live.statusNotLive'), color: palette.muted, emoji: '○' };
       case 'unknown':
-        return { text: 'Vezi transmisiunile', color: palette.blue, emoji: '▶' };
+        return { text: t('live.statusView'), color: palette.blue, emoji: '▶' };
       default:
-        return { text: 'Vezi transmisiunile', color: palette.muted, emoji: '▶' };
+        return { text: t('live.statusView'), color: palette.muted, emoji: '▶' };
     }
   }
 
   function getActionLabel(vm: SourceViewModel): string {
     const mode = determinePlaybackMode(vm.status, vm.source);
     switch (mode) {
-      case 'EMBED': return 'Vezi în direct';
-      case 'EXTERNAL_CURRENT': return 'Deschide pe YouTube';
+      case 'EMBED': return t('live.actionEmbed');
+      case 'EXTERNAL_CURRENT': return t('live.actionExternal');
       case 'OFFICIAL_SOURCE':
-      default: return 'Deschide sursa oficială';
+      default: return t('live.actionOfficial');
     }
   }
 
   return (
     <Screen>
       <PageHeader
-        eyebrow="Slujbe LIVE"
-        title="Slujbe LIVE"
-        subtitle="Urmărește Sfânta Liturghie în direct de la surse oficiale. Transmisiunile aparțin instituțiilor bisericești respective."
+        eyebrow={t('live.eyebrow')}
+        title={t('live.title')}
+        subtitle={t('live.subtitle')}
       />
       {error ? (
         <Card style={styles.errorCard}>
           <Text accessibilityLiveRegion="polite" style={styles.errorText}>{error}</Text>
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel="Reîncearcă"
+            accessibilityLabel={t('live.retry')}
             onPress={() => void loadStatuses()}
             style={({ pressed }) => [styles.retryButton, pressed && styles.pressed]}
           >
-            <Text style={styles.retryText}>Reîncearcă</Text>
+            <Text style={styles.retryText}>{t('live.retry')}</Text>
           </Pressable>
         </Card>
       ) : null}
       {isLoading ? (
         <View style={styles.loading}>
           <ActivityIndicator size="small" color={palette.blue} />
-          <Text style={styles.loadingText}>Se verifică transmisiunile…</Text>
+          <Text style={styles.loadingText}>{t('live.loading')}</Text>
         </View>
       ) : sources.map((source) => {
         const status = sourceStatuses.get(source.id) ?? null;
@@ -158,7 +160,7 @@ export default function LiveScreen() {
               <Text style={styles.sourceName}>{source.name}</Text>
               <Text style={styles.location}>{source.location}</Text>
             </View>
-            <Text style={styles.provider}>Furnizor: {source.provider}</Text>
+            <Text style={styles.provider}>{t('live.providerLabel').replace('{provider}', source.provider)}</Text>
             {source.scheduleNote ? (
               <Text style={styles.scheduleNote}>{source.scheduleNote}</Text>
             ) : null}
@@ -185,8 +187,7 @@ export default function LiveScreen() {
         );
       })}
       <Text style={styles.disclaimer}>
-        Transmisiunile aparțin surselor oficiale. Aplicația afișează starea live
-        doar pe baza datelor primite de la server.
+        {t('live.disclaimer')}
       </Text>
       <YouTubeEmbed videoId={activePlayerVideoId} onClose={closePlayer} />
     </Screen>

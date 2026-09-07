@@ -122,9 +122,9 @@ test('safe URL validation checks HTTPS and domain allowlist', () => {
 
 test('live screen renders LIVE ACUM only when backend confirms LIVE (not hardcoded)', () => {
   const liveScreen = readFileSync(join(root, 'src/app/live.tsx'), 'utf8');
-  // LIVE ACUM is rendered conditionally via getStatusLabel — not a hardcoded static string.
-  // The string 'LIVE ACUM' is present in the code but only inside a switch case.
-  assert.ok(liveScreen.includes('LIVE ACUM'), 'LIVE ACUM must be available for backend LIVE status');
+  // LIVE ACUM is now i18n-ized: the literal string is no longer in live.tsx.
+  // The i18n key t('live.statusLive') is used instead.
+  assert.ok(liveScreen.includes("t('live.statusLive')"), 'live screen must use i18n key for LIVE ACUM');
   // Verify it is inside a function (conditional rendering), not hardcoded as static JSX text.
   assert.ok(liveScreen.includes("case 'live'"), 'LIVE ACUM must be conditional on backend status');
   assert.ok(!liveScreen.includes('Nu este live acum'), 'must not claim not-live with wrong wording');
