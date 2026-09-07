@@ -8,33 +8,33 @@ import { supabase } from '@/lib/supabase';
 import { useLocalization } from '@/providers/localization-provider';
 
 const books = [
-  { code: 'MAT', label: 'Matei', chapters: 28 },
-  { code: 'MAR', label: 'Marcu', chapters: 16 },
-  { code: 'LUK', label: 'Luca', chapters: 24 },
-  { code: 'JOH', label: 'Ioan', chapters: 21 },
-  { code: 'ACT', label: 'Faptele Apostolilor', chapters: 28 },
-  { code: 'ROM', label: 'Romani', chapters: 16 },
-  { code: '1CO', label: '1 Corinteni', chapters: 16 },
-  { code: '2CO', label: '2 Corinteni', chapters: 13 },
-  { code: 'GAL', label: 'Galateni', chapters: 6 },
-  { code: 'EPH', label: 'Efeseni', chapters: 6 },
-  { code: 'PHI', label: 'Filipeni', chapters: 4 },
-  { code: 'COL', label: 'Coloseni', chapters: 4 },
-  { code: '1TH', label: '1 Tesaloniceni', chapters: 5 },
-  { code: '2TH', label: '2 Tesaloniceni', chapters: 3 },
-  { code: '1TI', label: '1 Timotei', chapters: 6 },
-  { code: '2TI', label: '2 Timotei', chapters: 4 },
-  { code: 'TIT', label: 'Tit', chapters: 3 },
-  { code: 'PHM', label: 'Filimon', chapters: 1 },
-  { code: 'HEB', label: 'Evrei', chapters: 13 },
-  { code: 'JAM', label: 'Iacov', chapters: 5 },
-  { code: '1PE', label: '1 Petru', chapters: 5 },
-  { code: '2PE', label: '2 Petru', chapters: 3 },
-  { code: '1JO', label: '1 Ioan', chapters: 5 },
-  { code: '2JO', label: '2 Ioan', chapters: 1 },
-  { code: '3JO', label: '3 Ioan', chapters: 1 },
-  { code: 'JUD', label: 'Iuda', chapters: 1 },
-  { code: 'REV', label: 'Apocalipsa', chapters: 22 },
+  { code: 'MAT', labelKey: 'bible.bookMAT', chapters: 28 },
+  { code: 'MAR', labelKey: 'bible.bookMAR', chapters: 16 },
+  { code: 'LUK', labelKey: 'bible.bookLUK', chapters: 24 },
+  { code: 'JOH', labelKey: 'bible.bookJOH', chapters: 21 },
+  { code: 'ACT', labelKey: 'bible.bookACT', chapters: 28 },
+  { code: 'ROM', labelKey: 'bible.bookROM', chapters: 16 },
+  { code: '1CO', labelKey: 'bible.book1CO', chapters: 16 },
+  { code: '2CO', labelKey: 'bible.book2CO', chapters: 13 },
+  { code: 'GAL', labelKey: 'bible.bookGAL', chapters: 6 },
+  { code: 'EPH', labelKey: 'bible.bookEPH', chapters: 6 },
+  { code: 'PHI', labelKey: 'bible.bookPHI', chapters: 4 },
+  { code: 'COL', labelKey: 'bible.bookCOL', chapters: 4 },
+  { code: '1TH', labelKey: 'bible.book1TH', chapters: 5 },
+  { code: '2TH', labelKey: 'bible.book2TH', chapters: 3 },
+  { code: '1TI', labelKey: 'bible.book1TI', chapters: 6 },
+  { code: '2TI', labelKey: 'bible.book2TI', chapters: 4 },
+  { code: 'TIT', labelKey: 'bible.bookTIT', chapters: 3 },
+  { code: 'PHM', labelKey: 'bible.bookPHM', chapters: 1 },
+  { code: 'HEB', labelKey: 'bible.bookHEB', chapters: 13 },
+  { code: 'JAM', labelKey: 'bible.bookJAM', chapters: 5 },
+  { code: '1PE', labelKey: 'bible.book1PE', chapters: 5 },
+  { code: '2PE', labelKey: 'bible.book2PE', chapters: 3 },
+  { code: '1JO', labelKey: 'bible.book1JO', chapters: 5 },
+  { code: '2JO', labelKey: 'bible.book2JO', chapters: 1 },
+  { code: '3JO', labelKey: 'bible.book3JO', chapters: 1 },
+  { code: 'JUD', labelKey: 'bible.bookJUD', chapters: 1 },
+  { code: 'REV', labelKey: 'bible.bookREV', chapters: 22 },
 ] as const;
 
 type BookCode = (typeof books)[number]['code'];
@@ -136,7 +136,7 @@ export default function BibleScreen() {
             accessibilityState={{ selected: item.code === bookCode }}
             onPress={() => selectBook(item.code)}
             style={[styles.bookButton, item.code === bookCode && styles.bookButtonSelected]}>
-            <Text style={[styles.bookButtonText, item.code === bookCode && styles.bookButtonTextSelected]}>{item.label}</Text>
+            <Text style={[styles.bookButtonText, item.code === bookCode && styles.bookButtonTextSelected]}>{t(item.labelKey)}</Text>
           </Pressable>
         ))}
       </View>
@@ -183,7 +183,7 @@ export default function BibleScreen() {
       />
 
       <Card style={styles.readerCard}>
-        <Text style={styles.reference}>{book.label} {chapter}</Text>
+        <Text style={styles.reference}>{t(book.labelKey)} {chapter}</Text>
         {loading ? (
           <View style={styles.statusBox}>
             <ActivityIndicator color={palette.blue} />
