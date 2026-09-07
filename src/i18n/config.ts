@@ -367,6 +367,12 @@ const ro = {
   'live.loading': 'Se verifică transmisiunile…',
   'live.providerLabel': 'Furnizor: {provider}',
   'live.disclaimer': 'Transmisiunile aparțin surselor oficiale. Aplicația afișează starea live doar pe baza datelor primite de la server.',
+
+  'resetConfirmation.title': 'Verifică emailul',
+  'resetConfirmation.subtitle': 'Am trimis instrucțiunile pentru resetarea parolei.',
+  'resetConfirmation.cardTitle': 'Mesaj trimis',
+  'resetConfirmation.cardSubtitle': 'Deschide mesajul primit și apasă linkul de resetare. Verifică și folderul Spam sau Promotions.',
+  'resetConfirmation.backToLogin': 'Înapoi la autentificare',
 } as const;
 
 export type TranslationKey = keyof typeof ro;

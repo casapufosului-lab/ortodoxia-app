@@ -1,19 +1,21 @@
 import { router } from 'expo-router';
 import { Card, PageHeader, PrimaryButton, Screen } from '@/components/mvp-ui';
+import { useLocalization } from '@/providers/localization-provider';
 
 export default function ResetConfirmationScreen() {
+  const { t } = useLocalization();
   return (
     <Screen>
       <PageHeader
-        title="Verifică emailul"
-        subtitle="Am trimis instrucțiunile pentru resetarea parolei."
+        title={t('resetConfirmation.title')}
+        subtitle={t('resetConfirmation.subtitle')}
       />
       <Card>
         <PageHeader
-          title="Mesaj trimis"
-          subtitle="Deschide mesajul primit și apasă linkul de resetare. Verifică și folderul Spam sau Promotions."
+          title={t('resetConfirmation.cardTitle')}
+          subtitle={t('resetConfirmation.cardSubtitle')}
         />
-        <PrimaryButton label="Înapoi la autentificare" onPress={() => router.replace('/auth')} />
+        <PrimaryButton label={t('resetConfirmation.backToLogin')} onPress={() => router.replace('/auth')} />
       </Card>
     </Screen>
   );
