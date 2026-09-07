@@ -458,6 +458,86 @@ const ro = {
   'privacy.s10Title': '10. Contact',
   'privacy.s10Support': '[ADRESĂ DE SUPORT DE COMPLETAT]',
   'privacy.s10PublicUrl': '[URL PUBLIC AL POLITICII DE COMPLETAT]',
+
+  // ── Terms screen ────────────────────────────────────────────────────
+  'terms.title': 'Termeni și condiții',
+  'terms.meta': 'Versiune: 1.0 — [DATA DE COMPLETAT]',
+
+  'terms.s1Title': '1. Operator și acceptare',
+  'terms.s1Entity': '[OPERATOR/ENTITATE LEGALĂ DE COMPLETAT]',
+  'terms.s1Support': '[ADRESĂ DE SUPORT DE COMPLETAT]',
+  'terms.s1Content': 'Utilizarea aplicației Ortodoxia este condiționată de acceptarea prezentelor condiții. Dacă nu sunteți de acord, vă rugăm să nu utilizați aplicația.',
+
+  'terms.s2Title': '2. Eligibilitate',
+  'terms.s2Content': 'Aplicația este destinată persoanelor cu vârsta minimă necesară pentru a-și crea un cont pe platformele Apple App Store / Google Play. Persoanele minore trebuie să utilizeze aplicația cu acordul reprezentantului legal.',
+
+  'terms.s3Title': '3. Contul dumneavoastră',
+  'terms.s3Content1': 'Sunteți responsabil pentru confidențialitatea credențialelor contului și pentru toate activitățile desfășurate prin contul dumneavoastră. Notificați-ne imediat la adresa de suport dacă suspectați o utilizare neautorizată.',
+  'terms.s3Content2': 'Ștergerea contului este o acțiune separată de anularea abonamentului. Pentru detalii, consultați Politica de confidențialitate (secțiunea 8).',
+
+  'terms.s4Title': '4. Utilizare acceptabilă',
+  'terms.s4Content': 'Vă angajați să utilizați aplicația într-un mod onest și respectuos, fără a încerca să eludați limitele tehnice, să abuzați de funcționalitățile AI sau să prejudiciați alți utilizatori.',
+
+  'terms.s5Title': '5. Utilizare interzisă',
+  'terms.s5Intro': 'Nu este permisă:',
+  'terms.s5Li1': '• încercarea de a accesa conturi sau date ale altor utilizatori;',
+  'terms.s5Li2': '• utilizarea aplicației în scopuri ilegale, ofensatoare, abuzive sau frauduloase;',
+  'terms.s5Li3': '• copierea, redistribuirea sau republicarea conținutului aplicației fără drept;',
+  'terms.s5Li4': '• eludarea mecanismelor de limitare a utilizării (de ex. a limitei zilnice de mesaje AI);',
+  'terms.s5Li5': '• introducerea deliberată de conținut care poate genera răspunsuri dăunătoare sau ilicite.',
+
+  'terms.s6Title': '6. Limitări ale conținutului AI',
+  'terms.s6Intro': 'Răspunsurile generate de Chatul AI sunt generate automat de un model lingvistic. Acestea:',
+  'terms.s6Li1': '• pot conține erori sau inexactități;',
+  'terms.s6Li2': '• trebuie evaluate independent de către utilizator;',
+  'terms.s6Li3': '• nu reprezintă puncte de vedere oficiale ale Bisericii Ortodoxe sau ale vreunei autorități eclesiastice.',
+
+  'terms.s6_1Title': '6.1 AI nu înlocuiește profesioniștii',
+  'terms.s6_1Intro': 'Chatul AI nu înlocuiește și nu se substituie:',
+  'terms.s6_1Li1': '• unui preot sau duhovnic — pentru îndrumare duhovnicească;',
+  'terms.s6_1Li2': '• unui medic — pentru diagnostic, tratament sau sfaturi medicale;',
+  'terms.s6_1Li3': '• unui avocat — pentru consultanță juridică;',
+  'terms.s6_1Li4': '• unui serviciu de urgență.',
+  'terms.s6_1Content': 'Pentru urgențe medicale, psihologice sau de siguranță, contactați imediat serviciile de urgență (112 în România, sau numărul corespunzător din țara dumneavoastră).',
+
+  'terms.s6_2Title': '6.2 Limitări privind conținutul religios',
+  'terms.s6_2Content1': 'Explicațiile religioase generate de AI nu sunt hotărâri eclesiastice oficiale. Pentru aspecte doctrinare, canonice sau liturgice, consultați sursele bisericești oficiale (Sfânta Scriptură, scrierile Sfinților Părinți, indicațiile duhovnicului dumneavoastră).',
+  'terms.s6_2Content2': 'Aplicația nu implică și nu pretinde girul sau susținerea vreunei autorități bisericești.',
+
+  'terms.s6_3Title': '6.3 Responsabilitatea dumneavoastră',
+  'terms.s6_3Content': 'Sunteți singurul responsabil pentru deciziile luate pe baza informațiilor generate de AI. Nu vă bazați exclusiv pe aceste răspunsuri pentru decizii importante privind sănătatea, viața spirituală, drepturile sau siguranța dumneavoastră.',
+
+  'terms.s7Title': '7. Conținut extern',
+  'terms.s7Content': 'Aplicația poate afișa transmisiuni live, linkuri sau citate editoriale provenind de la terțe părți. Acestea rămân sub responsabilitatea furnizorilor respectivi. Ortodoxia nu garantează acuratețea, disponibilitatea sau actualitatea conținutului extern.',
+
+  'terms.s8Title': '8. Abonamente',
+  'terms.s8Content': 'Funcționalitățile Premium sunt disponibile prin abonament lunar sau anual. Abonamentul se reînnoiește automat până la anulare.',
+  'terms.s8_1Title': '8.1 Plăți și reînnoire',
+  'terms.s8_1Content': 'Plățile sunt procesate de Apple App Store sau Google Play. Anularea reînnoirii automate se face din contul dumneavoastră de pe platforma respectivă (Setări → Abonamente).',
+  'terms.s8_2Title': '8.2 Anulare',
+  'terms.s8_2Content': 'Anularea oprește reînnoirea viitoare. Accesul la funcționalitățile Premium rămâne activ până la sfârșitul perioadei deja plătite.',
+  'terms.s8_3Title': '8.3 Dezinstalare',
+  'terms.s8_3Content': 'Dezinstalarea aplicației nu anulează abonamentul. Anularea se face doar din App Store / Google Play.',
+  'terms.s8_4Title': '8.4 Restituiri',
+  'terms.s8_4Content': 'Restituirile sunt gestionate de Apple / Google conform politicilor acestora. Ortodoxia nu oferă restituiri directe. Pentru solicitări de restituire, contactați platforma de unde ați efectuat achiziția.',
+  'terms.s8_5Title': '8.5 Restaurare',
+  'terms.s8_5Content': 'Funcția "Restaurează cumpărăturile" disponibilă în ecranul Premium reactivează drepturile de abonament existente, atunci când este suportat de platformă.',
+
+  'terms.s9Title': '9. Limitarea răspunderii',
+  'terms.s9Content': 'Aplicația este furnizată "așa cum este". În limita permisă de lege, Ortodoxia nu garantează că serviciul va fi neîntrerupt, lipsit de erori sau complet potrivit unui anumit scop. Nu ne asumăm răspunderea pentru daune indirecte, incidentale sau consecutive rezultate din utilizarea aplicației.',
+
+  'terms.s10Title': '10. Suspendare și restricționare',
+  'terms.s10Content': 'În caz de abuz, încălcare a acestor condiții sau solicitări din partea autorităților, ne rezervăm dreptul de a suspenda sau restrictiona accesul la cont sau la aplicație.',
+
+  'terms.s11Title': '11. Modificări',
+  'terms.s11Content': 'Ne rezervăm dreptul de a actualiza periodic acești termeni. Modificările semnificative vor fi comunicate prin aplicație sau prin e-mail.',
+
+  'terms.s12Title': '12. Legea aplicabilă',
+  'terms.s12Content': 'Prezentele condiții sunt guvernate de legile [JURISDICȚIA DE COMPLETAT]. Orice dispută va fi soluționată de instanțele competente din [LOCALITATE DE COMPLETAT].',
+
+  'terms.s13Title': '13. Contact',
+  'terms.s13Support': '[ADRESĂ DE SUPORT DE COMPLETAT]',
+  'terms.s13PublicUrl': '[URL PUBLIC AL TERMENILOR DE COMPLETAT]',
 } as const;
 
 export type TranslationKey = keyof typeof ro;
