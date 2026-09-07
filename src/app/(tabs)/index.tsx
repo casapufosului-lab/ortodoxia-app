@@ -150,7 +150,7 @@ export default function HomeScreen() {
           <SectionTitle>{t('home.parableSectionTitle')}</SectionTitle>
           <Card>
             <Text style={styles.cardTitle}>{dailyContent?.parable_title ?? t('home.parableTitleFallback')}</Text>
-            <Text style={styles.body}>{dailyContent?.parable_text ?? 'Un suflet atent primește cuvântul bun și îl transformă în faptă.'}</Text>
+            <Text style={styles.body}>{dailyContent?.parable_text ?? 't('home.fallback')'}</Text>
             {dailyContent?.editorial_source ? <Text style={styles.editorialSource}>{dailyContent.editorial_source}</Text> : null}
           </Card>
           {countryCode !== 'MD' ? (

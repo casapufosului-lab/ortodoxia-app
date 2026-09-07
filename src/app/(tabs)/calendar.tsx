@@ -18,7 +18,7 @@ type CalendarEntry = {
   editorial_source: string | null;
 };
 
-const weekdays = ['Lu', 'Ma', 'Mi', 'Jo', 'Vi', 'Sâ', 'Du'];
+const weekdays = ['t('calendar.weekdayLu')', 'Ma', 'Mi', 't('calendar.weekdayJo')', 'Vi', 't('calendar.weekdaySa')', 't('calendar.weekdayDu')'];
 
 function toDateKey(year: number, monthIndex: number, day: number) {
   return `${year}-${String(monthIndex + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
