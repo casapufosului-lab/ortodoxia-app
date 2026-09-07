@@ -219,7 +219,7 @@ export default function PrayersScreen() {
 
   return (
     <Screen>
-      <PageHeader eyebrow={t('prayers.eyebrow')} title="Rugăciuni" subtitle={t('prayers.subtitle')} />
+      <PageHeader eyebrow={t('prayers.eyebrow')} title={t('nav.prayers')} subtitle={t('prayers.subtitle')} />
       <Text style={styles.aiVoiceNotice}>{t('prayers.aiVoiceNotice')}</Text>
       <TextInput accessibilityLabel={t('prayers.search')} placeholder={t('prayers.search')} placeholderTextColor={palette.muted} value={query} onChangeText={setQuery} style={styles.search} />
       <Text style={styles.searchHint}>{t('prayers.searchHint')}</Text>

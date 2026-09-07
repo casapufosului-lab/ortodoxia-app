@@ -18,14 +18,13 @@ type CalendarEntry = {
   editorial_source: string | null;
 };
 
-const weekdays = ['t('calendar.weekdayLu')', 'Ma', 'Mi', 't('calendar.weekdayJo')', 'Vi', 't('calendar.weekdaySa')', 't('calendar.weekdayDu')'];
-
 function toDateKey(year: number, monthIndex: number, day: number) {
   return `${year}-${String(monthIndex + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
 }
 
 export default function CalendarScreen() {
   const { calendar, calendarCode, countryCode, region, t } = useLocalization();
+  const weekdays = [t('calendar.weekdayLu'), t('calendar.weekdayMa'), t('calendar.weekdayMi'), t('calendar.weekdayJo'), t('calendar.weekdayVi'), t('calendar.weekdaySa'), t('calendar.weekdayDu')];
   const today = useMemo(() => new Date(), []);
   const currentDateKey = useMemo(() => dateKeyInTimeZone(today, region.timeZone), [region.timeZone, today]);
   const [monthOffset, setMonthOffset] = useState(0);

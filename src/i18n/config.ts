@@ -266,6 +266,13 @@ const ro = {
   'prayers.audioStartError': 'Fișierul audio nu a putut porni. Încearcă din nou.',
   'prayers.audioUnavailableError': 'Citirea audio nu a putut porni pe acest dispozitiv.',
 
+  'calendar.weekdayLu': 'Lu',
+  'calendar.weekdayMa': 'Ma',
+  'calendar.weekdayMi': 'Mi',
+  'calendar.weekdayJo': 'Jo',
+  'calendar.weekdayVi': 'Vi',
+  'calendar.weekdaySa': 'Sâ',
+  'calendar.weekdayDu': 'Du',
   'calendar.eyebrow': 'An bisericesc',
   'calendar.title': 'Calendar ortodox',
   'calendar.subtitleFallback': 'Alege calendarul bisericesc pe care vrei să îl urmărești.',
