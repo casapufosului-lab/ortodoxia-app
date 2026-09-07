@@ -5,8 +5,8 @@ import { ActivityIndicator, Alert, Pressable, StyleSheet, Text, TextInput, View 
 import { Card, PageHeader, PrimaryButton, Screen, SecondaryButton, SectionTitle } from '@/components/mvp-ui';
 import { palette } from '@/constants/palette';
 import { useSubscription } from '@/hooks/use-subscription';
-import { SUPPORTED_REGIONS } from '@/i18n/config';
-import type { TranslationKey } from '@/i18n/config';
+import { COMPLETE_LANGUAGES, SUPPORTED_REGIONS } from '@/i18n/config';
+import type { CompleteLanguageCode, TranslationKey } from '@/i18n/config';
 import { AccountDeletionError, requestAccountDeletion } from '@/lib/account-deletion';
 import { registerForPushNotificationsAsync } from '@/lib/notifications';
 import { supabase } from '@/lib/supabase';
@@ -29,6 +29,11 @@ function friendlyDbError(error: unknown, t: (key: TranslationKey) => string): st
   return t('account.dbErrorGeneric');
 }
 
+const LANGUAGE_LABELS: Record<CompleteLanguageCode, string> = {
+  ro: 'Română',
+  en: 'English',
+};
+
 export default function AccountScreen() {
   const { isLoading, user, signOut } = useAuth();
   const { dailyAiLimit, error: planError, isLoading: isPlanLoading, isPremium, planLabel } = useSubscription();
@@ -38,9 +43,11 @@ export default function AccountScreen() {
     calendarCode,
     countryCode,
     isLoading: isRegionLoading,
+    languageCode,
     region,
     setCalendarCode,
     setCountryCode,
+    setLanguageCode,
     t,
   } = useLocalization();
   const [displayName, setDisplayName] = useState('');
@@ -286,7 +293,23 @@ export default function AccountScreen() {
             );
           })}
         </View>
-        <Text style={styles.regionSummary}>{t('account.language')}: {region.languageLabel}</Text>
+        <Text style={styles.regionLabel}>{t('account.language')}</Text>
+        <View style={styles.regionOptions}>
+          {COMPLETE_LANGUAGES.map((language) => {
+            const isSelected = languageCode === language;
+            return (
+              <Pressable
+                accessibilityRole="button"
+                accessibilityState={{ selected: isSelected }}
+                disabled={isRegionLoading}
+                key={language}
+                onPress={() => void setLanguageCode(language)}
+                style={[styles.regionOption, isSelected && styles.regionOptionSelected]}>
+                <Text style={[styles.regionOptionTitle, isSelected && styles.regionOptionTitleSelected]}>{LANGUAGE_LABELS[language]}</Text>
+              </Pressable>
+            );
+          })}
+        </View>
         <View style={styles.calendarDivider} />
         <Text style={styles.regionLabel}>{t('account.calendar')}</Text>
         <Text style={styles.bodyLeft}>{countryCode === 'MD' ? t('account.calendarDescription') : calendar?.description}</Text>
