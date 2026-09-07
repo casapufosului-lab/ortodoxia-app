@@ -44,11 +44,18 @@ test('REAL translate fallback', () => {
   // en is incomplete, should fallback to ro
   const roValue = config.translate('ro', 'nav.home');
   const enValue = config.translate('en', 'nav.home');
+
+  // Verify explicit translation
+  assert.equal(enValue, 'Home');
+
+  // Verify fallback for untranslated key
+  const roAccountValue = config.translate('ro', 'account.pageTitle');
+  const enAccountValue = config.translate('en', 'account.pageTitle');
   const elValue = config.translate('el', 'nav.home');
   const ruValue = config.translate('ru', 'nav.home');
   const sqValue = config.translate('sq', 'nav.home');
 
-  assert.equal(enValue, 'Home');
+  assert.equal(enAccountValue, roAccountValue);
   assert.equal(elValue, roValue);
   assert.equal(ruValue, roValue);
   assert.equal(sqValue, roValue);
