@@ -377,6 +377,87 @@ const ro = {
   'resetConfirmation.backToLogin': 'Înapoi la autentificare',
 
   'layout.privacyTitle': 'Politică de confidențialitate',
+
+  // ── Privacy screen ──────────────────────────────────────────────────
+  'privacy.title': 'Politica de confidențialitate',
+  'privacy.meta': 'Versiune: 1.0 — [DATA DE COMPLETAT]',
+
+  'privacy.s1Title': '1. Operator',
+  'privacy.s1Entity': '[OPERATOR/ENTITATE LEGALĂ DE COMPLETAT]',
+  'privacy.s1Support': '[ADRESĂ DE SUPORT DE COMPLETAT]',
+  'privacy.s1Postal': '[ADRESĂ POȘTALĂ DE COMPLETAT]',
+
+  'privacy.s2Title': '2. Ce date colectăm',
+  'privacy.s2Intro': 'Ortodoxia procesează următoarele categorii de date, strict în măsura în care funcționalitățile aplicației le utilizează.',
+
+  'privacy.s2_1Title': '2.1 Date de autentificare',
+  'privacy.s2_1Content': 'La crearea unui cont, colectăm adresa de e-mail și parola furnizate. Parola este stocată hash-uită (nu în plaintext) de către Supabase.',
+
+  'privacy.s2_2Title': '2.2 Profil utilizator',
+  'privacy.s2_2Content': 'Numele de afișare setat de utilizator este stocat în tabelul `profiles` din Supabase, asociat identificatorului unic al contului.',
+
+  'privacy.s2_3Title': '2.3 Preferințe de regiune și calendar',
+  'privacy.s2_3Content': 'Preferința de regiune și calendar liturgic este stocată local pe dispozitiv și nu este transmisă serverului în mod automat.',
+
+  'privacy.s2_4Title': '2.4 Conversații AI',
+  'privacy.s2_4Content1': 'Când un utilizator autentificat trimite un mesaj către Chatul AI, conținutul mesajelor și răspunsurilor este stocat în tabelele `chat_threads` și `chat_messages` din Supabase, asociat contului.',
+  'privacy.s2_4Content2': 'Utilizarea zilnică a mesajelor AI este înregistrată în tabelul `usage_daily`. Pentru utilizatorii neautentificați se utilizează un identificator generat local; utilizarea este înregistrată în `guest_usage_daily`.',
+  'privacy.s2_4Content3': 'Nu introduceți informații personale sensibile în conversațiile AI. Mesajele reflectă ceea ce furnizați în mod voluntar.',
+
+  'privacy.s2_5Title': '2.5 Preferințe de notificări',
+  'privacy.s2_5Content': 'Dacă activați notificările, starea preferinței este stocată în tabelul `notification_preferences`. Un Expo Push Token este transmis și stocat server-side. Token-ul este regenerat de sistemul Expo și nu conține date personale.',
+
+  'privacy.s2_6Title': '2.6 Abonamente și plăți',
+  'privacy.s2_6Content': 'Plățile sunt gestionate de Apple App Store, Google Play și RevenueCat. Starea abonamentului este sincronizată printr-un webhook server-side și stocată în tabelul `subscriptions` din Supabase. Nu stocăm date de card bancar.',
+
+  'privacy.s2_7Title': '2.7 Rugăciuni și preferințe',
+  'privacy.s2_7Content': 'Rugăciunile sunt stocate în tabelul `prayers` din Supabase. Favoritele salvate sunt stocate în tabelul `favorites` asociat contului.',
+
+  'privacy.s2_8Title': '2.8 Conținut audio generat de AI',
+  'privacy.s2_8Content': 'La cerere, aplicația poate genera audio pentru o rugăciune folosind OpenAI text-to-speech. Fișierul rezultat este stocat în Supabase Storage. Generarea are loc pe server.',
+
+  'privacy.s2_9Title': '2.9 Starea serviciilor LIVE',
+  'privacy.s2_9Content': 'Pagina "Slujbe LIVE" afișează starea live a surselor video selectate. Verificarea este realizată pe server folosind YouTube Data API și este temporar cache-uită în tabelul `live_service_status_cache`. Nu sunt colectate date personale în legătură cu utilizarea acestei funcții.',
+
+  'privacy.s2_10Title': '2.10 Loguri de erori',
+  'privacy.s2_10Content': 'În cazul unor erori de conexiune, anumite loguri pot conține informații despre cererea eșuată. Aceste loguri nu conțin date personale în mod deliberat și nu sunt folosite în scopuri de analiză sau urmărire.',
+
+  'privacy.s3Title': '3. Ce date NU colectăm',
+  'privacy.s3Content': 'Ortodoxia nu folosește servicii de analiză (analytics), raportare a erorilor (crash reporting) sau urmărire a utilizatorilor (tracking). Nu colectăm date din cameră, microfon, fotografii sau locație.',
+
+  'privacy.s4Title': '4. Terți care procesează date',
+  'privacy.s4Intro': 'Datele sunt procesate prin intermediul următoarelor servicii terțe:',
+  'privacy.s4ThService': 'Serviciu',
+  'privacy.s4ThPurpose': 'Scop',
+  'privacy.s4RowSupabasePurpose': 'Bază de date, autentificare, stocare fișiere',
+  'privacy.s4RowOpenAIPurpose': 'Răspunsuri AI și conținut audio',
+  'privacy.s4RowRevenueCatPurpose': 'Gestionarea abonamentelor',
+  'privacy.s4RowAppStorePurpose': 'Plăți și drepturi de abonament',
+  'privacy.s4RowYouTubePurpose': 'Verificarea stării live',
+  'privacy.s4RowExpoPurpose': 'Platforma aplicației; Expo Push',
+
+  'privacy.s5Title': '5. Conținut extern',
+  'privacy.s5Content': 'Aplicația poate afișa sau lega către conținut extern — transmisiuni live și resurse editoriale. Ortodoxia nu este responsabilă pentru conținutul sau practicile de confidențialitate ale acestor servicii externe.',
+
+  'privacy.s6Title': '6. Securitate',
+  'privacy.s6Content': 'Datele sunt transmise prin HTTPS/TLS. Parolele sunt hash-uite. Cheile API sunt păstrate exclusiv server-side. Nicio măsură de securitate nu oferă o garanție absolută.',
+
+  'privacy.s7Title': '7. Drepturile dumneavoastră',
+  'privacy.s7Content': 'Este posibil să aveți dreptul de a accesa, rectifica sau șterge datele dumneavoastră. Contactați operatorul: [ADRESĂ DE SUPORT DE COMPLETAT]',
+
+  'privacy.s8Title': '8. Ștergerea contului vs. anularea abonamentului',
+  'privacy.s8DeleteLabel': 'Ștergerea contului',
+  'privacy.s8DeleteBody': ' elimină profilul și datele asociate din Supabase. Contul nu mai poate fi recuperat.',
+  'privacy.s8CancelLabel': 'Anularea abonamentului',
+  'privacy.s8CancelBody': ' (din App Store / Google Play) oprește doar reînnoirea automată. Drepturile Premium rămân valabile până la sfârșitul perioadei deja plătite.',
+  'privacy.s8Uninstall': 'Dezinstalarea aplicației NU anulează abonamentul.',
+
+  'privacy.s9Title': '9. Modificări ale politicii',
+  'privacy.s9Content': 'Această politică poate fi actualizată periodic. Modificările semnificative vor fi comunicate prin aplicație sau prin e-mail.',
+
+  'privacy.s10Title': '10. Contact',
+  'privacy.s10Support': '[ADRESĂ DE SUPORT DE COMPLETAT]',
+  'privacy.s10PublicUrl': '[URL PUBLIC AL POLITICII DE COMPLETAT]',
 } as const;
 
 export type TranslationKey = keyof typeof ro;

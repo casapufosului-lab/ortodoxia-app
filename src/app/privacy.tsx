@@ -1,110 +1,113 @@
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+
 import { palette } from '@/constants/palette';
+import { useLocalization } from '@/providers/localization-provider';
 
 export default function PrivacyScreen() {
+  const { t } = useLocalization();
   return (
     <SafeAreaView edges={['top']} style={styles.safe}>
       <ScrollView contentContainerStyle={styles.content}>
-        <Text style={styles.h1}>Politica de confidențialitate</Text>
-        <Text style={styles.meta}>Versiune: 1.0 — [DATA DE COMPLETAT]</Text>
+        <Text style={styles.h1}>{t('privacy.title')}</Text>
+        <Text style={styles.meta}>{t('privacy.meta')}</Text>
 
-        <Text style={styles.h2}>1. Operator</Text>
-        <Text style={styles.p}>[OPERATOR/ENTITATE LEGALĂ DE COMPLETAT]</Text>
-        <Text style={styles.p}>[ADRESĂ DE SUPORT DE COMPLETAT]</Text>
-        <Text style={styles.p}>[ADRESĂ POȘTALĂ DE COMPLETAT]</Text>
+        <Text style={styles.h2}>{t('privacy.s1Title')}</Text>
+        <Text style={styles.p}>{t('privacy.s1Entity')}</Text>
+        <Text style={styles.p}>{t('privacy.s1Support')}</Text>
+        <Text style={styles.p}>{t('privacy.s1Postal')}</Text>
 
-        <Text style={styles.h2}>2. Ce date colectăm</Text>
-        <Text style={styles.p}>Ortodoxia procesează următoarele categorii de date, strict în măsura în care funcționalitățile aplicației le utilizează.</Text>
+        <Text style={styles.h2}>{t('privacy.s2Title')}</Text>
+        <Text style={styles.p}>{t('privacy.s2Intro')}</Text>
 
-        <Text style={styles.h3}>2.1 Date de autentificare</Text>
-        <Text style={styles.p}>La crearea unui cont, colectăm adresa de e-mail și parola furnizate. Parola este stocată hash-uită (nu în plaintext) de către Supabase.</Text>
+        <Text style={styles.h3}>{t('privacy.s2_1Title')}</Text>
+        <Text style={styles.p}>{t('privacy.s2_1Content')}</Text>
 
-        <Text style={styles.h3}>2.2 Profil utilizator</Text>
-        <Text style={styles.p}>Numele de afișare setat de utilizator este stocat în tabelul `profiles` din Supabase, asociat identificatorului unic al contului.</Text>
+        <Text style={styles.h3}>{t('privacy.s2_2Title')}</Text>
+        <Text style={styles.p}>{t('privacy.s2_2Content')}</Text>
 
-        <Text style={styles.h3}>2.3 Preferințe de regiune și calendar</Text>
-        <Text style={styles.p}>Preferința de regiune și calendar liturgic este stocată local pe dispozitiv și nu este transmisă serverului în mod automat.</Text>
+        <Text style={styles.h3}>{t('privacy.s2_3Title')}</Text>
+        <Text style={styles.p}>{t('privacy.s2_3Content')}</Text>
 
-        <Text style={styles.h3}>2.4 Conversații AI</Text>
-        <Text style={styles.p}>Când un utilizator autentificat trimite un mesaj către Chatul AI, conținutul mesajelor și răspunsurilor este stocat în tabelele `chat_threads` și `chat_messages` din Supabase, asociat contului.</Text>
-        <Text style={styles.p}>Utilizarea zilnică a mesajelor AI este înregistrată în tabelul `usage_daily`. Pentru utilizatorii neautentificați se utilizează un identificator generat local; utilizarea este înregistrată în `guest_usage_daily`.</Text>
-        <Text style={styles.p}>Nu introduceți informații personale sensibile în conversațiile AI. Mesajele reflectă ceea ce furnizați în mod voluntar.</Text>
+        <Text style={styles.h3}>{t('privacy.s2_4Title')}</Text>
+        <Text style={styles.p}>{t('privacy.s2_4Content1')}</Text>
+        <Text style={styles.p}>{t('privacy.s2_4Content2')}</Text>
+        <Text style={styles.p}>{t('privacy.s2_4Content3')}</Text>
 
-        <Text style={styles.h3}>2.5 Preferințe de notificări</Text>
-        <Text style={styles.p}>Dacă activați notificările, starea preferinței este stocată în tabelul `notification_preferences`. Un Expo Push Token este transmis și stocat server-side. Token-ul este regenerat de sistemul Expo și nu conține date personale.</Text>
+        <Text style={styles.h3}>{t('privacy.s2_5Title')}</Text>
+        <Text style={styles.p}>{t('privacy.s2_5Content')}</Text>
 
-        <Text style={styles.h3}>2.6 Abonamente și plăți</Text>
-        <Text style={styles.p}>Plățile sunt gestionate de Apple App Store, Google Play și RevenueCat. Starea abonamentului este sincronizată printr-un webhook server-side și stocată în tabelul `subscriptions` din Supabase. Nu stocăm date de card bancar.</Text>
+        <Text style={styles.h3}>{t('privacy.s2_6Title')}</Text>
+        <Text style={styles.p}>{t('privacy.s2_6Content')}</Text>
 
-        <Text style={styles.h3}>2.7 Rugăciuni și preferințe</Text>
-        <Text style={styles.p}>Rugăciunile sunt stocate în tabelul `prayers` din Supabase. Favoritele salvate sunt stocate în tabelul `favorites` asociat contului.</Text>
+        <Text style={styles.h3}>{t('privacy.s2_7Title')}</Text>
+        <Text style={styles.p}>{t('privacy.s2_7Content')}</Text>
 
-        <Text style={styles.h3}>2.8 Conținut audio generat de AI</Text>
-        <Text style={styles.p}>La cerere, aplicația poate genera audio pentru o rugăciune folosind OpenAI text-to-speech. Fișierul rezultat este stocat în Supabase Storage. Generarea are loc pe server.</Text>
+        <Text style={styles.h3}>{t('privacy.s2_8Title')}</Text>
+        <Text style={styles.p}>{t('privacy.s2_8Content')}</Text>
 
-        <Text style={styles.h3}>2.9 Starea serviciilor LIVE</Text>
-        <Text style={styles.p}>Pagina &quot;Slujbe LIVE&quot; afișează starea live a surselor video selectate. Verificarea este realizată pe server folosind YouTube Data API și este temporar cache-uită în tabelul `live_service_status_cache`. Nu sunt colectate date personale în legătură cu utilizarea acestei funcții.</Text>
+        <Text style={styles.h3}>{t('privacy.s2_9Title')}</Text>
+        <Text style={styles.p}>{t('privacy.s2_9Content')}</Text>
 
-        <Text style={styles.h3}>2.10 Loguri de erori</Text>
-        <Text style={styles.p}>În cazul unor erori de conexiune, anumite loguri pot conține informații despre cererea eșuată. Aceste loguri nu conțin date personale în mod deliberat și nu sunt folosite în scopuri de analiză sau urmărire.</Text>
+        <Text style={styles.h3}>{t('privacy.s2_10Title')}</Text>
+        <Text style={styles.p}>{t('privacy.s2_10Content')}</Text>
 
-        <Text style={styles.h2}>3. Ce date NU colectăm</Text>
-        <Text style={styles.p}>Ortodoxia nu folosește servicii de analiză (analytics), raportare a erorilor (crash reporting) sau urmărire a utilizatorilor (tracking). Nu colectăm date din cameră, microfon, fotografii sau locație.</Text>
+        <Text style={styles.h2}>{t('privacy.s3Title')}</Text>
+        <Text style={styles.p}>{t('privacy.s3Content')}</Text>
 
-        <Text style={styles.h2}>4. Terți care procesează date</Text>
-        <Text style={styles.p}>Datele sunt procesate prin intermediul următoarelor servicii terțe:</Text>
+        <Text style={styles.h2}>{t('privacy.s4Title')}</Text>
+        <Text style={styles.p}>{t('privacy.s4Intro')}</Text>
         <View style={styles.table}>
           <View style={styles.tableHeader}>
-            <Text style={styles.th}>Serviciu</Text>
-            <Text style={styles.th}>Scop</Text>
+            <Text style={styles.th}>{t('privacy.s4ThService')}</Text>
+            <Text style={styles.th}>{t('privacy.s4ThPurpose')}</Text>
           </View>
           <View style={styles.tableRow}>
             <Text style={styles.td}>Supabase</Text>
-            <Text style={styles.td}>Bază de date, autentificare, stocare fișiere</Text>
+            <Text style={styles.td}>{t('privacy.s4RowSupabasePurpose')}</Text>
           </View>
           <View style={styles.tableRow}>
             <Text style={styles.td}>OpenAI</Text>
-            <Text style={styles.td}>Răspunsuri AI și conținut audio</Text>
+            <Text style={styles.td}>{t('privacy.s4RowOpenAIPurpose')}</Text>
           </View>
           <View style={styles.tableRow}>
             <Text style={styles.td}>RevenueCat</Text>
-            <Text style={styles.td}>Gestionarea abonamentelor</Text>
+            <Text style={styles.td}>{t('privacy.s4RowRevenueCatPurpose')}</Text>
           </View>
           <View style={styles.tableRow}>
             <Text style={styles.td}>Apple App Store / Google Play</Text>
-            <Text style={styles.td}>Plăți și drepturi de abonament</Text>
+            <Text style={styles.td}>{t('privacy.s4RowAppStorePurpose')}</Text>
           </View>
           <View style={styles.tableRow}>
             <Text style={styles.td}>YouTube Data API</Text>
-            <Text style={styles.td}>Verificarea stării live</Text>
+            <Text style={styles.td}>{t('privacy.s4RowYouTubePurpose')}</Text>
           </View>
           <View style={styles.tableRow}>
             <Text style={styles.td}>Expo / React Native</Text>
-            <Text style={styles.td}>Platforma aplicației; Expo Push</Text>
+            <Text style={styles.td}>{t('privacy.s4RowExpoPurpose')}</Text>
           </View>
         </View>
 
-        <Text style={styles.h2}>5. Conținut extern</Text>
-        <Text style={styles.p}>Aplicația poate afișa sau lega către conținut extern — transmisiuni live și resurse editoriale. Ortodoxia nu este responsabilă pentru conținutul sau practicile de confidențialitate ale acestor servicii externe.</Text>
+        <Text style={styles.h2}>{t('privacy.s5Title')}</Text>
+        <Text style={styles.p}>{t('privacy.s5Content')}</Text>
 
-        <Text style={styles.h2}>6. Securitate</Text>
-        <Text style={styles.p}>Datele sunt transmise prin HTTPS/TLS. Parolele sunt hash-uite. Cheile API sunt păstrate exclusiv server-side. Nicio măsură de securitate nu oferă o garanție absolută.</Text>
+        <Text style={styles.h2}>{t('privacy.s6Title')}</Text>
+        <Text style={styles.p}>{t('privacy.s6Content')}</Text>
 
-        <Text style={styles.h2}>7. Drepturile dumneavoastră</Text>
-        <Text style={styles.p}>Este posibil să aveți dreptul de a accesa, rectifica sau șterge datele dumneavoastră. Contactați operatorul: [ADRESĂ DE SUPORT DE COMPLETAT]</Text>
+        <Text style={styles.h2}>{t('privacy.s7Title')}</Text>
+        <Text style={styles.p}>{t('privacy.s7Content')}</Text>
 
-        <Text style={styles.h2}>8. Ștergerea contului vs. anularea abonamentului</Text>
-        <Text style={styles.p}><Text style={styles.bold}>Ștergerea contului</Text> elimină profilul și datele asociate din Supabase. Contul nu mai poate fi recuperat.</Text>
-        <Text style={styles.p}><Text style={styles.bold}>Anularea abonamentului</Text> (din App Store / Google Play) oprește doar reînnoirea automată. Drepturile Premium rămân valabile până la sfârșitul perioadei deja plătite.</Text>
-        <Text style={styles.p}>Dezinstalarea aplicației NU anulează abonamentul.</Text>
+        <Text style={styles.h2}>{t('privacy.s8Title')}</Text>
+        <Text style={styles.p}><Text style={styles.bold}>{t('privacy.s8DeleteLabel')}</Text>{t('privacy.s8DeleteBody')}</Text>
+        <Text style={styles.p}><Text style={styles.bold}>{t('privacy.s8CancelLabel')}</Text>{t('privacy.s8CancelBody')}</Text>
+        <Text style={styles.p}>{t('privacy.s8Uninstall')}</Text>
 
-        <Text style={styles.h2}>9. Modificări ale politicii</Text>
-        <Text style={styles.p}>Această politică poate fi actualizată periodic. Modificările semnificative vor fi comunicate prin aplicație sau prin e-mail.</Text>
+        <Text style={styles.h2}>{t('privacy.s9Title')}</Text>
+        <Text style={styles.p}>{t('privacy.s9Content')}</Text>
 
-        <Text style={styles.h2}>10. Contact</Text>
-        <Text style={styles.p}>[ADRESĂ DE SUPORT DE COMPLETAT]</Text>
-        <Text style={styles.p}>[URL PUBLIC AL POLITICII DE COMPLETAT]</Text>
+        <Text style={styles.h2}>{t('privacy.s10Title')}</Text>
+        <Text style={styles.p}>{t('privacy.s10Support')}</Text>
+        <Text style={styles.p}>{t('privacy.s10PublicUrl')}</Text>
       </ScrollView>
     </SafeAreaView>
   );
