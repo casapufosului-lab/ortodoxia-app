@@ -6,9 +6,11 @@ import { ActivityIndicator, KeyboardAvoidingView, Platform, Pressable, StyleShee
 
 import { Card, PageHeader, PrimaryButton, Screen } from '@/components/mvp-ui';
 import { palette } from '@/constants/palette';
+import { type TranslationKey } from '@/i18n/config';
 import { supabase } from '@/lib/supabase';
 import { FREE_DAILY_AI_LIMIT, hasPremiumAccess, PREMIUM_DAILY_AI_LIMIT, type SubscriptionRow } from '@/lib/subscription';
 import { useAuth } from '@/providers/auth-provider';
+import { useLocalization } from '@/providers/localization-provider';
 
 type Message = { id: string; role: 'user' | 'assistant'; text: string };
 
@@ -19,11 +21,13 @@ type ChatResponse = {
   dailyLimit: number;
 };
 
-const welcomeMessage: Message = {
-  id: 'welcome',
-  role: 'assistant',
-  text: 'Bine ai venit. Poți întreba despre rugăciune, sărbători sau termeni din credința ortodoxă.',
-};
+function welcomeMessage(t: (key: TranslationKey) => string): Message {
+  return {
+    id: 'welcome',
+    role: 'assistant',
+    text: t('chat.welcome'),
+  };
+}
 
 const GUEST_ID_STORAGE_KEY = 'orthodox_guest_id';
 
@@ -38,8 +42,9 @@ function localDateKey() {
 
 export default function ChatScreen() {
   const { user } = useAuth();
+  const { t } = useLocalization();
   const [input, setInput] = useState('');
-  const [messages, setMessages] = useState<Message[]>([welcomeMessage]);
+  const [messages, setMessages] = useState<Message[]>([welcomeMessage(t)]);
   const [threadId, setThreadId] = useState<string | null>(null);
   const [dailyLimit, setDailyLimit] = useState(FREE_DAILY_AI_LIMIT);
   const [remaining, setRemaining] = useState(FREE_DAILY_AI_LIMIT);
@@ -64,7 +69,7 @@ export default function ChatScreen() {
     setErrorMessage('');
 
     if (!user) {
-      setMessages([welcomeMessage]);
+      setMessages([welcomeMessage(t)]);
       setThreadId(null);
       setDailyLimit(FREE_DAILY_AI_LIMIT);
       setRemaining(FREE_DAILY_AI_LIMIT);
@@ -95,7 +100,7 @@ export default function ChatScreen() {
     ]);
 
     if (usageResult.error || threadResult.error || subscriptionResult.error) {
-      setErrorMessage('Conversația nu a putut fi încărcată. Încearcă din nou.');
+      setErrorMessage(t('chat.loadError'));
       setIsLoading(false);
       return;
     }
@@ -118,7 +123,7 @@ export default function ChatScreen() {
         .limit(50);
 
       if (error) {
-        setErrorMessage('Mesajele vechi nu au putut fi încărcate.');
+        setErrorMessage(t('chat.oldMessagesLoadError'));
       } else if (data && data.length > 0) {
         setMessages(data.map((message) => ({
           id: message.id,
@@ -126,14 +131,14 @@ export default function ChatScreen() {
           text: message.content,
         })));
       } else {
-        setMessages([welcomeMessage]);
+        setMessages([welcomeMessage(t)]);
       }
     } else {
-      setMessages([welcomeMessage]);
+      setMessages([welcomeMessage(t)]);
     }
 
     setIsLoading(false);
-  }, [ensureGuestId, user]);
+  }, [ensureGuestId, t, user]);
 
   useEffect(() => {
     const timeoutId = setTimeout(() => void loadConversation(), 0);
@@ -146,12 +151,12 @@ export default function ChatScreen() {
     if (!clean) return;
 
     if (remaining <= 0) {
-      setErrorMessage(`Ai folosit cele ${dailyLimit} de întrebări gratuite disponibile azi. Creează un cont pentru a continua.`);
+      setErrorMessage(t('chat.freeLimitReached').replace('{count}', String(dailyLimit)));
       return;
     }
 
     if (clean.length > 1200) {
-      setErrorMessage('Întrebarea poate avea cel mult 1.200 de caractere.');
+      setErrorMessage(t('chat.maxLengthError'));
       return;
     }
 
@@ -171,7 +176,7 @@ export default function ChatScreen() {
       });
 
       if (error || !data?.reply) {
-        let message = 'Răspunsul AI nu a putut fi generat. Încearcă din nou.';
+        let message = t('chat.aiResponseError');
         if (error instanceof FunctionsHttpError) {
           try {
             const details = await error.context.json();
@@ -198,7 +203,7 @@ export default function ChatScreen() {
         text: data.reply,
       }]);
     } catch {
-      setErrorMessage('Serviciul nu este disponibil momentan. Verifică conexiunea și încearcă din nou.');
+      setErrorMessage(t('chat.serviceUnavailableError'));
       setMessages((current) => current.filter((m) => m.id !== optimisticId));
       setInput(clean);
     } finally {
@@ -210,28 +215,34 @@ export default function ChatScreen() {
   return (
     <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <Screen>
-        <PageHeader eyebrow="Ghid informativ" title="Întreabă" subtitle="Răspunsurile AI pot greși și nu înlocuiesc sfatul preotului duhovnic." />
+        <PageHeader eyebrow={t('chat.eyebrow')} title={t('chat.title')} subtitle={t('chat.subtitle')} />
         <Card style={styles.limitCard}>
-          <Text style={styles.limit}>{user ? `${dailyLimit === PREMIUM_DAILY_AI_LIMIT ? 'Plan Premium' : 'Plan gratuit'}: ${remaining} din ${dailyLimit} mesaje rămase azi` : `${remaining} din ${dailyLimit} întrebări gratuite rămase azi`}</Text>
+          <Text style={styles.limit}>{user ? t('chat.premiumLimitLabel')
+            .replace('{plan}', dailyLimit === PREMIUM_DAILY_AI_LIMIT ? t('chat.planPremium') : t('chat.planFree'))
+            .replace('{count}', String(remaining))
+            .replace('{limit}', String(dailyLimit))
+            : t('chat.freeLimitLabel')
+              .replace('{count}', String(remaining))
+              .replace('{limit}', String(dailyLimit))}</Text>
         </Card>
         {remaining <= 0 ? (
           <Card style={styles.errorCard}>
-            <Text style={styles.errorText}>Ai folosit toate cele {dailyLimit} mesaje disponibile azi.</Text>
-            <Text style={styles.premiumOffer}>Pentru a continua conversația, alege planul Premium, 9,99 lei/lună.</Text>
-            <PrimaryButton label="Alege planul Premium" onPress={() => router.push('/premium')} />
+            <Text style={styles.errorText}>{t('chat.noMessagesLeft').replace('{limit}', String(dailyLimit))}</Text>
+            <Text style={styles.premiumOffer}>{t('chat.premiumOffer')}</Text>
+            <PrimaryButton label={t('chat.choosePremiumButton')} onPress={() => router.push('/premium')} />
           </Card>
         ) : errorMessage ? (
           <Card style={styles.errorCard}>
             <Text style={styles.errorText}>{errorMessage}</Text>
             <Pressable accessibilityRole="button" onPress={() => void loadConversation()}>
-              <Text style={styles.retry}>Reîncarcă conversația</Text>
+              <Text style={styles.retry}>{t('chat.retry')}</Text>
             </Pressable>
           </Card>
         ) : null}
         {isLoading ? (
           <View style={styles.loading}>
             <ActivityIndicator color={palette.blue} />
-            <Text style={styles.loadingText}>Se încarcă conversația...</Text>
+            <Text style={styles.loadingText}>{t('chat.loading')}</Text>
           </View>
         ) : (
           <View style={styles.messages}>
@@ -243,17 +254,17 @@ export default function ChatScreen() {
             {isSending ? (
               <View style={[styles.message, styles.assistantMessage, styles.thinking]}>
                 <ActivityIndicator size="small" color={palette.blue} />
-                <Text style={styles.assistantText}>Pregătesc răspunsul...</Text>
+                <Text style={styles.assistantText}>{t('chat.thinking')}</Text>
               </View>
             ) : null}
           </View>
         )}
         <View style={styles.composer}>
           <TextInput
-            accessibilityLabel="Scrie întrebarea ta"
+            accessibilityLabel={t('chat.inputPlaceholder')}
             value={input}
             onChangeText={setInput}
-            placeholder="Scrie întrebarea ta"
+            placeholder={t('chat.inputPlaceholder')}
             placeholderTextColor={palette.muted}
             multiline
             editable={!isSending}
@@ -261,7 +272,7 @@ export default function ChatScreen() {
             style={styles.input}
           />
           <Pressable accessibilityRole="button" disabled={isSending} onPress={() => void send()} style={[styles.send, isSending && styles.disabled]}>
-            <Text style={styles.sendText}>Trimite</Text>
+            <Text style={styles.sendText}>{t('chat.sendButton')}</Text>
           </Pressable>
         </View>
       </Screen>
