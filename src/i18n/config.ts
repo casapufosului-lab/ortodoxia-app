@@ -1,6 +1,9 @@
 export type CountryCode = 'RO' | 'MD';
 export const SUPPORTED_LANGUAGES = ['ro', 'en', 'el', 'sr', 'bg', 'mk', 'uk', 'ka', 'ru', 'sq'] as const;
 export type LanguageCode = typeof SUPPORTED_LANGUAGES[number];
+export const COMPLETE_LANGUAGES = ['ro'] as const;
+export type CompleteLanguageCode = typeof COMPLETE_LANGUAGES[number];
+
 
 export function isSupportedLanguage(code: string): code is LanguageCode {
   return (SUPPORTED_LANGUAGES as readonly string[]).includes(code);
@@ -606,15 +609,15 @@ const ro = {
 
 export type TranslationKey = keyof typeof ro;
 
-const en: Partial<Record<TranslationKey, string>> = {};
-const el: Partial<Record<TranslationKey, string>> = {};
-const sr: Partial<Record<TranslationKey, string>> = {};
-const bg: Partial<Record<TranslationKey, string>> = {};
-const mk: Partial<Record<TranslationKey, string>> = {};
-const uk: Partial<Record<TranslationKey, string>> = {};
-const ka: Partial<Record<TranslationKey, string>> = {};
-const ru: Partial<Record<TranslationKey, string>> = {};
-const sq: Partial<Record<TranslationKey, string>> = {};
+const en = {} satisfies Partial<Record<TranslationKey, string>>;
+const el = {} satisfies Partial<Record<TranslationKey, string>>;
+const sr = {} satisfies Partial<Record<TranslationKey, string>>;
+const bg = {} satisfies Partial<Record<TranslationKey, string>>;
+const mk = {} satisfies Partial<Record<TranslationKey, string>>;
+const uk = {} satisfies Partial<Record<TranslationKey, string>>;
+const ka = {} satisfies Partial<Record<TranslationKey, string>>;
+const ru = {} satisfies Partial<Record<TranslationKey, string>>;
+const sq = {} satisfies Partial<Record<TranslationKey, string>>;
 
 const translations: Record<LanguageCode, Partial<Record<TranslationKey, string>>> = {
   ro,
