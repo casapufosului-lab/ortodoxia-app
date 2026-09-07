@@ -48,7 +48,7 @@ test('REAL translate fallback', () => {
   const ruValue = config.translate('ru', 'nav.home');
   const sqValue = config.translate('sq', 'nav.home');
 
-  assert.equal(enValue, roValue);
+  assert.equal(enValue, 'Home');
   assert.equal(elValue, roValue);
   assert.equal(ruValue, roValue);
   assert.equal(sqValue, roValue);
