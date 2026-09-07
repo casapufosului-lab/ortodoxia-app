@@ -3,13 +3,13 @@ import * as Device from 'expo-device';
 import * as Notifications from 'expo-notifications';
 import { Platform } from 'react-native';
 
-export async function registerForPushNotificationsAsync() {
+export async function registerForPushNotificationsAsync(channelName: string) {
   if (Platform.OS === 'web') throw new Error('Notificările push se configurează în aplicația mobilă.');
   if (!Device.isDevice) throw new Error('Notificările push se testează pe un telefon real.');
 
   if (Platform.OS === 'android') {
     await Notifications.setNotificationChannelAsync('daily-content', {
-      name: 'Mesajul zilei',
+      name: channelName,
       importance: Notifications.AndroidImportance.DEFAULT,
       sound: 'default',
     });

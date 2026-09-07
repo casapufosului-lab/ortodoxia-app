@@ -1,10 +1,29 @@
+/** Stable error codes for known account-deletion failure cases. */
+export type AccountDeletionErrorCode = 'AUTH_REQUIRED' | 'SERVICE_UNAVAILABLE' | 'DELETE_FAILED';
+
+/**
+ * Error thrown by {@link requestAccountDeletion} for known failure cases.
+ * The `code` property identifies the failure type so the UI layer can map it
+ * to a localized message via i18n. Dynamic backend errors are thrown as plain
+ * `Error` objects with the raw message.
+ */
+export class AccountDeletionError extends Error {
+  readonly code: AccountDeletionErrorCode;
+  constructor(code: AccountDeletionErrorCode) {
+    super(code);
+    this.code = code;
+    this.name = 'AccountDeletionError';
+  }
+}
+
 /**
  * Invoke the `delete-account` Edge Function.
  *
  * The Edge Function derives the target user ID **only** from the verified
  * JWT in the Authorization header. The request body is intentionally empty.
  *
- * @throws {Error} with a user-friendly Romanian message on failure.
+ * @throws {AccountDeletionError} with a stable code for known failure cases.
+ * @throws {Error} with the backend error message for unknown failures.
  */
 export async function requestAccountDeletion(): Promise<void> {
   // Dynamic import avoids bundling Supabase at the top level for tree-shaking.
@@ -12,12 +31,12 @@ export async function requestAccountDeletion(): Promise<void> {
 
   const { data: { session } } = await supabase.auth.getSession();
   if (!session?.access_token) {
-    throw new Error('Autentificare necesară. Conectează-te din nou.');
+    throw new AccountDeletionError('AUTH_REQUIRED');
   }
 
   const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL;
   if (!supabaseUrl) {
-    throw new Error('Serviciul nu este configurat. Încearcă mai târziu.');
+    throw new AccountDeletionError('SERVICE_UNAVAILABLE');
   }
 
   const response = await fetch(`${supabaseUrl}/functions/v1/delete-account`, {
@@ -32,7 +51,9 @@ export async function requestAccountDeletion(): Promise<void> {
   const body = await response.json().catch(() => ({}));
 
   if (!response.ok) {
-    const message = typeof body.error === 'string' ? body.error : 'Contul nu a putut fi șters. Încearcă din nou.';
-    throw new Error(message);
+    if (typeof body.error === 'string') {
+      throw new Error(body.error);
+    }
+    throw new AccountDeletionError('DELETE_FAILED');
   }
 }

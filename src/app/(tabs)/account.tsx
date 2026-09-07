@@ -7,7 +7,7 @@ import { palette } from '@/constants/palette';
 import { useSubscription } from '@/hooks/use-subscription';
 import { SUPPORTED_REGIONS } from '@/i18n/config';
 import type { TranslationKey } from '@/i18n/config';
-import { requestAccountDeletion } from '@/lib/account-deletion';
+import { AccountDeletionError, requestAccountDeletion } from '@/lib/account-deletion';
 import { registerForPushNotificationsAsync } from '@/lib/notifications';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/providers/auth-provider';
@@ -169,7 +169,17 @@ export default function AccountScreen() {
       await signOut();
       router.replace('/');
     } catch (error) {
-      const message = error instanceof Error ? error.message : t('account.deleteFailedFallback');
+      let message: string;
+      if (error instanceof AccountDeletionError) {
+        const codeToKey: Record<string, TranslationKey> = {
+          AUTH_REQUIRED: 'account.deleteAuthRequired',
+          SERVICE_UNAVAILABLE: 'account.deleteServiceUnavailable',
+          DELETE_FAILED: 'account.deleteFailedFallback',
+        };
+        message = t(codeToKey[error.code] ?? 'account.deleteFailedFallback');
+      } else {
+        message = error instanceof Error ? error.message : t('account.deleteFailedFallback');
+      }
       setDeleteError(message);
       Alert.alert(t('account.errorTitle'), message);
     } finally {
@@ -185,7 +195,7 @@ export default function AccountScreen() {
     setNotificationMessage('');
     setNotificationBusy(true);
     try {
-      const registration = await registerForPushNotificationsAsync();
+      const registration = await registerForPushNotificationsAsync(t('account.notificationChannelName'));
       const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || region.timeZone;
       const preferenceResult = await supabase.from('notification_preferences').upsert({
         user_id: user.id,

@@ -84,6 +84,41 @@ test('client helper throws on failure', () => {
   assert.ok(clientHelper.includes('throw new Error'));
 });
 
+// ─── Localized error codes ────────────────────────────────────────────────────
+
+test('client helper uses AccountDeletionError for known static cases', () => {
+  assert.ok(clientHelper.includes('AccountDeletionError'));
+  assert.ok(clientHelper.includes("'AUTH_REQUIRED'"));
+  assert.ok(clientHelper.includes("'SERVICE_UNAVAILABLE'"));
+  assert.ok(clientHelper.includes("'DELETE_FAILED'"));
+});
+
+test('client helper preserves dynamic backend error as plain Error', () => {
+  assert.ok(clientHelper.includes('typeof body.error'));
+  assert.ok(clientHelper.includes('throw new Error(body.error)'));
+});
+
+test('i18n config has exact Romanian text for account deletion errors', () => {
+  assert.ok(i18n.includes("'account.deleteAuthRequired': 'Autentificare necesară. Conectează-te din nou.'"));
+  assert.ok(i18n.includes("'account.deleteServiceUnavailable': 'Serviciul nu este configurat. Încearcă mai târziu.'"));
+  assert.ok(i18n.includes("'account.deleteFailedFallback': 'Contul nu a putut fi șters. Încearcă din nou.'"));
+});
+
+test('account.tsx maps AccountDeletionError codes to i18n keys', () => {
+  assert.ok(account.includes('AccountDeletionError'));
+  assert.ok(account.includes("'account.deleteAuthRequired'"));
+  assert.ok(account.includes("'account.deleteServiceUnavailable'"));
+  assert.ok(account.includes("'account.deleteFailedFallback'"));
+});
+
+test('i18n config has notification channel name', () => {
+  assert.ok(i18n.includes("'account.notificationChannelName': 'Mesajul zilei'"));
+});
+
+test('account.tsx passes notification channel name to registration', () => {
+  assert.ok(account.includes("t('account.notificationChannelName')"));
+});
+
 test('client helper does not send user ID in body', () => {
   assert.ok(!clientHelper.includes('userId'));
   assert.ok(!clientHelper.includes('user_id'));
