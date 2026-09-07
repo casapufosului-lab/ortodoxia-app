@@ -8,13 +8,16 @@ import {
   DEFAULT_COUNTRY,
   getRegion,
   translate,
+  resolveLanguageCode,
   type CalendarCode,
   type CountryCode,
+  type LanguageCode,
   type TranslationKey,
 } from '@/i18n/config';
 
 const COUNTRY_STORAGE_KEY = 'ortodoxia.country';
 const CALENDAR_STORAGE_KEY = 'ortodoxia.calendar-preferences';
+const LANGUAGE_STORAGE_KEY = 'ortodoxia.language';
 
 type CalendarPreferences = Partial<Record<CountryCode, CalendarCode>>;
 
@@ -24,9 +27,11 @@ type LocalizationContextValue = {
   calendarCode: CalendarCode | null;
   countryCode: CountryCode;
   isLoading: boolean;
+  languageCode: LanguageCode;
   region: ReturnType<typeof getRegion>;
   setCalendarCode: (calendarCode: CalendarCode) => Promise<void>;
   setCountryCode: (countryCode: CountryCode) => Promise<void>;
+  setLanguageCode: (languageCode: LanguageCode) => Promise<void>;
   t: (key: TranslationKey) => string;
 };
 
@@ -34,6 +39,7 @@ const LocalizationContext = createContext<LocalizationContextValue | null>(null)
 
 export function LocalizationProvider({ children }: PropsWithChildren) {
   const [countryCode, setCountryCodeState] = useState<CountryCode>(DEFAULT_COUNTRY);
+  const [languageCode, setLanguageCodeState] = useState<LanguageCode>('ro');
   const [calendarPreferences, setCalendarPreferences] = useState<CalendarPreferences>({});
   const [isLoading, setIsLoading] = useState(true);
 
@@ -43,10 +49,12 @@ export function LocalizationProvider({ children }: PropsWithChildren) {
     Promise.all([
       AsyncStorage.getItem(COUNTRY_STORAGE_KEY),
       AsyncStorage.getItem(CALENDAR_STORAGE_KEY),
+      AsyncStorage.getItem(LANGUAGE_STORAGE_KEY),
     ])
-      .then(([savedCountry, savedCalendars]) => {
+      .then(([savedCountry, savedCalendars, savedLanguage]) => {
         if (!active) return;
         setCountryCodeState(getRegion(savedCountry).countryCode);
+        setLanguageCodeState(resolveLanguageCode(savedLanguage));
         if (savedCalendars) {
           try {
             const parsed = JSON.parse(savedCalendars) as CalendarPreferences;
@@ -75,6 +83,7 @@ export function LocalizationProvider({ children }: PropsWithChildren) {
     calendarCode,
     countryCode,
     isLoading,
+    languageCode,
     region,
     setCalendarCode: async (nextCalendarCode) => {
       if (!getCalendar(nextCalendarCode, countryCode)) {
@@ -88,8 +97,12 @@ export function LocalizationProvider({ children }: PropsWithChildren) {
       setCountryCodeState(nextCountryCode);
       await AsyncStorage.setItem(COUNTRY_STORAGE_KEY, nextCountryCode);
     },
-    t: (key) => translate(region.languageCode, key),
-  }), [availableCalendars, calendar, calendarCode, calendarPreferences, countryCode, isLoading, region]);
+    setLanguageCode: async (nextLanguageCode) => {
+      setLanguageCodeState(nextLanguageCode);
+      await AsyncStorage.setItem(LANGUAGE_STORAGE_KEY, nextLanguageCode);
+    },
+    t: (key) => translate(languageCode, key),
+  }), [availableCalendars, calendar, calendarCode, calendarPreferences, countryCode, isLoading, languageCode, region]);
 
   return <LocalizationContext.Provider value={value}>{children}</LocalizationContext.Provider>;
 }
