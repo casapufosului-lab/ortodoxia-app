@@ -4,35 +4,37 @@ import { router, useLocalSearchParams } from 'expo-router';
 
 import { Card, PageHeader, PrimaryButton, Screen } from '@/components/mvp-ui';
 import { palette } from '@/constants/palette';
+import type { TranslationKey } from '@/i18n/config';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/providers/auth-provider';
+import { useLocalization } from '@/providers/localization-provider';
 
 /** Mapăm erorile Supabase la mesaje prietenoase în limba română. */
-function friendlyAuthError(error: unknown): string {
-  if (!(error instanceof Error)) return 'A apărut o eroare. Încearcă din nou.';
+function friendlyAuthError(error: unknown, t: (key: TranslationKey) => string): string {
+  if (!(error instanceof Error)) return t('auth.errorGeneric');
   const msg = error.message.toLowerCase();
   if (msg.includes('invalid login') || msg.includes('email or password') || msg.includes('invalid credentials')) {
-    return 'Email sau parolă incorectă.';
+    return t('auth.errorInvalidCredentials');
   }
   if (msg.includes('already registered') || msg.includes('already been registered') || msg.includes('user already')) {
-    return 'Există deja un cont cu acest email.';
+    return t('auth.errorAlreadyRegistered');
   }
   if (msg.includes('not confirmed') || msg.includes('email not confirmed')) {
-    return 'Emailul nu a fost confirmat. Verifică mesajul primit pe email.';
+    return t('auth.errorNotConfirmed');
   }
   if (msg.includes('password')) {
-    return 'Parola nu îndeplinește cerințele minime.';
+    return t('auth.errorPasswordRequirements');
   }
   if (msg.includes('expired')) {
-    return 'Link-ul de resetare a expirat. Te rugăm să ceri unul nou.';
+    return t('auth.errorResetExpired');
   }
   if (msg.includes('invalid') || msg.includes('token')) {
-    return 'Link-ul de resetare este invalid. Te rugăm să ceri unul nou.';
+    return t('auth.errorResetInvalid');
   }
   if (msg.includes('network') || msg.includes('fetch')) {
-    return 'Eroare de conexiune. Verifică internetul și încearcă din nou.';
+    return t('auth.errorNetwork');
   }
-  return 'A apărut o eroare. Încearcă din nou.';
+  return t('auth.errorGeneric');
 }
 
 function hasRecoveryRedirect() {
@@ -51,6 +53,7 @@ function clearRecoveryRedirect() {
 
 export default function AuthScreen() {
   const { isPasswordRecovery, signOut, user } = useAuth();
+  const { t } = useLocalization();
   const { returnTo } = useLocalSearchParams<{ returnTo?: string }>();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -75,22 +78,22 @@ export default function AuthScreen() {
   const validate = () => {
     if (activeMode === 'reset-password') {
       if (resetPassword.length < 6) {
-        Alert.alert('Parolă prea scurtă', 'Parola trebuie să aibă cel puțin 6 caractere.');
+        Alert.alert(t('auth.passwordTooShortTitle'), t('auth.passwordTooShortMessage'));
         return false;
       }
       if (resetPassword !== confirmResetPassword) {
-        Alert.alert('Parole diferite', 'Cele două parole nu sunt identice.');
+        Alert.alert(t('auth.passwordMismatchTitle'), t('auth.passwordMismatchMessage'));
         return false;
       }
       return true;
     }
 
     if (!email.trim() || !email.includes('@')) {
-      Alert.alert('Email invalid', 'Introdu o adresă de email validă.');
+      Alert.alert(t('auth.emailInvalidTitle'), t('auth.emailInvalidMessage'));
       return false;
     }
     if (password.length < 6) {
-      Alert.alert('Parolă prea scurtă', 'Parola trebuie să aibă cel puțin 6 caractere.');
+      Alert.alert(t('auth.passwordTooShortTitle'), t('auth.passwordTooShortMessage'));
       return false;
     }
     return true;
@@ -111,7 +114,7 @@ export default function AuthScreen() {
         setResetPassword('');
         setConfirmResetPassword('');
         setMode('sign-in');
-        Alert.alert('Parolă schimbată', 'Parola nouă a fost salvată. Te poți autentifica acum.');
+        Alert.alert(t('auth.passwordChangedTitle'), t('auth.passwordChangedMessage'));
         return;
       }
 
@@ -124,7 +127,7 @@ export default function AuthScreen() {
         if (error) throw error;
 
         if (!data.session) {
-          Alert.alert('Verifică emailul', 'Ți-am trimis un mesaj pentru confirmarea contului. După confirmare, revino și autentifică-te.');
+          Alert.alert(t('auth.checkEmailTitle'), t('auth.checkEmailMessage'));
           setMode('sign-in');
           return;
         }
@@ -135,7 +138,7 @@ export default function AuthScreen() {
 
       router.replace(destination);
     } catch (error) {
-      Alert.alert('Autentificarea nu a reușit', friendlyAuthError(error));
+      Alert.alert(t('auth.signInFailedTitle'), friendlyAuthError(error, t));
     } finally {
       setLoading(false);
     }
@@ -145,8 +148,8 @@ export default function AuthScreen() {
     if (loading) return; // FIX: Prevent duplicate submit
     setResetMessage(null);
     if (!email.trim() || !email.includes('@')) {
-      setResetMessage({ type: 'error', text: 'Introdu mai întâi o adresă de email validă.' });
-      Alert.alert('Email necesar', 'Introdu mai întâi adresa ta de email.');
+      setResetMessage({ type: 'error', text: t('auth.emailRequiredMessage') });
+      Alert.alert(t('auth.emailRequiredTitle'), t('auth.emailRequiredAlertMessage'));
       return;
     }
 
@@ -157,16 +160,16 @@ export default function AuthScreen() {
         : undefined;
       const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), redirectTo ? { redirectTo } : undefined);
       if (error) {
-        setResetMessage({ type: 'error', text: 'Nu am putut trimite mesajul: ' + friendlyAuthError(error) });
-        Alert.alert('Nu am putut trimite mesajul', friendlyAuthError(error));
+        setResetMessage({ type: 'error', text: t('auth.sendEmailErrorPrefix') + friendlyAuthError(error, t) });
+        Alert.alert(t('auth.sendEmailErrorTitle'), friendlyAuthError(error, t));
       } else {
-        setResetMessage({ type: 'success', text: 'Mesaj trimis. Verifică emailul pentru instrucțiunile de resetare.' });
+        setResetMessage({ type: 'success', text: t('auth.sendEmailSuccess') });
         router.replace('/reset-confirmation' as never);
       }
     } catch (error) {
-      const message = friendlyAuthError(error);
-      setResetMessage({ type: 'error', text: `Nu am putut trimite mesajul: ${message}` });
-      Alert.alert('Nu am putut trimite mesajul', message);
+      const message = friendlyAuthError(error, t);
+      setResetMessage({ type: 'error', text: t('auth.sendEmailErrorPrefix') + message });
+      Alert.alert(t('auth.sendEmailErrorTitle'), message);
     } finally {
       setLoading(false);
     }
@@ -175,41 +178,41 @@ export default function AuthScreen() {
   return (
     <Screen>
       <PageHeader
-        title={activeMode === 'reset-password' ? 'Alege o parolă nouă' : activeMode === 'sign-in' ? 'Bine ai revenit' : 'Creează contul'}
-        subtitle="Contul păstrează favoritele și conversațiile tale."
+        title={activeMode === 'reset-password' ? t('auth.titleReset') : activeMode === 'sign-in' ? t('auth.titleSignIn') : t('auth.titleSignUp')}
+        subtitle={t('auth.subtitle')}
       />
       <Card>
         {activeMode === 'sign-up' ? (
           <>
-            <Text style={styles.label}>Nume afișat</Text>
-            <TextInput autoCapitalize="words" value={displayName} onChangeText={setDisplayName} placeholder="Numele tău" placeholderTextColor={palette.muted} style={styles.input} />
+            <Text style={styles.label}>{t('auth.displayNameLabel')}</Text>
+            <TextInput autoCapitalize="words" value={displayName} onChangeText={setDisplayName} placeholder={t('auth.displayNamePlaceholder')} placeholderTextColor={palette.muted} style={styles.input} />
           </>
         ) : null}
         {activeMode !== 'reset-password' ? (
           <>
-            <Text style={styles.label}>Email</Text>
-            <TextInput autoCapitalize="none" autoComplete="email" keyboardType="email-address" value={email} onChangeText={setEmail} placeholder="nume@email.ro" placeholderTextColor={palette.muted} style={styles.input} />
-            <Text style={styles.label}>Parolă</Text>
-            <TextInput autoCapitalize="none" autoComplete="password" secureTextEntry value={password} onChangeText={setPassword} placeholder="Parola ta" placeholderTextColor={palette.muted} style={styles.input} />
+            <Text style={styles.label}>{t('auth.emailLabel')}</Text>
+            <TextInput autoCapitalize="none" autoComplete="email" keyboardType="email-address" value={email} onChangeText={setEmail} placeholder={t('auth.emailPlaceholder')} placeholderTextColor={palette.muted} style={styles.input} />
+            <Text style={styles.label}>{t('auth.passwordLabel')}</Text>
+            <TextInput autoCapitalize="none" autoComplete="password" secureTextEntry value={password} onChangeText={setPassword} placeholder={t('auth.passwordPlaceholder')} placeholderTextColor={palette.muted} style={styles.input} />
           </>
         ) : (
           <>
-            <Text style={styles.label}>Parolă nouă</Text>
-            <TextInput autoCapitalize="none" autoComplete="new-password" secureTextEntry value={resetPassword} onChangeText={setResetPassword} placeholder="Parola nouă" placeholderTextColor={palette.muted} style={styles.input} />
-            <Text style={styles.label}>Confirmă parola nouă</Text>
-            <TextInput autoCapitalize="none" autoComplete="new-password" secureTextEntry value={confirmResetPassword} onChangeText={setConfirmResetPassword} placeholder="Repetă parola nouă" placeholderTextColor={palette.muted} style={styles.input} />
+            <Text style={styles.label}>{t('auth.newPasswordLabel')}</Text>
+            <TextInput autoCapitalize="none" autoComplete="new-password" secureTextEntry value={resetPassword} onChangeText={setResetPassword} placeholder={t('auth.newPasswordPlaceholder')} placeholderTextColor={palette.muted} style={styles.input} />
+            <Text style={styles.label}>{t('auth.confirmPasswordLabel')}</Text>
+            <TextInput autoCapitalize="none" autoComplete="new-password" secureTextEntry value={confirmResetPassword} onChangeText={setConfirmResetPassword} placeholder={t('auth.confirmPasswordPlaceholder')} placeholderTextColor={palette.muted} style={styles.input} />
           </>
         )}
-        <PrimaryButton label={loading ? 'Se procesează…' : activeMode === 'reset-password' ? 'Salvează parola nouă' : activeMode === 'sign-in' ? 'Autentificare' : 'Creează cont'} onPress={submit} />
+        <PrimaryButton label={loading ? t('auth.processing') : activeMode === 'reset-password' ? t('auth.saveNewPassword') : activeMode === 'sign-in' ? t('auth.signInButton') : t('auth.signUpButton')} onPress={submit} />
         {resetMessage ? <Text accessibilityLiveRegion="polite" style={[styles.message, resetMessage.type === 'success' ? styles.success : styles.error]}>{resetMessage.text}</Text> : null}
-        {activeMode === 'sign-in' ? <Pressable accessibilityRole="button" accessibilityLabel="Am uitat parola" onPress={sendResetEmail}><Text style={styles.link}>Am uitat parola</Text></Pressable> : null}
+        {activeMode === 'sign-in' ? <Pressable accessibilityRole="button" accessibilityLabel={t('auth.forgotPassword')} onPress={sendResetEmail}><Text style={styles.link}>{t('auth.forgotPassword')}</Text></Pressable> : null}
         {activeMode === 'reset-password' ? (
-          <Pressable onPress={() => setMode('sign-in')}><Text style={styles.link}>Înapoi la autentificare</Text></Pressable>
+          <Pressable onPress={() => setMode('sign-in')}><Text style={styles.link}>{t('auth.backToSignIn')}</Text></Pressable>
         ) : (
           <View style={styles.switchRow}>
-            <Text style={styles.note}>{activeMode === 'sign-in' ? 'Nu ai cont?' : 'Ai deja cont?'}</Text>
+            <Text style={styles.note}>{activeMode === 'sign-in' ? t('auth.noAccount') : t('auth.hasAccount')}</Text>
             <Pressable onPress={() => setMode((current) => current === 'sign-in' ? 'sign-up' : 'sign-in')}>
-              <Text style={styles.link}>{activeMode === 'sign-in' ? 'Creează cont' : 'Autentificare'}</Text>
+              <Text style={styles.link}>{activeMode === 'sign-in' ? t('auth.signUpButton') : t('auth.signInButton')}</Text>
             </Pressable>
           </View>
         )}
