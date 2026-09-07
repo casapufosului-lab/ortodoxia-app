@@ -608,7 +608,33 @@ const ro = {
 
 export type TranslationKey = keyof typeof ro;
 
-const en = {} satisfies Partial<Record<TranslationKey, string>>;
+const en = {
+  'nav.home': 'Home',
+  'nav.prayers': 'Prayers',
+  'nav.calendar': 'Calendar',
+  'nav.bible': 'Bible',
+  'nav.chat': 'Ask',
+  'nav.account': 'Account',
+  'common.retry': 'Retry',
+  'common.chooseCalendar': 'Choose calendar',
+  'home.loadError': 'An error occurred while loading data.',
+  'home.unexpectedError': 'An unexpected error occurred.',
+  'home.pageTitle': 'Home',
+  'home.pageSubtitle': 'Your Orthodoxy',
+  'home.loadingToday': 'Loading today...',
+  'home.verseFallback': '“In You, O Lord, I have hoped.”',
+  'home.verseSourceFallback': 'Psalm 30:1',
+  'home.parableSectionTitle': 'Parable of the day',
+  'home.parableTitleFallback': 'Parable of the sower',
+  'home.parableBodyFallback': 'An attentive soul receives the good word and turns it into action.',
+  'home.calendarSectionTitle': 'Today in the calendar',
+  'home.calendarDayFallback': 'Today in the Orthodox calendar',
+  'home.liveSectionTitle': 'LIVE Services',
+  'home.liveAccessibilityLabel': 'LIVE Services — Watch the Holy Liturgy live',
+  'home.liveSubtitle': 'Watch the Holy Liturgy live',
+  'home.liveLocations': 'Bucharest • Iași • Putna • Sihăstria • Cluj',
+  'home.askAiGuide': 'Ask the AI guide',
+} satisfies Partial<Record<TranslationKey, string>>;
 
 // Parity guard: COMPLETE_LANGUAGES must have full translation coverage
 export const COMPLETE_DICTIONARIES: Record<CompleteLanguageCode, Record<TranslationKey, string>> = {
