@@ -764,6 +764,27 @@ const en = {
   'premium.restoreFailed': 'Restoration failed. Try again.',
   'premium.restoreSuccess': 'Your purchases have been restored.',
   'premium.restoreNone': 'No purchases found to restore.',
+  'live.eyebrow': 'LIVE services',
+  'live.title': 'LIVE services',
+  'live.subtitle': 'Watch the Divine Liturgy live from official sources. The broadcasts belong to the respective church institutions.',
+  'live.statusView': 'View broadcasts',
+  'live.statusLive': 'LIVE NOW',
+  'live.statusNotLive': 'Currently not LIVE',
+  'live.actionEmbed': 'Watch live',
+  'live.actionExternal': 'Open on YouTube',
+  'live.actionOfficial': 'Open official source',
+  'live.retry': 'Retry',
+  'live.loading': 'Checking broadcasts…',
+  'live.providerLabel': 'Provider: {provider}',
+  'live.disclaimer': 'The broadcasts belong to the official sources. The application displays the live status only based on data received from the server.',
+  'live.errorStatusFetch': 'Could not verify broadcasts now.',
+  'live.errorOpenSource': 'The broadcast cannot be opened currently.',
+  'live.scheduleNotePutna': 'The Sunday Divine Liturgy is broadcast on the monastery\'s YouTube channel.',
+  'live.scheduleNoteRadioRenasterea': 'The Sunday Divine Liturgy from the Metropolitan Cathedral is broadcast live.',
+  'live.closePlayerAccessibilityLabel': 'Close video player',
+  'live.closePlayer': '✕ Close',
+  'live.playerAccessibilityLabel': 'Live YouTube player',
+
 
 
 
