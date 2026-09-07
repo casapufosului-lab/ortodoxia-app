@@ -49,13 +49,13 @@ test('REAL translate fallback', () => {
   assert.equal(enValue, 'Home');
 
   // Verify fallback for untranslated key
-  const roTermsValue = config.translate('ro', 'terms.s13PublicUrl');
-  const enTermsValue = config.translate('en', 'terms.s13PublicUrl');
+  const roRegionValue = config.translate('ro', 'region.moldovaCalendarPending');
+  const enRegionValue = config.translate('en', 'region.moldovaCalendarPending');
   const elValue = config.translate('el', 'nav.home');
   const ruValue = config.translate('ru', 'nav.home');
   const sqValue = config.translate('sq', 'nav.home');
 
-  assert.equal(enTermsValue, roTermsValue);
+  assert.equal(enRegionValue, roRegionValue);
   assert.equal(elValue, roValue);
   assert.equal(ruValue, roValue);
   assert.equal(sqValue, roValue);
