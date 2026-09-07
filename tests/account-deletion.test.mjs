@@ -10,6 +10,7 @@ const root = join(__dirname, '..');
 const fn = readFileSync(join(root, 'supabase/functions/delete-account/index.ts'), 'utf8');
 const clientHelper = readFileSync(join(root, 'src/lib/account-deletion.ts'), 'utf8');
 const account = readFileSync(join(root, 'src/app/(tabs)/account.tsx'), 'utf8');
+const i18n = readFileSync(join(root, 'src/i18n/config.ts'), 'utf8');
 
 // ─── Edge Function security ─────────────────────────────────────────────────
 
@@ -95,17 +96,20 @@ test('account.tsx imports requestAccountDeletion', () => {
 });
 
 test('account.tsx has double confirmation flow', () => {
-  assert.ok(account.includes('Șterge contul?'));
-  assert.ok(account.includes('Ești sigur?'));
+  assert.ok(account.includes("t('account.deleteAccountTitle')"));
+  assert.ok(account.includes("t('account.deleteConfirmTitle')"));
+  assert.ok(i18n.includes("'account.deleteAccountTitle': 'Șterge contul?'"));
+  assert.ok(i18n.includes("'account.deleteConfirmTitle': 'Ești sigur?'"));
 });
 
 test('account.tsx shows danger zone only for logged-in users', () => {
   assert.ok(account.includes('{user ?'));
-  assert.ok(account.includes('Zona periculoasă'));
+  assert.ok(account.includes("t('account.dangerZoneTitle')"));
+  assert.ok(i18n.includes("'account.dangerZoneTitle': 'Zona periculoasă'"));
 });
 
 test('account.tsx prevents double-submit', () => {
-  assert.ok(account.includes('if (deleteBusy) return'));
+  assert.ok(account.includes('if (deleteBusy || isDeleteRef.current) return'));
   assert.ok(account.includes('disabled={deleteBusy}'));
 });
 

@@ -6,6 +6,7 @@ import { Card, PageHeader, PrimaryButton, Screen, SecondaryButton, SectionTitle 
 import { palette } from '@/constants/palette';
 import { useSubscription } from '@/hooks/use-subscription';
 import { SUPPORTED_REGIONS } from '@/i18n/config';
+import type { TranslationKey } from '@/i18n/config';
 import { requestAccountDeletion } from '@/lib/account-deletion';
 import { registerForPushNotificationsAsync } from '@/lib/notifications';
 import { supabase } from '@/lib/supabase';
@@ -13,19 +14,19 @@ import { useAuth } from '@/providers/auth-provider';
 import { useLocalization } from '@/providers/localization-provider';
 
 /** Mapăm erorile Supabase la mesaje prietenoase în limba română. */
-function friendlyDbError(error: unknown): string {
-  if (!(error instanceof Error)) return 'Încearcă din nou.';
+function friendlyDbError(error: unknown, t: (key: TranslationKey) => string): string {
+  if (!(error instanceof Error)) return t('account.dbErrorRetry');
   const msg = error.message.toLowerCase();
   if (msg.includes('duplicate') || msg.includes('unique') || msg.includes('already exists')) {
-    return 'Deja există o valoare pentru acest câmp.';
+    return t('account.dbErrorDuplicate');
   }
   if (msg.includes('jwt') || msg.includes('unauthorized') || msg.includes('permission denied')) {
-    return 'Sesiunea ta a expirat. Autentifică-te din nou.';
+    return t('account.dbErrorUnauthorized');
   }
   if (msg.includes('network') || msg.includes('failed to fetch') || msg.includes('connection')) {
-    return 'Verifică conexiunea la internet și încearcă din nou.';
+    return t('account.dbErrorNetwork');
   }
-  return 'A apărut o eroare. Încearcă din nou.';
+  return t('account.dbErrorGeneric');
 }
 
 export default function AccountScreen() {
@@ -66,12 +67,12 @@ export default function AccountScreen() {
       .single()
       .then(({ data, error }) => {
         if (!active) return;
-        if (error) Alert.alert('Profil indisponibil', friendlyDbError(error));
+        if (error) Alert.alert(t('account.profileUnavailableTitle'), friendlyDbError(error, t));
         else setDisplayName(data?.display_name ?? '');
       });
 
     return () => { active = false; };
-  }, [user]);
+  }, [user, t]);
 
   useEffect(() => {
     if (!user) return;
@@ -84,13 +85,13 @@ export default function AccountScreen() {
       .then(({ data, error }) => {
         if (!active) return;
         if (error) {
-          Alert.alert('Notificări indisponibile', friendlyDbError(error));
+          Alert.alert(t('account.notificationsUnavailableTitle'), friendlyDbError(error, t));
         } else {
           setNotificationsEnabled(Boolean(data?.enabled));
         }
       });
     return () => { active = false; };
-  }, [user]);
+  }, [user, t]);
 
   const saveProfile = async () => {
     if (!user || saving || isSavingRef.current) return;
@@ -100,15 +101,15 @@ export default function AccountScreen() {
     try {
       const { error } = await supabase.from('profiles').update({ display_name: displayName.trim() }).eq('id', user.id);
       if (error) {
-        setSaveMessage({ type: 'error', text: 'Profilul nu a fost salvat. Încearcă din nou.' });
-        Alert.alert('Profilul nu a fost salvat', friendlyDbError(error));
+        setSaveMessage({ type: 'error', text: t('account.profileSaveFailedMessage') });
+        Alert.alert(t('account.profileSaveFailedTitle'), friendlyDbError(error, t));
       } else {
-        setSaveMessage({ type: 'success', text: 'Profil salvat.' });
-        Alert.alert('Profil salvat');
+        setSaveMessage({ type: 'success', text: t('account.profileSavedMessage') });
+        Alert.alert(t('account.profileSavedTitle'));
       }
     } catch {
-      setSaveMessage({ type: 'error', text: 'A apărut o eroare neașteptată.' });
-      Alert.alert('Eroare', 'A apărut o eroare neașteptată.');
+      setSaveMessage({ type: 'error', text: t('account.unexpectedError') });
+      Alert.alert(t('account.errorTitle'), t('account.unexpectedError'));
     } finally {
       isSavingRef.current = false;
       setSaving(false);
@@ -121,7 +122,7 @@ export default function AccountScreen() {
     try {
       await signOut();
     } catch (error) {
-      Alert.alert('Deconectarea nu a reușit', friendlyDbError(error));
+      Alert.alert(t('account.signOutErrorTitle'), friendlyDbError(error, t));
     } finally {
       isSignOutRef.current = false;
     }
@@ -130,22 +131,22 @@ export default function AccountScreen() {
   const handleDeleteAccount = () => {
     // First confirmation — explain what will happen.
     Alert.alert(
-      'Șterge contul?',
-      'Această acțiune este permanentă și nu poate fi anulată.\n\n• Toate datele contului vor fi șterse\n• Favoritele, conversațiile AI și istoricul vor fi eliminate\n• Contul nu mai poate fi recuperat\n\nAnularea abonamentului se face separat din App Store / Google Play.',
+      t('account.deleteAccountTitle'),
+      t('account.deleteAccountMessage'),
       [
-        { text: 'Anulează', style: 'cancel' },
+        { text: t('account.cancelButton'), style: 'cancel' },
         {
-          text: 'Continuă',
+          text: t('account.continueButton'),
           style: 'destructive',
           // Second confirmation — explicit final step.
           onPress: () => {
             Alert.alert(
-              'Ești sigur?',
-              'Confirmă pentru a șterge definitiv contul și toate datele asociate. Această acțiune nu poate fi anulată.',
+              t('account.deleteConfirmTitle'),
+              t('account.deleteConfirmMessage'),
               [
-                { text: 'Anulează', style: 'cancel' },
+                { text: t('account.cancelButton'), style: 'cancel' },
                 {
-                  text: 'Șterge contul',
+                  text: t('account.deleteButton'),
                   style: 'destructive',
                   onPress: () => void executeDeleteAccount(),
                 },
@@ -168,9 +169,9 @@ export default function AccountScreen() {
       await signOut();
       router.replace('/');
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Contul nu a putut fi șters. Încearcă din nou.';
+      const message = error instanceof Error ? error.message : t('account.deleteFailedFallback');
       setDeleteError(message);
-      Alert.alert('Eroare', message);
+      Alert.alert(t('account.errorTitle'), message);
     } finally {
       // Only reset busy state if we didn't sign out (signOut triggers re-render).
       isDeleteRef.current = false;
@@ -206,9 +207,9 @@ export default function AccountScreen() {
       }, { onConflict: 'expo_push_token' });
       if (deviceResult.error) throw deviceResult.error;
       setNotificationsEnabled(true);
-      setNotificationMessage('Notificările zilnice sunt active pentru ora 10:00.');
+      setNotificationMessage(t('account.notificationsActiveMessage'));
     } catch (error) {
-      setNotificationMessage('Notificările nu au putut fi activate. ' + friendlyDbError(error));
+      setNotificationMessage(t('account.notificationsActivateFailedPrefix') + friendlyDbError(error, t));
     } finally {
       isNotificationRef.current = false;
       setNotificationBusy(false);
@@ -216,42 +217,42 @@ export default function AccountScreen() {
   };
 
   if (isLoading) {
-    return <Screen><PageHeader title="Se încarcă…" /></Screen>;
+    return <Screen><PageHeader title={t('account.loading')} /></Screen>;
   }
 
   return (
     <Screen>
-      <PageHeader eyebrow="Profil" title="Contul meu" subtitle="Salvează favoritele, conversațiile și accesul Premium." />
+      <PageHeader eyebrow={t('account.eyebrow')} title={t('account.pageTitle')} subtitle={t('account.pageSubtitle')} />
       {user ? (
         <Card>
           <Text style={styles.avatar}>●</Text>
-          <Text style={styles.title}>Cont activ</Text>
+          <Text style={styles.title}>{t('account.activeTitle')}</Text>
           <Text style={styles.email}>{user.email}</Text>
-          <Text style={styles.label}>Nume afișat</Text>
+          <Text style={styles.label}>{t('account.displayNameLabel')}</Text>
           <TextInput
             value={displayName}
             onChangeText={(value) => {
               setDisplayName(value);
               setSaveMessage(null);
             }}
-            placeholder="Numele tău"
+            placeholder={t('account.displayNamePlaceholder')}
             placeholderTextColor={palette.muted}
             style={styles.input}
           />
-          <PrimaryButton label={saving ? 'Se salvează…' : 'Salvează profilul'} onPress={saveProfile} />
+          <PrimaryButton label={saving ? t('account.saving') : t('account.saveProfileButton')} onPress={saveProfile} />
           {saveMessage ? (
             <Text accessibilityLiveRegion="polite" style={saveMessage.type === 'success' ? styles.saveSuccess : styles.saveError}>
               {saveMessage.text}
             </Text>
           ) : null}
-          <SecondaryButton label="Deconectare" onPress={handleSignOut} />
+          <SecondaryButton label={t('account.signOutButton')} onPress={handleSignOut} />
         </Card>
       ) : (
         <Card style={styles.guestCard}>
           <Text style={styles.avatar}>○</Text>
-          <Text style={styles.title}>Folosești aplicația fără cont</Text>
-          <Text style={styles.body}>Creează un cont pentru a sincroniza conținutul pe dispozitivele tale.</Text>
-          <PrimaryButton label="Autentificare sau cont nou" onPress={() => router.push('/auth')} />
+          <Text style={styles.title}>{t('account.guestTitle')}</Text>
+          <Text style={styles.body}>{t('account.guestBody')}</Text>
+          <PrimaryButton label={t('account.guestAuthButton')} onPress={() => router.push('/auth')} />
         </Card>
       )}
       <SectionTitle>{t('account.regionTitle')}</SectionTitle>
@@ -287,7 +288,7 @@ export default function AccountScreen() {
                 const isSelected = option.calendarCode === calendarCode;
                 return (
                   <Pressable
-                    accessibilityLabel={`Alege ${option.label}`}
+                    accessibilityLabel={`${t('account.chooseCalendarAccessibility')} ${option.label}`}
                     accessibilityRole="button"
                     accessibilityState={{ selected: isSelected }}
                     disabled={isRegionLoading}
@@ -306,49 +307,49 @@ export default function AccountScreen() {
           <Text style={styles.regionSummary}>{calendar?.label}</Text>
         )}
       </Card>
-      <SectionTitle>Notificări zilnice</SectionTitle>
+      <SectionTitle>{t('account.notificationsSectionTitle')}</SectionTitle>
       <Card>
-        <Text style={styles.bodyLeft}>Primești la ora 10:00 versetul, mesajul zilei și sărbătoarea din calendarul ales.</Text>
+        <Text style={styles.bodyLeft}>{t('account.notificationsDescription')}</Text>
         <Text style={notificationsEnabled ? styles.notificationActive : styles.notificationInactive}>
-          {notificationsEnabled ? 'Notificările sunt active.' : 'Notificările sunt oprite.'}
+          {notificationsEnabled ? t('account.notificationsStatusActive') : t('account.notificationsStatusInactive')}
         </Text>
         {user ? (
-          <PrimaryButton label={notificationBusy ? 'Se configurează…' : 'Activează notificările'} onPress={() => void enableNotifications()} />
+          <PrimaryButton label={notificationBusy ? t('account.notificationsConfiguring') : t('account.enableNotificationsButton')} onPress={() => void enableNotifications()} />
         ) : (
-          <SecondaryButton label="Conectează-te pentru notificări" onPress={() => router.push('/auth')} />
+          <SecondaryButton label={t('account.loginForNotificationsButton')} onPress={() => router.push('/auth')} />
         )}
         {notificationMessage ? <Text style={styles.notificationMessage}>{notificationMessage}</Text> : null}
       </Card>
-      <SectionTitle>Abonament</SectionTitle>
+      <SectionTitle>{t('account.subscriptionSectionTitle')}</SectionTitle>
       <Card>
-        <Text style={styles.plan}>{isPlanLoading ? 'Se verifică planul…' : planLabel}</Text>
-        <Text style={styles.body}>{isPremium ? `Ai ${dailyAiLimit} de mesaje AI pe zi.` : 'Ai 5 mesaje AI pe zi. Conținutul de bază rămâne gratuit.'}</Text>
+        <Text style={styles.plan}>{isPlanLoading ? t('account.planChecking') : planLabel}</Text>
+        <Text style={styles.body}>{isPremium ? t('account.aiMessagesPerDay').replace('{count}', String(dailyAiLimit)) : t('account.freeMessagesPerDay')}</Text>
         {planError ? <Text style={styles.planError}>{planError}</Text> : null}
-        <SecondaryButton label={isPremium ? 'Vezi abonamentul' : 'Vezi Premium'} onPress={() => router.push('/premium')} />
-        <PrimaryButton label="Deschide Chatul AI" onPress={() => router.replace('/chat')} />
+        <SecondaryButton label={isPremium ? t('account.viewSubscriptionButton') : t('account.viewPremiumButton')} onPress={() => router.push('/premium')} />
+        <PrimaryButton label={t('account.openAiChatButton')} onPress={() => router.replace('/chat')} />
       </Card>
-      <SectionTitle>Despre aplicație</SectionTitle>
+      <SectionTitle>{t('account.aboutSectionTitle')}</SectionTitle>
       <Card>
         <Pressable accessibilityRole="button" onPress={() => router.push('/privacy')}>
-          <Text style={styles.rowLink}>Politica de confidențialitate</Text>
+          <Text style={styles.rowLink}>{t('account.privacyPolicyLink')}</Text>
         </Pressable>
         <Pressable accessibilityRole="button" onPress={() => router.push('/terms')}>
-          <Text style={styles.rowLink}>Termeni și condiții</Text>
+          <Text style={styles.rowLink}>{t('account.termsLink')}</Text>
         </Pressable>
-        <Text style={styles.row}>Surse și responsabilitate editorială</Text>
-        <Text style={styles.row}>Ajutor și contact</Text>
+        <Text style={styles.row}>{t('account.sourcesRow')}</Text>
+        <Text style={styles.row}>{t('account.helpRow')}</Text>
       </Card>
       {user ? (
         <>
-          <SectionTitle>Zona periculoasă</SectionTitle>
+          <SectionTitle>{t('account.dangerZoneTitle')}</SectionTitle>
           <Card style={styles.dangerCard}>
             <Text style={styles.dangerDescription}>
-              Ștergerea contului elimină permanent profilul, favoritele, conversațiile AI și datele asociate. Această acțiune nu poate fi anulată.
+              {t('account.deleteAccountDescription')}
             </Text>
             {deleteBusy ? (
               <View style={styles.dangerLoadingRow}>
                 <ActivityIndicator color={palette.danger} size="small" />
-                <Text style={styles.dangerLoadingText}>Se șterge contul…</Text>
+                <Text style={styles.dangerLoadingText}>{t('account.deleting')}</Text>
               </View>
             ) : (
               <Pressable
@@ -357,7 +358,7 @@ export default function AccountScreen() {
                 onPress={() => void handleDeleteAccount()}
                 style={({ pressed }) => [styles.dangerButton, pressed && styles.pressed]}
               >
-                <Text style={styles.dangerButtonText}>Șterge contul</Text>
+                <Text style={styles.dangerButtonText}>{t('account.deleteButton')}</Text>
               </Pressable>
             )}
             {deleteError ? (
