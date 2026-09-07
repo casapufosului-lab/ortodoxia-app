@@ -10,7 +10,8 @@
 
 import { useCallback, useEffect } from 'react';
 import { BackHandler, Modal, Pressable, StyleSheet, Text, View } from 'react-native';
-import { WebView } from 'react-native-webview';
+import { WebView } from 'react-native-webview'
+import { translate } from '@/i18n/config' ;
 
 import { palette } from '@/constants/palette';
 
@@ -51,11 +52,11 @@ export function YouTubeEmbed({ videoId, onClose }: YouTubeEmbedProps) {
         <View style={styles.header}>
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel="Închide playerul video"
+            accessibilityLabel={translate('ro', 'live.closePlayerAccessibilityLabel')}
             onPress={onClose}
             style={({ pressed }) => [styles.closeButton, pressed && styles.pressed]}
           >
-            <Text style={styles.closeText}>✕ Închide</Text>
+            <Text style={styles.closeText}>{translate('ro', 'live.closePlayer')}</Text>
           </Pressable>
         </View>
         <WebView
@@ -66,7 +67,7 @@ export function YouTubeEmbed({ videoId, onClose }: YouTubeEmbedProps) {
           mediaPlaybackRequiresUserAction
           startInLoadingState
           originWhitelist={['https://www.youtube.com', 'https://youtube.com']}
-          accessibilityLabel="Player YouTube live"
+          accessibilityLabel={translate('ro', 'live.playerAccessibilityLabel')}
         />
       </View>
     </Modal>

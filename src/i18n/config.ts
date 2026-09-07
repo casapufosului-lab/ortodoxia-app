@@ -587,6 +587,12 @@ const ro = {
   'terms.s13Title': '13. Contact',
   'terms.s13Support': '[ADRESĂ DE SUPORT DE COMPLETAT]',
   'terms.s13PublicUrl': '[URL PUBLIC AL TERMENILOR DE COMPLETAT]',
+  'live.scheduleNotePutna': 'Sfânta Liturghie de duminică este transmisă pe canalul de YouTube al mănăstirii.',
+  'live.scheduleNoteRadioRenasterea': 'Sfânta Liturghie de duminică din Catedrala Mitropolitană este transmisă în direct.',
+  'live.closePlayerAccessibilityLabel': 'Închide playerul video',
+  'live.closePlayer': '✕ Închide',
+  'live.playerAccessibilityLabel': 'Player YouTube live',
+
 } as const;
 
 export type TranslationKey = keyof typeof ro;

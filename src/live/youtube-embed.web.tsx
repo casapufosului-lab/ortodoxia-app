@@ -6,7 +6,8 @@
  * No download, no proxy, no restream.
  */
 
-import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Modal, Pressable, StyleSheet, Text, View } from 'react-native'
+import { translate } from '@/i18n/config' ;
 
 import { palette } from '@/constants/palette';
 
@@ -33,11 +34,11 @@ export function YouTubeEmbed({ videoId, onClose }: YouTubeEmbedProps) {
         <View style={styles.header}>
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel="Închide playerul video"
+            accessibilityLabel={translate('ro', 'live.closePlayerAccessibilityLabel')}
             onPress={onClose}
             style={({ pressed }) => [styles.closeButton, pressed && styles.pressed]}
           >
-            <Text style={styles.closeText}>✕ Închide</Text>
+            <Text style={styles.closeText}>{translate('ro', 'live.closePlayer')}</Text>
           </Pressable>
         </View>
         <iframe

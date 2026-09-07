@@ -1,4 +1,5 @@
-import type { PermanentLiveSource } from './types';
+import type { PermanentLiveSource } from './types'
+import { translate } from '@/i18n/config';
 
 /**
  * CANONICAL PERMANENT SOURCE REGISTRY for "Slujbe LIVE".
@@ -93,7 +94,7 @@ export const LIVE_SOURCES: readonly PermanentLiveSource[] = [
     priority: 3,
     enabled: true,
     supportsDynamicLiveDetection: true,
-    scheduleNote: 'Sfânta Liturghie de duminică este transmisă pe canalul de YouTube al mănăstirii.',
+    scheduleNote: translate('ro', 'live.scheduleNotePutna'),
   },
   {
     id: 'sihastria',
@@ -120,7 +121,7 @@ export const LIVE_SOURCES: readonly PermanentLiveSource[] = [
     priority: 5,
     enabled: true,
     supportsDynamicLiveDetection: true,
-    scheduleNote: 'Sfânta Liturghie de duminică din Catedrala Mitropolitană este transmisă în direct.',
+    scheduleNote: translate('ro', 'live.scheduleNoteRadioRenasterea'),
   },
 ];
 
