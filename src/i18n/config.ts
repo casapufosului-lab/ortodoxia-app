@@ -373,6 +373,8 @@ const ro = {
   'resetConfirmation.cardTitle': 'Mesaj trimis',
   'resetConfirmation.cardSubtitle': 'Deschide mesajul primit și apasă linkul de resetare. Verifică și folderul Spam sau Promotions.',
   'resetConfirmation.backToLogin': 'Înapoi la autentificare',
+
+  'layout.privacyTitle': 'Politică de confidențialitate',
 } as const;
 
 export type TranslationKey = keyof typeof ro;

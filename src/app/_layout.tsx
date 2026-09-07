@@ -5,7 +5,26 @@ import { useEffect } from 'react';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { configureRevenueCat } from '@/lib/revenuecat';
 import { AuthProvider } from '@/providers/auth-provider';
-import { LocalizationProvider } from '@/providers/localization-provider';
+import { LocalizationProvider, useLocalization } from '@/providers/localization-provider';
+
+/**
+ * Renders the navigation Stack with localized header titles.
+ * Must be rendered as a child of LocalizationProvider.
+ */
+function StackScreens() {
+  const { t } = useLocalization();
+  return (
+    <Stack screenOptions={{ headerBackButtonDisplayMode: 'minimal' }}>
+      <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+      <Stack.Screen name="auth" options={{ title: t('account.pageTitle'), presentation: 'modal' }} />
+      <Stack.Screen name="reset-confirmation" options={{ title: t('resetConfirmation.title'), presentation: 'modal' }} />
+      <Stack.Screen name="premium" options={{ title: 'Premium', presentation: 'modal' }} />
+      <Stack.Screen name="live" options={{ title: t('live.title') }} />
+      <Stack.Screen name="privacy" options={{ title: t('layout.privacyTitle') }} />
+      <Stack.Screen name="terms" options={{ title: t('account.termsLink') }} />
+    </Stack>
+  );
+}
 
 export default function RootLayout() {
   const colorScheme = useColorScheme();
@@ -21,15 +40,7 @@ export default function RootLayout() {
       <AuthProvider>
         <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
           <StatusBar style={colorScheme === 'dark' ? 'light' : 'dark'} />
-          <Stack screenOptions={{ headerBackButtonDisplayMode: 'minimal' }}>
-            <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-            <Stack.Screen name="auth" options={{ title: 'Contul meu', presentation: 'modal' }} />
-            <Stack.Screen name="reset-confirmation" options={{ title: 'Verifică emailul', presentation: 'modal' }} />
-            <Stack.Screen name="premium" options={{ title: 'Premium', presentation: 'modal' }} />
-            <Stack.Screen name="live" options={{ title: 'Slujbe LIVE' }} />
-            <Stack.Screen name="privacy" options={{ title: 'Politică de confidențialitate' }} />
-            <Stack.Screen name="terms" options={{ title: 'Termeni și condiții' }} />
-          </Stack>
+          <StackScreens />
         </ThemeProvider>
       </AuthProvider>
     </LocalizationProvider>
