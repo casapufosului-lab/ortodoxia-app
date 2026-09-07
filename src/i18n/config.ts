@@ -5,6 +5,10 @@ export type LanguageCode = typeof SUPPORTED_LANGUAGES[number];
 export function isSupportedLanguage(code: string): code is LanguageCode {
   return (SUPPORTED_LANGUAGES as readonly string[]).includes(code);
 }
+
+export function resolveLanguageCode(code: string | null | undefined): LanguageCode {
+  return code && isSupportedLanguage(code) ? code : 'ro';
+}
 export type CalendarCode = 'ro-bor' | 'md-basarabia' | 'md-chisinau';
 
 export type RegionConfig = {
@@ -625,9 +629,8 @@ const translations: Record<LanguageCode, Partial<Record<TranslationKey, string>>
   sq,
 };
 
-export function translate(languageCode: string, key: TranslationKey) {
-  const lang = isSupportedLanguage(languageCode) ? languageCode : 'ro';
-  return translations[lang][key] ?? ro[key];
+export function translate(languageCode: LanguageCode, key: TranslationKey) {
+  return translations[languageCode][key] ?? ro[key];
 }
 
 export function dateKeyInTimeZone(date: Date, timeZone: RegionConfig['timeZone']) {
