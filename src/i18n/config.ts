@@ -1,7 +1,7 @@
 export type CountryCode = 'RO' | 'MD';
 export const SUPPORTED_LANGUAGES = ['ro', 'en', 'el', 'sr', 'bg', 'mk', 'uk', 'ka', 'ru', 'sq'] as const;
 export type LanguageCode = typeof SUPPORTED_LANGUAGES[number];
-export const COMPLETE_LANGUAGES = ['ro'] as const;
+export const COMPLETE_LANGUAGES = ['ro', 'en'] as const;
 export type CompleteLanguageCode = typeof COMPLETE_LANGUAGES[number];
 
 export function isSupportedLanguage(code: string): code is LanguageCode {
@@ -609,6 +609,8 @@ const ro = {
 export type TranslationKey = keyof typeof ro;
 
 const en = {
+  'region.moldovaCalendarPending': 'Your selected calendar is saved. Local content will be published only after the Church sources have been verified.',
+  'region.moldovaChooseCalendar': 'Choose the Church calendar for the Republic of Moldova. The application does not choose automatically for you.',
   'terms.title': 'Terms and conditions',
   'terms.meta': 'Version: 1.0 — [DATA DE COMPLETAT]',
   'terms.s1Title': '1. Operator and acceptance',
@@ -1064,6 +1066,7 @@ const en = {
 // Parity guard: COMPLETE_LANGUAGES must have full translation coverage
 export const COMPLETE_DICTIONARIES: Record<CompleteLanguageCode, Record<TranslationKey, string>> = {
   ro,
+  en,
 };
 
 const el = {} satisfies Partial<Record<TranslationKey, string>>;

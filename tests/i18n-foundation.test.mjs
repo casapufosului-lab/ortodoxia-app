@@ -25,8 +25,8 @@ test('SUPPORTED_LANGUAGES are exact', () => {
   assert.ok(JSON.stringify(config.SUPPORTED_LANGUAGES) === JSON.stringify(expected), 'SUPPORTED_LANGUAGES match expected');
 });
 
-test('COMPLETE_LANGUAGES is exactly ro', () => {
-  assert.ok(JSON.stringify(config.COMPLETE_LANGUAGES) === JSON.stringify(['ro']), 'COMPLETE_LANGUAGES match expected');
+test('COMPLETE_LANGUAGES is exactly ro and en', () => {
+  assert.ok(JSON.stringify(config.COMPLETE_LANGUAGES) === JSON.stringify(['ro', 'en']), 'COMPLETE_LANGUAGES match expected');
 });
 
 test('REAL resolveLanguageCode resolves correctly', () => {
@@ -41,7 +41,6 @@ test('REAL resolveLanguageCode resolves correctly', () => {
 });
 
 test('REAL translate fallback', () => {
-  // en is incomplete, should fallback to ro
   const roValue = config.translate('ro', 'nav.home');
   const enValue = config.translate('en', 'nav.home');
 
@@ -49,13 +48,10 @@ test('REAL translate fallback', () => {
   assert.equal(enValue, 'Home');
 
   // Verify fallback for untranslated key
-  const roRegionValue = config.translate('ro', 'region.moldovaCalendarPending');
-  const enRegionValue = config.translate('en', 'region.moldovaCalendarPending');
   const elValue = config.translate('el', 'nav.home');
   const ruValue = config.translate('ru', 'nav.home');
   const sqValue = config.translate('sq', 'nav.home');
 
-  assert.equal(enRegionValue, roRegionValue);
   assert.equal(elValue, roValue);
   assert.equal(ruValue, roValue);
   assert.equal(sqValue, roValue);
