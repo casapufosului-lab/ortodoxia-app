@@ -63,8 +63,8 @@ test('isSending is cleared in finally block', () => {
 
 // 5. Retry after failure restores input
 test('on failure, original message is restored to input for retry', () => {
-  const errorBranch = src.indexOf("'Răspunsul AI nu a putut fi generat");
-  assert.ok(errorBranch !== -1, 'error branch with Romanian message must exist');
+  const errorBranch = src.indexOf("t('chat.aiResponseError')");
+  assert.ok(errorBranch !== -1, 'error branch with localized AI error message must exist');
 
   const nearError = src.slice(errorBranch, errorBranch + 1000);
   assert.ok(nearError.includes('setInput(clean)'), 'error path must restore input via setInput(clean)');
@@ -72,7 +72,7 @@ test('on failure, original message is restored to input for retry', () => {
 
 // 6. Optimistic message removed on failure (no duplicate history)
 test('on failure, optimistic user message is removed from history', () => {
-  const errorBranch = src.indexOf("'Răspunsul AI nu a putut fi generat");
+  const errorBranch = src.indexOf("t('chat.aiResponseError')");
   assert.ok(errorBranch !== -1, 'error branch must exist');
 
   const nearError = src.slice(errorBranch, errorBranch + 1000);
@@ -84,7 +84,7 @@ test('on failure, optimistic user message is removed from history', () => {
 
 // 7. No fake assistant response on failure
 test('no assistant message is added on failure', () => {
-  const errorBranch = src.indexOf("'Răspunsul AI nu a putut fi generat");
+  const errorBranch = src.indexOf("t('chat.aiResponseError')");
   const errorEnd = src.indexOf('return;', errorBranch);
   assert.ok(errorEnd !== -1, 'error branch must have a return');
 
@@ -161,13 +161,13 @@ test('catch block restores input on thrown exception', () => {
   assert.ok(catchBlock.includes('setInput(clean)'), 'catch block must restore input via setInput(clean)');
 });
 
-// 14. Thrown exception: shows Romanian error message
-test('catch block sets a Romanian error message', () => {
+// 14. Thrown exception: shows localized Romanian error via i18n key
+test('catch block sets the localized Romanian error via i18n key', () => {
   const catchBlock = findOuterCatchBlock();
-  assert.ok(catchBlock.includes('setErrorMessage('), 'catch block must call setErrorMessage');
-  const hasRomanian = catchBlock.includes('Încearcă') || catchBlock.includes('disponibil')
-    || catchBlock.includes('conexiunea') || catchBlock.includes('eroare');
-  assert.ok(hasRomanian, 'catch block error message must be in Romanian');
+  assert.ok(
+    catchBlock.includes("setErrorMessage(t('chat.serviceUnavailableError'))"),
+    "catch block must set the localized Romanian error via t('chat.serviceUnavailableError')",
+  );
 });
 
 // 15. Thrown exception: no assistant response added
