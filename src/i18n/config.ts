@@ -609,11 +609,11 @@ const ro = {
 export type TranslationKey = keyof typeof ro;
 
 const en = {
-  'calendar.weekdayLu': 'Lu',
-  'calendar.weekdayMa': 'Ma',
-  'calendar.weekdayMi': 'Mi',
-  'calendar.weekdayJo': 'Jo',
-  'calendar.weekdayVi': 'Vi',
+  'calendar.weekdayLu': 'Mo',
+  'calendar.weekdayMa': 'Tu',
+  'calendar.weekdayMi': 'We',
+  'calendar.weekdayJo': 'Th',
+  'calendar.weekdayVi': 'Fr',
   'calendar.weekdaySa': 'Sa',
   'calendar.weekdayDu': 'Su',
   'calendar.eyebrow': 'Church year',
