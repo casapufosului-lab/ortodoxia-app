@@ -4,7 +4,6 @@ export type LanguageCode = typeof SUPPORTED_LANGUAGES[number];
 export const COMPLETE_LANGUAGES = ['ro'] as const;
 export type CompleteLanguageCode = typeof COMPLETE_LANGUAGES[number];
 
-
 export function isSupportedLanguage(code: string): code is LanguageCode {
   return (SUPPORTED_LANGUAGES as readonly string[]).includes(code);
 }
@@ -610,6 +609,12 @@ const ro = {
 export type TranslationKey = keyof typeof ro;
 
 const en = {} satisfies Partial<Record<TranslationKey, string>>;
+
+// Parity guard: COMPLETE_LANGUAGES must have full translation coverage
+export const COMPLETE_DICTIONARIES: Record<CompleteLanguageCode, Record<TranslationKey, string>> = {
+  ro,
+};
+
 const el = {} satisfies Partial<Record<TranslationKey, string>>;
 const sr = {} satisfies Partial<Record<TranslationKey, string>>;
 const bg = {} satisfies Partial<Record<TranslationKey, string>>;
