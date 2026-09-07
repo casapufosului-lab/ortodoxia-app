@@ -784,6 +784,12 @@ const en = {
   'live.closePlayerAccessibilityLabel': 'Close video player',
   'live.closePlayer': '✕ Close',
   'live.playerAccessibilityLabel': 'Live YouTube player',
+  'resetConfirmation.title': 'Check your email',
+  'resetConfirmation.subtitle': 'We have sent you instructions to reset your password.',
+  'resetConfirmation.cardTitle': 'Message sent',
+  'resetConfirmation.cardSubtitle': 'Open the message you received and click the reset link. Also check the Spam or Promotions folder.',
+  'resetConfirmation.backToLogin': 'Back to sign in',
+  'layout.privacyTitle': 'Privacy Policy',
 
 
 
