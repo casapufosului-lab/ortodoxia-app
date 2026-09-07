@@ -1,5 +1,10 @@
 export type CountryCode = 'RO' | 'MD';
-export type LanguageCode = 'ro';
+export const SUPPORTED_LANGUAGES = ['ro', 'en', 'el', 'sr', 'bg', 'mk', 'uk', 'ka', 'ru', 'sq'] as const;
+export type LanguageCode = typeof SUPPORTED_LANGUAGES[number];
+
+export function isSupportedLanguage(code: string): code is LanguageCode {
+  return (SUPPORTED_LANGUAGES as readonly string[]).includes(code);
+}
 export type CalendarCode = 'ro-bor' | 'md-basarabia' | 'md-chisinau';
 
 export type RegionConfig = {
@@ -597,10 +602,32 @@ const ro = {
 
 export type TranslationKey = keyof typeof ro;
 
-const translations: Record<LanguageCode, Record<TranslationKey, string>> = { ro };
+const en: Partial<Record<TranslationKey, string>> = {};
+const el: Partial<Record<TranslationKey, string>> = {};
+const sr: Partial<Record<TranslationKey, string>> = {};
+const bg: Partial<Record<TranslationKey, string>> = {};
+const mk: Partial<Record<TranslationKey, string>> = {};
+const uk: Partial<Record<TranslationKey, string>> = {};
+const ka: Partial<Record<TranslationKey, string>> = {};
+const ru: Partial<Record<TranslationKey, string>> = {};
+const sq: Partial<Record<TranslationKey, string>> = {};
 
-export function translate(languageCode: LanguageCode, key: TranslationKey) {
-  return translations[languageCode][key];
+const translations: Record<LanguageCode, Partial<Record<TranslationKey, string>>> = {
+  ro,
+  en,
+  el,
+  sr,
+  bg,
+  mk,
+  uk,
+  ka,
+  ru,
+  sq,
+};
+
+export function translate(languageCode: string, key: TranslationKey) {
+  const lang = isSupportedLanguage(languageCode) ? languageCode : 'ro';
+  return translations[lang][key] ?? ro[key];
 }
 
 export function dateKeyInTimeZone(date: Date, timeZone: RegionConfig['timeZone']) {
