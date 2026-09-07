@@ -99,11 +99,11 @@ export function packageForPlan(
  * Generează textul de preț pentru un pachet, folosind datele din magazin
  * (produsul de bază). Returnează string-ul cu simbolul monedei și prețul.
  */
-export function packagePriceText(pkg: PurchasesPackage): string {
+export function packagePriceText(pkg: PurchasesPackage): string | null {
   const product = pkg.product;
   if (product?.priceString) return product.priceString;
   if (product?.price != null) return `${product.price}`;
-  return 'Preț în magazin';
+  return null;
 }
 
 /**

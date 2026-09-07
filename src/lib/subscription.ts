@@ -1,3 +1,5 @@
+import type { TranslationKey } from '@/i18n/config';
+
 export const FREE_DAILY_AI_LIMIT = 5;
 export const PREMIUM_DAILY_AI_LIMIT = 50;
 
@@ -16,8 +18,8 @@ export function hasPremiumAccess(subscription: SubscriptionRow | null | undefine
   return new Date(subscription.current_period_end).getTime() > Date.now();
 }
 
-export function subscriptionPlanLabel(subscription: SubscriptionRow | null | undefined) {
-  if (!hasPremiumAccess(subscription)) return 'Plan Gratuit';
-  return subscription?.plan === 'annual' ? 'Premium Anual' : 'Premium Lunar';
+export function subscriptionPlanLabel(subscription: SubscriptionRow | null | undefined): TranslationKey {
+  if (!hasPremiumAccess(subscription)) return 'premium.planFree';
+  return subscription?.plan === 'annual' ? 'premium.statusAnnual' : 'premium.statusMonthly';
 }
 

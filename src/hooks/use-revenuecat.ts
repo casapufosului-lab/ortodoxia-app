@@ -21,6 +21,7 @@ import {
 } from '@/lib/revenuecat';
 import type { SubscriptionRow } from '@/lib/subscription';
 import { useAuth } from '@/providers/auth-provider';
+import { useLocalization } from '@/providers/localization-provider';
 
 type PurchaseResult =
   | { ok: true; message: string }
@@ -33,6 +34,7 @@ type PurchaseResult =
  */
 export function useRevenueCat() {
   const { user } = useAuth();
+  const { t } = useLocalization();
   const userId = user?.id ?? null;
 
   const [packages, setPackages] = useState<PurchasesPackage[] | null>(null);
@@ -67,9 +69,9 @@ export function useRevenueCat() {
       setOfferingsError('');
     } catch {
       if (!mountedRef.current) return;
-      setOfferingsError('Ofertele de abonament nu au putut fi încărcate. Încearcă din nou.');
+      setOfferingsError(t('premium.offeringsError'));
     }
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     configureRevenueCat();
@@ -115,55 +117,55 @@ export function useRevenueCat() {
   const buy = useCallback(
     async (plan: RevenueCatPlan): Promise<PurchaseResult> => {
       if (!isRevenueCatConfigured() || !packages) {
-        return { ok: false, message: 'Magazinul nu este disponibil momentan.', cancelled: false };
+        return { ok: false, message: t('premium.storeUnavailable'), cancelled: false };
       }
       const pkg = packageForPlan(packages, plan);
       if (!pkg) {
-        return { ok: false, message: 'Planul ales nu este disponibil în magazin.', cancelled: false };
+        return { ok: false, message: t('premium.planUnavailable'), cancelled: false };
       }
 
       setLoading(true);
       try {
         const info = await purchaseRevenueCatPackage(pkg);
-        if (!mountedRef.current) return { ok: false, message: 'Cumpărarea nu a reușit. Încearcă din nou.', cancelled: false };
+        if (!mountedRef.current) return { ok: false, message: t('premium.purchaseFailed'), cancelled: false };
         setCustomerInfo(info);
         if (isPremiumActive(info)) {
-          return { ok: true, message: 'Abonamentul Premium a fost activat.' };
+          return { ok: true, message: t('premium.activated') };
         }
-        return { ok: false, message: 'Plata a fost procesată, dar Premium nu este încă activ. Verifică în câteva momente.', cancelled: false };
+        return { ok: false, message: t('premium.paymentPending'), cancelled: false };
       } catch (error) {
-        if (!mountedRef.current) return { ok: false, message: 'Cumpărarea nu a reușit. Încearcă din nou.', cancelled: false };
+        if (!mountedRef.current) return { ok: false, message: t('premium.purchaseFailed'), cancelled: false };
         if (isPurchaseCancelledError(error)) {
-          return { ok: false, message: 'Cumpărarea a fost anulată.', cancelled: true };
+          return { ok: false, message: t('premium.purchaseCancelled'), cancelled: true };
         }
-        return { ok: false, message: 'Cumpărarea nu a reușit. Încearcă din nou.', cancelled: false };
+        return { ok: false, message: t('premium.purchaseFailed'), cancelled: false };
       } finally {
         if (mountedRef.current) setLoading(false);
       }
     },
-    [packages],
+    [packages, t],
   );
 
   const restore = useCallback(async (): Promise<PurchaseResult> => {
     if (!isRevenueCatConfigured()) {
-      return { ok: false, message: 'Magazinul nu este disponibil momentan.', cancelled: false };
+      return { ok: false, message: t('premium.storeUnavailable'), cancelled: false };
     }
 
     setLoading(true);
     try {
       const info = await restoreRevenueCatPurchases();
-      if (!mountedRef.current) return { ok: false, message: 'Restaurarea nu a reușit. Încearcă din nou.', cancelled: false };
+      if (!mountedRef.current) return { ok: false, message: t('premium.restoreFailed'), cancelled: false };
       setCustomerInfo(info);
       return isPremiumActive(info)
-        ? { ok: true, message: 'Cumpărăturile tale au fost restaurate.' }
-        : { ok: false, message: 'Nu am găsit cumpărături de restaurat.', cancelled: false };
+        ? { ok: true, message: t('premium.restoreSuccess') }
+        : { ok: false, message: t('premium.restoreNone'), cancelled: false };
     } catch {
-      if (!mountedRef.current) return { ok: false, message: 'Restaurarea nu a reușit. Încearcă din nou.', cancelled: false };
-      return { ok: false, message: 'Restaurarea nu a reușit. Încearcă din nou.', cancelled: false };
+      if (!mountedRef.current) return { ok: false, message: t('premium.restoreFailed'), cancelled: false };
+      return { ok: false, message: t('premium.restoreFailed'), cancelled: false };
     } finally {
       if (mountedRef.current) setLoading(false);
     }
-  }, []);
+  }, [t]);
 
   const priceFor = useCallback(
     (plan: RevenueCatPlan) => {

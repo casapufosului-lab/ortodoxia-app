@@ -21,6 +21,7 @@ import assert from 'node:assert/strict';
 const PREMIUM_SCREEN = readFileSync('src/app/premium.tsx', 'utf8');
 const RC_HOOK = readFileSync('src/hooks/use-revenuecat.ts', 'utf8');
 const RC_LIB = readFileSync('src/lib/revenuecat.ts', 'utf8');
+const I18N_CONFIG = readFileSync('src/i18n/config.ts', 'utf8');
 
 describe('ERR-B4: Premium purchase/restore safety (STRUCTURAL TEST ONLY)', () => {
   it('STRUCTURAL: purchase handler uses synchronous busyRef guard', () => {
@@ -101,7 +102,8 @@ describe('ERR-B4: Premium purchase/restore safety (STRUCTURAL TEST ONLY)', () =>
       RC_HOOK.indexOf('const restore'),
     );
     assert.ok(/isPremiumActive\(info\)/.test(buyBlock));
-    assert.ok(/Plata a fost procesată, dar Premium nu este încă activ/.test(buyBlock));
+    assert.ok(/premium\.paymentPending/.test(buyBlock));
+    assert.ok(/Plata a fost procesată, dar Premium nu este încă activ/.test(I18N_CONFIG));
   });
 
   it('STRUCTURAL: restore with active Premium returns ok:true and with no entitlement returns ok:false', () => {
@@ -163,7 +165,8 @@ describe('ERR-B4: Premium purchase/restore safety (STRUCTURAL TEST ONLY)', () =>
   });
 
   it('STRUCTURAL: restore no-purchase message is honest Romanian', () => {
-    assert.ok(/Nu am găsit cumpărături de restaurat/.test(RC_HOOK));
+    assert.ok(/premium\.restoreNone/.test(RC_HOOK));
+    assert.ok(/Nu am găsit cumpărături de restaurat/.test(I18N_CONFIG));
   });
 
   it('STRUCTURAL: restore has finally block clearing loading', () => {
@@ -177,7 +180,8 @@ describe('ERR-B4: Premium purchase/restore safety (STRUCTURAL TEST ONLY)', () =>
 
   it('STRUCTURAL: buy/restore guard unconfigured RevenueCat with Romanian message', () => {
     assert.ok(/!isRevenueCatConfigured\(\)/.test(RC_HOOK));
-    assert.ok(/Magazinul nu este disponibil momentan/.test(RC_HOOK));
+    assert.ok(/premium\.storeUnavailable/.test(RC_HOOK));
+    assert.ok(/Magazinul nu este disponibil momentan/.test(I18N_CONFIG));
   });
 
   it('STRUCTURAL: refresh catch sets offeringsError', () => {

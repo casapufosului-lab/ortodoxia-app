@@ -11,9 +11,11 @@ import {
 import { isRevenueCatConfigured } from '@/lib/revenuecat';
 import { useRevenueCat } from '@/hooks/use-revenuecat';
 import { useAuth } from '@/providers/auth-provider';
+import { useLocalization } from '@/providers/localization-provider';
 
 export function useSubscription() {
   const { user } = useAuth();
+  const { t } = useLocalization();
   const revenueCat = useRevenueCat();
   const [subscription, setSubscription] = useState<SubscriptionRow | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -37,13 +39,13 @@ export function useSubscription() {
 
     if (queryError) {
       setSubscription(null);
-      setError('Starea abonamentului nu a putut fi verificată.');
+      setError(t('account.planError'));
     } else {
       setSubscription(data as SubscriptionRow | null);
     }
 
     setIsLoading(false);
-  }, [user]);
+  }, [user, t]);
 
   useEffect(() => {
     const timeoutId = setTimeout(() => void refresh(), 0);
@@ -79,7 +81,7 @@ export function useSubscription() {
     isPremium,
     isLoading,
     error,
-    planLabel: subscriptionPlanLabel(subscription),
+    planLabel: t(subscriptionPlanLabel(subscription)),
     dailyAiLimit: isPremium ? PREMIUM_DAILY_AI_LIMIT : FREE_DAILY_AI_LIMIT,
     refresh,
   };
