@@ -51,7 +51,9 @@
     "test:live": "node --test tests/live-services.test.mjs",
     "test:live-backend": "node --test supabase/functions/live-services-status/tests/live-status.test.mjs supabase/functions/live-services-status/tests/drift.test.mjs",
     "test:notifications": "node --test tests/notifications.test.mjs",
-    "test:account-deletion": "node --test tests/account-deletion.test.mjs"
+    "test:account-deletion": "node --test tests/account-deletion.test.mjs",
+    "test:chat-backend": "node --test tests/chat-backend.test.mjs",
+    "lint:chat-backend": "node scripts/lint-chat-backend.cjs"
   },
   "private": true
 }
