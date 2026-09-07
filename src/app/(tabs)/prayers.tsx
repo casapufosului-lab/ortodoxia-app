@@ -19,17 +19,17 @@ type Prayer = {
   audio_path: string | null;
 };
 
-function normalizeSearchText(value: string) {
+function normalizeSearchText(value: string, locale: string) {
   return value
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
-    .toLocaleLowerCase('ro')
+    .toLocaleLowerCase(locale)
     .trim();
 }
 
 export default function PrayersScreen() {
   const { user } = useAuth();
-  const { t } = useLocalization();
+  const { t, region } = useLocalization();
   const [query, setQuery] = useState('');
   const [prayers, setPrayers] = useState<Prayer[]>([]);
   const [favoriteIds, setFavoriteIds] = useState<string[]>([]);
@@ -118,12 +118,12 @@ export default function PrayersScreen() {
   );
 
   const filtered = useMemo(() => {
-    const normalizedQuery = normalizeSearchText(query);
+    const normalizedQuery = normalizeSearchText(query, region.locale);
     if (!normalizedQuery) return prayers;
     return prayers.filter((prayer) =>
-      normalizeSearchText(`${prayer.title} ${prayer.category} ${prayer.body}`).includes(normalizedQuery),
+      normalizeSearchText(`${prayer.title} ${prayer.category} ${prayer.body}`, region.locale).includes(normalizedQuery),
     );
-  }, [prayers, query]);
+  }, [prayers, query, region.locale]);
 
   const toggleFavorite = async (prayerId: string) => {
     if (!user) {
@@ -191,7 +191,7 @@ export default function PrayersScreen() {
       }
 
       Speech.speak(`${prayer.title}. ${prayer.body}`, {
-        language: 'ro-RO',
+        language: region.locale,
         rate: 0.85,
         onDone: () => {
           if (speechRequestRef.current !== speechRequestId) return;

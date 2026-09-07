@@ -20,7 +20,7 @@ function benefits(t: (key: TranslationKey) => string): string[] {
 
 export default function PremiumScreen() {
   const { user } = useAuth();
-  const { t } = useLocalization();
+  const { t, region } = useLocalization();
   const { dailyAiLimit, isLoading, isPremium, planLabel, revenueCatActive, subscription } = useSubscription();
   const { buy, loading, offeringsError, priceFor, restore } = useRevenueCat();
   const [purchaseResult, setPurchaseResult] = useState<{ ok: boolean; message: string } | null>(null);
@@ -79,7 +79,7 @@ export default function PremiumScreen() {
         <Text style={styles.statusLabel}>{t('premium.statusLabel')}</Text>
         <Text style={styles.statusValue}>{isLoading ? t('premium.statusChecking') : isPremium ? planLabel : revenueCatActive && revenueCatActive.plan === 'annual' ? t('premium.statusAnnual') : revenueCatActive ? t('premium.statusMonthly') : planLabel}</Text>
         <Text style={styles.statusBody}>{isPremium ? t('premium.aiLimitBody').replace('{count}', String(dailyAiLimit)) : revenueCatActive ? t('premium.syncingBody') : t('premium.freeBody')}</Text>
-        {subscription?.current_period_end && isPremium ? <Text style={styles.expiry}>{t('premium.expiryLabel').replace('{date}', new Date(subscription.current_period_end).toLocaleDateString('ro-RO'))}</Text> : null}
+        {subscription?.current_period_end && isPremium ? <Text style={styles.expiry}>{t('premium.expiryLabel').replace('{date}', new Date(subscription.current_period_end).toLocaleDateString(region.locale))}</Text> : null}
         {offeringsError ? <Text style={styles.error}>{offeringsError}</Text> : null}
         {purchaseResult ? <Text accessibilityLiveRegion="polite" style={purchaseResult.ok ? styles.successMessage : styles.errorMessage}>{purchaseResult.message}</Text> : null}
       </Card>
