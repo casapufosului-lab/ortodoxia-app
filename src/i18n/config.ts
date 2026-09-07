@@ -697,7 +697,7 @@ const en = {
   'bible.bookREV': 'Revelation',
   'bible.noSearchResults': 'I did not find this word in the current chapter.',
   'bible.openSource': 'Open original source',
-  'chat.welcome': 'Welcome. You can ask about prayer, holidays, or terms from the Orthodox faith.',
+  'chat.welcome': 'Welcome. You can ask about prayer, feasts, or terms from the Orthodox faith.',
   'chat.eyebrow': 'Informational guide',
   'chat.title': 'Ask',
   'chat.subtitle': 'AI responses may be incorrect and do not replace the advice of a spiritual father.',
