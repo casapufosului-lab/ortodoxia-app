@@ -34,6 +34,7 @@ const LANGUAGE_LABELS: Record<CompleteLanguageCode, string> = {
   en: 'English',
   el: 'Ελληνικά',
   sr: 'Српски',
+  bg: 'Български',
 };
 
 export default function AccountScreen() {
