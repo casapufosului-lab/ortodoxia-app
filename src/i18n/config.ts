@@ -3010,7 +3010,35 @@ export const COMPLETE_DICTIONARIES: Record<CompleteLanguageCode, Record<Translat
   mk,
 };
 
-const uk = {} satisfies Partial<Record<TranslationKey, string>>;
+const uk = {
+  'nav.home': 'Головна',
+  'nav.prayers': 'Молитви',
+  'nav.calendar': 'Календар',
+  'nav.bible': 'Біблія',
+  'nav.chat': 'Запитати',
+  'nav.account': 'Профіль',
+  'common.retry': 'Спробувати ще раз',
+  'common.chooseCalendar': 'Вибрати календар',
+
+  'home.pageTitle': 'Мир тобі',
+  'home.pageSubtitle': 'Просте місце для молитви, календаря та запитань.',
+  'home.loadError': 'Не вдалося завантажити вміст сьогоднішнього дня. Спробуйте ще раз.',
+  'home.unexpectedError': 'Сталася неочікувана помилка.',
+  'home.loadingToday': 'Завантажується сьогоднішній день...',
+  'home.verseFallback': '„Мир Мій даю вам.”',
+  'home.verseSourceFallback': 'Іван 14, 27',
+  'home.parableSectionTitle': 'Притча дня',
+  'home.parableTitleFallback': 'Притча про сіяча',
+  'home.parableBodyFallback': 'Уважна душа приймає добре слово і перетворює його на діло.',
+  'home.calendarSectionTitle': 'Сьогодні в календарі',
+  'home.calendarDayFallback': 'Сьогодні в православному календарі',
+  'home.liveSectionTitle': 'Богослужіння LIVE',
+  'home.liveAccessibilityLabel': 'Богослужіння LIVE — Дивіться Святу Літургію наживо',
+  'home.liveSubtitle': 'Дивіться Святу Літургію наживо',
+  'home.liveLocations': 'Бухарест • Ясси • Путна • Сіхастрія • Клуж',
+  'home.askAiGuide': 'Запитай AI-гіда',
+
+} satisfies Partial<Record<TranslationKey, string>>;
 const ka = {} satisfies Partial<Record<TranslationKey, string>>;
 const ru = {} satisfies Partial<Record<TranslationKey, string>>;
 const sq = {} satisfies Partial<Record<TranslationKey, string>>;
