@@ -1098,6 +1098,7 @@ const el = {
   'terms.s13Title': '13. Επικοινωνία',
   'terms.s13Support': '[ADRESĂ DE SUPORT DE COMPLETAT]',
   'terms.s13PublicUrl': '[URL PUBLIC AL TERMENILOR DE COMPLETAT]',
+} satisfies Partial<Record<TranslationKey, string>>;
 
 const sr = {} satisfies Partial<Record<TranslationKey, string>>;
 const bg = {} satisfies Partial<Record<TranslationKey, string>>;
