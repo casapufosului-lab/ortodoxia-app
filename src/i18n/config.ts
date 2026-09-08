@@ -2882,6 +2882,50 @@ const mk = {
 
   'privacy.s2_8Title': '2.8 Аудио содржина генерирана од AI',
   'privacy.s2_8Content': 'На барање, апликацијата може да генерира аудио за молитва користејќи OpenAI text-to-speech. Добиената датотека се чува во Supabase Storage. Генерацијата се врши на серверот.',
+
+  // ── Privacy screen (cont.) ──────────────────────────────────────────
+  'privacy.s2_9Title': '2.9 Статус на LIVE услугите',
+  'privacy.s2_9Content': 'Страницата „LIVE Служби“ го прикажува статусот во живо на избраните видео извори. Проверката се врши на серверот користејќи го YouTube Data API и привремено се кешира во табелата `live_service_status_cache`. Не се собираат лични податоци во врска со користењето на оваа функција.',
+
+  'privacy.s2_10Title': '2.10 Логови за грешки',
+  'privacy.s2_10Content': 'При грешки во конекцијата, одредени логови може да содржат информации за неуспешното барање. Овие логови намерно не содржат лични податоци и не се користат за цели на анализа или следење.',
+
+  'privacy.s3Title': '3. Кои податоци НЕ ги собираме',
+  'privacy.s3Content': 'Ortodoxia не користи услуги за анализа (analytics), пријавување грешки (crash reporting) или следење на корисници (tracking). Не собираме податоци од камера, микрофон, фотографии или локација.',
+
+  'privacy.s4Title': '4. Трети страни кои обработуваат податоци',
+  'privacy.s4Intro': 'Податоците се обработуваат преку следните услуги од трети страни:',
+  'privacy.s4ThService': 'Услуга',
+  'privacy.s4ThPurpose': 'Цел',
+  'privacy.s4RowSupabasePurpose': 'База на податоци, автентикација, складирање датотеки',
+  'privacy.s4RowOpenAIPurpose': 'AI одговори и аудио содржина',
+  'privacy.s4RowRevenueCatPurpose': 'Управување со претплати',
+  'privacy.s4RowAppStorePurpose': 'Плаќања и права на претплата',
+  'privacy.s4RowYouTubePurpose': 'Проверка на статусот во живо',
+  'privacy.s4RowExpoPurpose': 'Платформа на апликацијата; Expo Push',
+
+  'privacy.s5Title': '5. Надворешна содржина',
+  'privacy.s5Content': 'Апликацијата може да прикажува или поврзува кон надворешна содржина — преноси во живо и уредувачки ресурси. Ortodoxia не е одговорна за содржината или практиките за приватност на овие надворешни услуги.',
+
+  'privacy.s6Title': '6. Безбедност',
+  'privacy.s6Content': 'Податоците се пренесуваат преку HTTPS/TLS. Лозинките се хеширани. API клучевите се чуваат исклучиво на серверска страна. Ниту една безбедносна мерка не дава апсолутна гаранција.',
+
+  'privacy.s7Title': '7. Вашите права',
+  'privacy.s7Content': 'Можно е да имате право да пристапите до вашите податоци, да ги исправите или избришете. Контактирајте го операторот: [ADRESĂ DE SUPORT DE COMPLETAT]',
+
+  'privacy.s8Title': '8. Бришење на сметката vs. откажување на претплатата',
+  'privacy.s8DeleteLabel': 'Бришење на сметката',
+  'privacy.s8DeleteBody': ' го брише профилот и поврзаните податоци од Supabase. Сметката повеќе не може да се поврати.',
+  'privacy.s8CancelLabel': 'Откажување на претплатата',
+  'privacy.s8CancelBody': ' (од App Store / Google Play) само го запира автоматското обновување. Premium правата остануваат валидни до крајот на веќе платениот период.',
+  'privacy.s8Uninstall': 'Деинсталирањето на апликацијата НЕ ја откажува претплатата.',
+
+  'privacy.s9Title': '9. Измени на политиката',
+  'privacy.s9Content': 'Оваа политика може да се ажурира периодично. Значајните измени ќе бидат соопштени преку апликацијата или преку е-пошта.',
+
+  'privacy.s10Title': '10. Контакт',
+  'privacy.s10Support': '[ADRESĂ DE SUPORT DE COMPLETAT]',
+  'privacy.s10PublicUrl': '[URL PUBLIC AL POLITICII DE COMPLETAT]',
 } satisfies Partial<Record<TranslationKey, string>>;
 const uk = {} satisfies Partial<Record<TranslationKey, string>>;
 const ka = {} satisfies Partial<Record<TranslationKey, string>>;
