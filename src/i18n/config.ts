@@ -2005,7 +2005,33 @@ export const COMPLETE_DICTIONARIES: Record<CompleteLanguageCode, Record<Translat
   el,
   sr,
 };
-const bg = {} satisfies Partial<Record<TranslationKey, string>>;
+const bg = {
+  'nav.home': 'Начало',
+  'nav.prayers': 'Молитви',
+  'nav.calendar': 'Календар',
+  'nav.bible': 'Библия',
+  'nav.chat': 'Питай',
+  'nav.account': 'Профил',
+  'common.retry': 'Опитай отново',
+  'common.chooseCalendar': 'Избери календар',
+  'home.pageTitle': 'Мир на теб',
+  'home.pageSubtitle': 'Просто място за молитва, календар и въпроси.',
+  'home.loadError': 'Съдържанието на днешния ден не можа да бъде заредено. Моля, опитай отново.',
+  'home.unexpectedError': 'Възникна неочаквана грешка.',
+  'home.loadingToday': 'Зареждане на днешния ден...',
+  'home.verseFallback': '„Мир Свой ви оставям.“',
+  'home.verseSourceFallback': 'Йоан 14, 27',
+  'home.parableSectionTitle': 'Притчата на деня',
+  'home.parableTitleFallback': 'Притчата за сеяча',
+  'home.parableBodyFallback': 'Внимателната душа приема доброто слово и го превръща в дело.',
+  'home.calendarSectionTitle': 'Днес в календара',
+  'home.calendarDayFallback': 'Днес в православния календар',
+  'home.liveSectionTitle': 'Богослужения НА ЖИВО',
+  'home.liveAccessibilityLabel': 'Богослужения НА ЖИВО — Гледай Светата Литургия на живо',
+  'home.liveSubtitle': 'Гледай Светата Литургия на живо',
+  'home.liveLocations': 'Букурещ • Яш • Путна • Сихастрия • Клуж',
+  'home.askAiGuide': 'Попитай AI водача',
+} satisfies Partial<Record<TranslationKey, string>>;
 const mk = {} satisfies Partial<Record<TranslationKey, string>>;
 const uk = {} satisfies Partial<Record<TranslationKey, string>>;
 const ka = {} satisfies Partial<Record<TranslationKey, string>>;
