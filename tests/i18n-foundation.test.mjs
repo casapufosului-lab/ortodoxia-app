@@ -19,6 +19,32 @@ const sandbox = { exports: {}, require: () => ({}) };
 vm.createContext(sandbox);
 vm.runInContext(transpiled.outputText, sandbox);
 const config = sandbox.exports;
+const providerSource = readFileSync(join(root, 'src/providers/localization-provider.tsx'), 'utf8');
+
+// Structural checks use the real provider source; they do not mount React Native.
+test('provider restores each storage preference independently', () => {
+  assert.doesNotMatch(providerSource, /Promise\.all\s*\(/);
+  assert.match(providerSource, /Promise\.allSettled\(\[/);
+  assert.match(providerSource, /LANGUAGE_STORAGE_KEY = 'ortodoxia\.language'/);
+  assert.match(providerSource, /if \(savedLanguage\.status === 'fulfilled'\) \{\s*setLanguageCodeState\(resolveLanguageCode\(savedLanguage\.value\)\);\s*\} else \{\s*console\.error\([^;]+savedLanguage\.reason\);/);
+  assert.match(providerSource, /if \(savedCountry\.status === 'fulfilled'\)/);
+  assert.match(providerSource, /console\.error\([^;]+savedCountry\.reason\)/);
+  assert.match(providerSource, /if \(savedCalendars\.status === 'rejected'\)/);
+  assert.match(providerSource, /console\.error\([^;]+savedCalendars\.reason\)/);
+});
+
+test('provider gates children until hydration finishes and preserves defaults', () => {
+  assert.match(providerSource, /useState<LanguageCode>\('ro'\)/);
+  assert.match(providerSource, /useState<CountryCode>\(DEFAULT_COUNTRY\)/);
+  assert.match(providerSource, /useState<CalendarPreferences>\(\{\}\)/);
+  assert.match(providerSource, /\.finally\(\(\) => \{\s*if \(active\) setIsLoading\(false\);\s*\}\)/);
+  assert.equal((providerSource.match(/setIsLoading\(false\)/g) ?? []).length, 1);
+  assert.match(providerSource, /if \(isLoading\) return null;\s*return <LocalizationContext\.Provider value=\{value\}>\{children\}<\/LocalizationContext\.Provider>/);
+});
+
+test('language writes update state immediately and log storage failures', () => {
+  assert.match(providerSource, /setLanguageCode: async \(nextLanguageCode\) => \{\s*setLanguageCodeState\(nextLanguageCode\);\s*try \{\s*await AsyncStorage\.setItem\(LANGUAGE_STORAGE_KEY, nextLanguageCode\);\s*\} catch \(error\) \{\s*console\.error\('Failed to save language preference:', error\);\s*\}\s*\}/);
+});
 
 test('SUPPORTED_LANGUAGES are exact', () => {
   const expected = ['ro', 'en', 'el', 'sr', 'bg', 'mk', 'uk', 'ka', 'ru', 'sq'];

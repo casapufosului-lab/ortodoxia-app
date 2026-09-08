@@ -46,20 +46,31 @@ export function LocalizationProvider({ children }: PropsWithChildren) {
   useEffect(() => {
     let active = true;
 
-    Promise.all([
+    Promise.allSettled([
       AsyncStorage.getItem(COUNTRY_STORAGE_KEY),
       AsyncStorage.getItem(CALENDAR_STORAGE_KEY),
       AsyncStorage.getItem(LANGUAGE_STORAGE_KEY),
     ])
       .then(([savedCountry, savedCalendars, savedLanguage]) => {
         if (!active) return;
-        setCountryCodeState(getRegion(savedCountry).countryCode);
-        setLanguageCodeState(resolveLanguageCode(savedLanguage));
-        if (savedCalendars) {
+        if (savedLanguage.status === 'fulfilled') {
+          setLanguageCodeState(resolveLanguageCode(savedLanguage.value));
+        } else {
+          console.error('Failed to restore language preference:', savedLanguage.reason);
+        }
+        if (savedCountry.status === 'fulfilled') {
+          setCountryCodeState(getRegion(savedCountry.value).countryCode);
+        } else {
+          console.error('Failed to restore country preference:', savedCountry.reason);
+        }
+        if (savedCalendars.status === 'rejected') {
+          console.error('Failed to restore calendar preferences:', savedCalendars.reason);
+        } else if (savedCalendars.value) {
           try {
-            const parsed = JSON.parse(savedCalendars) as CalendarPreferences;
+            const parsed = JSON.parse(savedCalendars.value) as CalendarPreferences;
             setCalendarPreferences(parsed);
-          } catch {
+          } catch (error) {
+            console.error('Failed to parse calendar preferences:', error);
             setCalendarPreferences({});
           }
         }
@@ -99,10 +110,16 @@ export function LocalizationProvider({ children }: PropsWithChildren) {
     },
     setLanguageCode: async (nextLanguageCode) => {
       setLanguageCodeState(nextLanguageCode);
-      await AsyncStorage.setItem(LANGUAGE_STORAGE_KEY, nextLanguageCode);
+      try {
+        await AsyncStorage.setItem(LANGUAGE_STORAGE_KEY, nextLanguageCode);
+      } catch (error) {
+        console.error('Failed to save language preference:', error);
+      }
     },
     t: (key) => translate(languageCode, key),
   }), [availableCalendars, calendar, calendarCode, calendarPreferences, countryCode, isLoading, languageCode, region]);
+
+  if (isLoading) return null;
 
   return <LocalizationContext.Provider value={value}>{children}</LocalizationContext.Provider>;
 }
