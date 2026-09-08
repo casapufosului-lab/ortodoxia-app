@@ -37,6 +37,7 @@ const LANGUAGE_LABELS: Record<CompleteLanguageCode, string> = {
   bg: 'Български',
   mk: 'Македонски',
   uk: 'Українська',
+  ka: 'ქართული',
 };
 
 export default function AccountScreen() {
