@@ -2844,6 +2844,44 @@ const mk = {
 
   'region.moldovaCalendarPending': 'Избраниот календар е зачуван. Локалната содржина ќе биде објавена само по проверка на црковните извори.',
   'region.moldovaChooseCalendar': 'Избери го црковниот календар за Република Молдова. Апликацијата не избира автоматски наместо тебе.',
+
+  // ── Privacy screen ──────────────────────────────────────────────────
+  'privacy.title': 'Политика за приватност',
+  'privacy.meta': 'Верзија: 1.0 — [DATA DE COMPLETAT]',
+
+  'privacy.s1Title': '1. Оператор',
+  'privacy.s1Entity': '[OPERATOR/ENTITATE LEGALĂ DE COMPLETAT]',
+  'privacy.s1Support': '[ADRESĂ DE SUPORT DE COMPLETAT]',
+  'privacy.s1Postal': '[ADRESĂ POȘTALĂ DE COMPLETAT]',
+
+  'privacy.s2Title': '2. Кои податоци ги собираме',
+  'privacy.s2Intro': 'Ortodoxia ги обработува следните категории на податоци, исклучиво во обемот во кој функциите на апликацијата ги користат.',
+
+  'privacy.s2_1Title': '2.1 Податоци за автентикација',
+  'privacy.s2_1Content': 'При креирање на сметка, ги собираме адресата на е-пошта и лозинката што ги обезбедувате. Лозинката се чува хеширана (не во обичен текст) од страна на Supabase.',
+
+  'privacy.s2_2Title': '2.2 Кориснички профил',
+  'privacy.s2_2Content': 'Името за приказ поставено од корисникот се чува во табелата `profiles` на Supabase, поврзано со единствениот идентификатор на сметката.',
+
+  'privacy.s2_3Title': '2.3 Преференци за регион и календар',
+  'privacy.s2_3Content': 'Преференцијата за регион и литургиски календар се чува локално на уредот и не се испраќа до серверот автоматски.',
+
+  'privacy.s2_4Title': '2.4 AI разговори',
+  'privacy.s2_4Content1': 'Кога најавен корисник испраќа порака до AI чатот, содржината на пораките и одговорите се чува во табелите `chat_threads` и `chat_messages` на Supabase, поврзана со сметката.',
+  'privacy.s2_4Content2': 'Дневната употреба на AI пораки се евидентира во табелата `usage_daily`. За ненајавени корисници се користи локално генериран идентификатор; употребата се евидентира во `guest_usage_daily`.',
+  'privacy.s2_4Content3': 'Не внесувајте чувствителни лични информации во AI разговорите. Пораките го одразуваат она што доброволно го обезбедувате.',
+
+  'privacy.s2_5Title': '2.5 Преференци за известувања',
+  'privacy.s2_5Content': 'Ако ги активирате известувањата, состојбата на преференцијата се чува во табелата `notification_preferences`. Expo Push Token се испраќа и се чува на серверска страна. Токенот се регенерира од системот Expo и не содржи лични податоци.',
+
+  'privacy.s2_6Title': '2.6 Претплати и плаќања',
+  'privacy.s2_6Content': 'Плаќањата се управуваат од Apple App Store, Google Play и RevenueCat. Состојбата на претплатата се синхронизира преку webhook на серверска страна и се чува во табелата `subscriptions` на Supabase. Не чуваме податоци од банкарска картичка.',
+
+  'privacy.s2_7Title': '2.7 Молитви и преференци',
+  'privacy.s2_7Content': 'Молитвите се чуваат во табелата `prayers` на Supabase. Зачуваните омилени се чуваат во табелата `favorites` поврзана со сметката.',
+
+  'privacy.s2_8Title': '2.8 Аудио содржина генерирана од AI',
+  'privacy.s2_8Content': 'На барање, апликацијата може да генерира аудио за молитва користејќи OpenAI text-to-speech. Добиената датотека се чува во Supabase Storage. Генерацијата се врши на серверот.',
 } satisfies Partial<Record<TranslationKey, string>>;
 const uk = {} satisfies Partial<Record<TranslationKey, string>>;
 const ka = {} satisfies Partial<Record<TranslationKey, string>>;
