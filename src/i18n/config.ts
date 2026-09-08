@@ -1378,6 +1378,13 @@ const el = {
 
 
 
+  'resetConfirmation.title': 'Ελέγξτε το email σας',
+  'resetConfirmation.subtitle': 'Σας στείλαμε τις οδηγίες για την επαναφορά του κωδικού πρόσβασης.',
+  'resetConfirmation.cardTitle': 'Μήνυμα εστάλη',
+  'resetConfirmation.cardSubtitle': 'Ανοίξτε το μήνυμα που λάβατε και πατήστε το σύνδεσμο επαναφοράς. Ελέγξτε επίσης τον φάκελο Spam ή Προσφορές.',
+  'resetConfirmation.backToLogin': 'Επιστροφή στην σύνδεση',
+  'layout.privacyTitle': 'Πολιτική απορρήτου',
+
 
   'calendar.selectDay': 'Επιλέξτε ημέρα',
 
