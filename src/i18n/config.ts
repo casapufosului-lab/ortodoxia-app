@@ -1063,12 +1063,6 @@ const en = {
   'account.notificationChannelName': 'Message of the day',
 } satisfies Partial<Record<TranslationKey, string>>;
 
-// Parity guard: COMPLETE_LANGUAGES must have full translation coverage
-export const COMPLETE_DICTIONARIES: Record<CompleteLanguageCode, Record<TranslationKey, string>> = {
-  ro,
-  en,
-};
-
 const el = {
   'nav.home': 'Αρχική',
   'nav.prayers': 'Προσευχές',
@@ -1539,6 +1533,13 @@ const el = {
   'terms.s13Support': '[ADRESĂ DE SUPORT DE COMPLETAT]',
   'terms.s13PublicUrl': '[URL PUBLIC AL TERMENILOR DE COMPLETAT]',
 } satisfies Partial<Record<TranslationKey, string>>;
+
+// Parity guard: COMPLETE_LANGUAGES must have full translation coverage
+export const COMPLETE_DICTIONARIES: Record<CompleteLanguageCode, Record<TranslationKey, string>> = {
+  ro,
+  en,
+  el,
+};
 
 const sr = {} satisfies Partial<Record<TranslationKey, string>>;
 const bg = {} satisfies Partial<Record<TranslationKey, string>>;

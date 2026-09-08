@@ -73,12 +73,12 @@ test('REAL translate fallback', () => {
   // Verify explicit translation
   assert.equal(enValue, 'Home');
 
-  // Verify fallback for untranslated key
+  // Verify Greek translation and fallback for incomplete languages
   const elValue = config.translate('el', 'nav.home');
   const ruValue = config.translate('ru', 'nav.home');
   const sqValue = config.translate('sq', 'nav.home');
 
-  assert.equal(elValue, roValue);
+  assert.equal(elValue, 'Αρχική');
   assert.equal(ruValue, roValue);
   assert.equal(sqValue, roValue);
 });
