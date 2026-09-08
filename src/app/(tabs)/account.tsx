@@ -33,6 +33,7 @@ const LANGUAGE_LABELS: Record<CompleteLanguageCode, string> = {
   ro: 'Română',
   en: 'English',
   el: 'Ελληνικά',
+  sr: 'Српски',
 };
 
 export default function AccountScreen() {
