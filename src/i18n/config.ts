@@ -1354,6 +1354,29 @@ const el = {
   'chat.retry': 'Επαναφόρτωση συνομιλίας',
   'chat.inputPlaceholder': 'Γράψτε την ερώτησή σας',
   'chat.sendButton': 'Αποστολή',
+  'live.eyebrow': 'Ακολουθίες LIVE',
+  'live.title': 'Ακολουθίες LIVE',
+  'live.subtitle': 'Παρακολουθήστε τη Θεία Λειτουργία ζωντανά από επίσημες πηγές. Οι μεταδόσεις ανήκουν στους αντίστοιχους εκκλησιαστικούς φορείς.',
+  'live.statusView': 'Δείτε τις μεταδόσεις',
+  'live.statusLive': 'LIVE ΤΩΡΑ',
+  'live.statusNotLive': 'Αυτή τη στιγμή δεν είναι LIVE',
+  'live.actionEmbed': 'Δείτε ζωντανά',
+  'live.actionExternal': 'Άνοιγμα στο YouTube',
+  'live.actionOfficial': 'Άνοιγμα επίσημης πηγής',
+  'live.retry': 'Επαναφόρτωση',
+  'live.loading': 'Έλεγχος μεταδόσεων...',
+  'live.providerLabel': 'Πάροχος: {provider}',
+  'live.disclaimer': 'Οι μεταδόσεις ανήκουν στις επίσημες πηγές. Η εφαρμογή εμφανίζει την κατάσταση live μόνο με βάση τα δεδομένα που λαμβάνονται από τον διακομιστή.',
+  'live.errorStatusFetch': 'Δεν ήταν δυνατός ο έλεγχος των μεταδόσεων τώρα.',
+  'live.errorOpenSource': 'Η μετάδοση δεν είναι δυνατό να ανοίξει αυτή τη στιγμή.',
+  'live.scheduleNotePutna': 'Η Θεία Λειτουργία της Κυριακής μεταδίδεται από το κανάλι YouTube της μονής.',
+  'live.scheduleNoteRadioRenasterea': 'Η Θεία Λειτουργία της Κυριακής από τον Μητροπολιτικό Καθεδρικό Ναό μεταδίδεται ζωντανά.',
+  'live.closePlayerAccessibilityLabel': 'Κλείσιμο του προγράμματος αναπαραγωγής βίντεο',
+  'live.closePlayer': '✕ Κλείσιμο',
+  'live.playerAccessibilityLabel': 'Player YouTube live',
+
+
+
 
 
   'calendar.selectDay': 'Επιλέξτε ημέρα',
