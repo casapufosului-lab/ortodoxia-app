@@ -3490,7 +3490,33 @@ export const COMPLETE_DICTIONARIES: Record<CompleteLanguageCode, Record<Translat
   mk,
   uk,
 };
-const ka = {} satisfies Partial<Record<TranslationKey, string>>;
+const ka = {
+  'nav.home': 'მთავარი',
+  'nav.prayers': 'ლოცვები',
+  'nav.calendar': 'კალენდარი',
+  'nav.bible': 'ბიბლია',
+  'nav.chat': 'ჰკითხე',
+  'nav.account': 'ანგარიში',
+  'common.retry': 'თავიდან ცდა',
+  'common.chooseCalendar': 'აირჩიე კალენდარი',
+  'home.pageTitle': 'მშვიდობა შენდა',
+  'home.pageSubtitle': 'მარტივი ადგილი ლოცვისთვის, კალენდრისა და კითხვებისთვის.',
+  'home.loadError': 'დღევანდელი დღის შინაარსი ვერ ჩაიტვირთა. სცადეთ კიდევ ერთხელ.',
+  'home.unexpectedError': 'მოხდა მოულოდნელი შეცდომა.',
+  'home.loadingToday': 'იტვირთება დღევანდელი დღე...',
+  'home.verseFallback': '„მშვიდობას ჩემსას გაძლევთ თქვენ.“',
+  'home.verseSourceFallback': 'იოანე 14, 27',
+  'home.parableSectionTitle': 'დღის იგავი',
+  'home.parableTitleFallback': 'იგავი მთესველზე',
+  'home.parableBodyFallback': 'ყურადღებიანი სული იღებს კეთილ სიტყვას და აქცევს მას საქმედ.',
+  'home.calendarSectionTitle': 'დღეს კალენდარში',
+  'home.calendarDayFallback': 'დღეს მართლმადიდებლურ კალენდარში',
+  'home.liveSectionTitle': 'ღვთისმსახურებები LIVE',
+  'home.liveAccessibilityLabel': 'ღვთისმსახურებები LIVE — უყურეთ წმინდა ლიტურგიას პირდაპირ ეთერში',
+  'home.liveSubtitle': 'უყურეთ წმინდა ლიტურგიას პირდაპირ ეთერში',
+  'home.liveLocations': 'ბუქარესტი • იაში • პუტნა • სიჰესტრია • კლუჟი',
+  'home.askAiGuide': 'ჰკითხე AI მეგზურს',
+} satisfies Partial<Record<TranslationKey, string>>;
 const ru = {} satisfies Partial<Record<TranslationKey, string>>;
 const sq = {} satisfies Partial<Record<TranslationKey, string>>;
 
