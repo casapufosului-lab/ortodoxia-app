@@ -51,8 +51,8 @@ test('SUPPORTED_LANGUAGES are exact', () => {
   assert.ok(JSON.stringify(config.SUPPORTED_LANGUAGES) === JSON.stringify(expected), 'SUPPORTED_LANGUAGES match expected');
 });
 
-test('COMPLETE_LANGUAGES is exactly ro, en, el, sr, bg and mk', () => {
-  assert.ok(JSON.stringify(config.COMPLETE_LANGUAGES) === JSON.stringify(['ro', 'en', 'el', 'sr', 'bg', 'mk']), 'COMPLETE_LANGUAGES match expected');
+test('COMPLETE_LANGUAGES is exactly ro, en, el, sr, bg, mk and uk', () => {
+  assert.ok(JSON.stringify(config.COMPLETE_LANGUAGES) === JSON.stringify(['ro', 'en', 'el', 'sr', 'bg', 'mk', 'uk']), 'COMPLETE_LANGUAGES match expected');
 });
 
 test('REAL resolveLanguageCode resolves correctly', () => {
@@ -97,5 +97,9 @@ test('REAL Romanian translation returns Romanian value', () => {
 
 test('REAL Macedonian translation returns Macedonian value', () => {
   assert.equal(config.translate('mk', 'nav.home'), 'Почетна');
+});
+
+test('REAL Ukrainian translation returns Ukrainian value', () => {
+  assert.equal(config.translate('uk', 'nav.home'), 'Головна');
 });
 
