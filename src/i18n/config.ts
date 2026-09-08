@@ -2421,6 +2421,25 @@ const bg = {
   'privacy.s10Support': '[ADRESĂ DE SUPORT DE COMPLETAT]',
   'privacy.s10PublicUrl': '[URL PUBLIC AL POLITICII DE COMPLETAT]',
 
+  // ── Terms screen ────────────────────────────────────────────────────
+  'terms.title': 'Условия за ползване',
+  'terms.meta': 'Версия: 1.0 — [DATA DE COMPLETAT]',
+
+  'terms.s1Title': '1. Администратор и приемане',
+  'terms.s1Entity': '[OPERATOR/ENTITATE LEGALĂ DE COMPLETAT]',
+  'terms.s1Support': '[ADRESĂ DE SUPORT DE COMPLETAT]',
+  'terms.s1Content': 'Използването на приложението Orthodoxia е обвързано с приемането на настоящите условия. Ако не сте съгласни, моля, не използвайте приложението.',
+
+  'terms.s2Title': '2. Допустимост',
+  'terms.s2Content': 'Приложението е предназначено за лица, навършили минималната възраст, необходима за създаване на акаунт в платформите Apple App Store / Google Play. Непълнолетните лица трябва да използват приложението със съгласието на законния представител.',
+
+  'terms.s3Title': '3. Вашият акаунт',
+  'terms.s3Content1': 'Отговорни сте за поверителността на данните за вход и за всички дейности, извършени чрез вашия акаунт. Уведомете ни незабавно на адреса за поддръжка, ако подозирате неоторизирано използване.',
+  'terms.s3Content2': 'Изтриването на акаунта е отделно действие от прекратяването на абонамента. За подробности вижте Политиката за поверителност (раздел 8).',
+
+  'terms.s4Title': '4. Приемлива употреба',
+  'terms.s4Content': 'Ангажирате се да използвате приложението по честен и уважителен начин, без да се опитвате да заобиколите техническите ограничения, да злоупотребявате с AI функциите или да навредите на други потребители.',
+
 } satisfies Partial<Record<TranslationKey, string>>;
 const mk = {} satisfies Partial<Record<TranslationKey, string>>;
 const uk = {} satisfies Partial<Record<TranslationKey, string>>;
