@@ -1,7 +1,7 @@
 export type CountryCode = 'RO' | 'MD';
 export const SUPPORTED_LANGUAGES = ['ro', 'en', 'el', 'sr', 'bg', 'mk', 'uk', 'ka', 'ru', 'sq'] as const;
 export type LanguageCode = typeof SUPPORTED_LANGUAGES[number];
-export const COMPLETE_LANGUAGES = ['ro', 'en'] as const;
+export const COMPLETE_LANGUAGES = ['ro', 'en', 'el'] as const;
 export type CompleteLanguageCode = typeof COMPLETE_LANGUAGES[number];
 
 export function isSupportedLanguage(code: string): code is LanguageCode {

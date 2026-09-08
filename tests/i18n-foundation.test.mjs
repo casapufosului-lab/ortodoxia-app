@@ -51,8 +51,8 @@ test('SUPPORTED_LANGUAGES are exact', () => {
   assert.ok(JSON.stringify(config.SUPPORTED_LANGUAGES) === JSON.stringify(expected), 'SUPPORTED_LANGUAGES match expected');
 });
 
-test('COMPLETE_LANGUAGES is exactly ro and en', () => {
-  assert.ok(JSON.stringify(config.COMPLETE_LANGUAGES) === JSON.stringify(['ro', 'en']), 'COMPLETE_LANGUAGES match expected');
+test('COMPLETE_LANGUAGES is exactly ro, en and el', () => {
+  assert.ok(JSON.stringify(config.COMPLETE_LANGUAGES) === JSON.stringify(['ro', 'en', 'el']), 'COMPLETE_LANGUAGES match expected');
 });
 
 test('REAL resolveLanguageCode resolves correctly', () => {

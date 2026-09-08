@@ -32,6 +32,7 @@ function friendlyDbError(error: unknown, t: (key: TranslationKey) => string): st
 const LANGUAGE_LABELS: Record<CompleteLanguageCode, string> = {
   ro: 'Română',
   en: 'English',
+  el: 'Ελληνικά',
 };
 
 export default function AccountScreen() {
