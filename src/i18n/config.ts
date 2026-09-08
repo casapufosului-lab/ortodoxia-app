@@ -1541,7 +1541,33 @@ export const COMPLETE_DICTIONARIES: Record<CompleteLanguageCode, Record<Translat
   el,
 };
 
-const sr = {} satisfies Partial<Record<TranslationKey, string>>;
+const sr = {
+  'nav.home': 'Дом',
+  'nav.prayers': 'Молитве',
+  'nav.calendar': 'Календар',
+  'nav.bible': 'Библија',
+  'nav.chat': 'Питај',
+  'nav.account': 'Налог',
+  'common.retry': 'Поново покушај',
+  'common.chooseCalendar': 'Изабери календар',
+  'home.pageTitle': 'Мир вама',
+  'home.pageSubtitle': 'Једноставно место за молитву, календар и питања.',
+  'home.loadError': 'Садржај данашњег дана није могао бити учитан. Молимо покушајте поново.',
+  'home.unexpectedError': 'Дошло је до неочекиване грешке.',
+  'home.loadingToday': 'Учитавање данашњег дана...',
+  'home.verseFallback': '„Мир свој дајем вама."',
+  'home.verseSourceFallback': 'Јован 14, 27',
+  'home.parableSectionTitle': 'Прича дана',
+  'home.parableTitleFallback': 'Прича о сејачу',
+  'home.parableBodyFallback': 'Пажљива душа прима добру реч и претвара је у дело.',
+  'home.calendarSectionTitle': 'Данас у календару',
+  'home.calendarDayFallback': 'Данас у православном календару',
+  'home.liveSectionTitle': 'Службе УЖИВО',
+  'home.liveAccessibilityLabel': 'Службе УЖИВО — Гледајте Свету Литургију уживо',
+  'home.liveSubtitle': 'Гледајте Свету Литургију уживо',
+  'home.liveLocations': 'Букурешт • Јаши • Путна • Сихастирија • Клуж',
+  'home.askAiGuide': 'Питајте AI водича',
+} satisfies Partial<Record<TranslationKey, string>>;
 const bg = {} satisfies Partial<Record<TranslationKey, string>>;
 const mk = {} satisfies Partial<Record<TranslationKey, string>>;
 const uk = {} satisfies Partial<Record<TranslationKey, string>>;
