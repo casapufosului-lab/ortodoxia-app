@@ -1,4 +1,5 @@
 import { createClient } from 'npm:@supabase/supabase-js@2';
+import { classifyExpoPushTickets, isNotificationDue } from './send-core.ts';
 
 // ─── CORS ───────────────────────────────────────────────────────────────────
 
@@ -91,10 +92,6 @@ export function determineNotificationType(
 }
 
 /** Check if configured HH:MM matches current local HH:MM. */
-export function isNotificationDue(configuredTime: string, localTime: string): boolean {
-  return configuredTime.slice(0, 5) === localTime;
-}
-
 /** Build notification body from verified content only. Never fabricates. */
 export function buildNotificationBody(
   type: NotificationType,
@@ -250,14 +247,14 @@ Deno.serve(async (req: Request) => {
       sound: 'default',
     }));
 
-    const response = await fetch('https://exp.host/--/api/v2/push/send', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(messages),
-    });
-
-    if (!response.ok) {
-      // Send failed — release reservation so next cron can retry
+    let response: Response;
+    try {
+      response = await fetch('https://exp.host/--/api/v2/push/send', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(messages),
+      });
+    } catch {
       await admin.rpc('release_notification_reservation', {
         p_device_ids: pendingDevices.map((d) => d.id),
         p_content_date: now.date,
@@ -266,7 +263,56 @@ Deno.serve(async (req: Request) => {
       continue;
     }
 
-    sent += messages.length;
+    if (!response.ok) {
+      await admin.rpc('release_notification_reservation', {
+        p_device_ids: pendingDevices.map((d) => d.id),
+        p_content_date: now.date,
+      });
+      skipped += 1;
+      continue;
+    }
+
+    let expoPayload: unknown;
+    try {
+      expoPayload = await response.json();
+    } catch {
+      await admin.rpc('release_notification_reservation', {
+        p_device_ids: pendingDevices.map((d) => d.id),
+        p_content_date: now.date,
+      });
+      skipped += 1;
+      continue;
+    }
+
+    const tickets = classifyExpoPushTickets(expoPayload, pendingDevices.length);
+    if (!tickets) {
+      await admin.rpc('release_notification_reservation', {
+        p_device_ids: pendingDevices.map((d) => d.id),
+        p_content_date: now.date,
+      });
+      skipped += 1;
+      continue;
+    }
+
+    const retryDeviceIds = tickets.retryIndexes.map((index) => pendingDevices[index].id);
+    const deactivateDeviceIds = tickets.deactivateIndexes.map((index) => pendingDevices[index].id);
+
+    if (retryDeviceIds.length > 0) {
+      await admin.rpc('release_notification_reservation', {
+        p_device_ids: retryDeviceIds,
+        p_content_date: now.date,
+      });
+    }
+
+    if (deactivateDeviceIds.length > 0) {
+      await admin
+        .from('notification_devices')
+        .update({ is_active: false })
+        .in('id', deactivateDeviceIds);
+    }
+
+    sent += tickets.acceptedIndexes.length;
+    if (retryDeviceIds.length > 0 || deactivateDeviceIds.length > 0) skipped += 1;
   }
 
   return json({ success: true, eligible, sent, skipped });
