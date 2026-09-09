@@ -143,7 +143,7 @@ Deno.serve(async (req: Request) => {
   // If any DB cleanup step failed, abort before deleting the auth user to
   // avoid leaving orphaned data that the user cannot request to re-delete.
   if (errors.length > 0) {
-    return json({ error: 'Ștergerea datelor nu a reușit. Încearcă din nou.', details: errors }, 500);
+    return json({ error: 'Ștergerea datelor nu a reușit. Încearcă din nou.' }, 500);
   }
 
   // 5. Delete the auth user. This is the final step and triggers any remaining
