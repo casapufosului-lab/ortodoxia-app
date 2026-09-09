@@ -29,8 +29,19 @@ function welcomeMessage(t: (key: TranslationKey) => string): Message {
 }
 
 function localDateKey() {
-  const date = new Date();
-  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'Europe/Bucharest',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(new Date());
+
+  const year = parts.find((part) => part.type === 'year')?.value;
+  const month = parts.find((part) => part.type === 'month')?.value;
+  const day = parts.find((part) => part.type === 'day')?.value;
+
+  if (!year || !month || !day) throw new Error('Nu s-a putut determina data quota.');
+  return `${year}-${month}-${day}`;
 }
 
 export default function ChatScreen() {
@@ -194,7 +205,7 @@ function ChatConversation() {
             if (details?.code === 'daily_limit') setRemaining(0);
             // Cooldown is temporary: preserve the server-provided remaining quota.
           } catch {
-            // Păstrăm mesajul simplu de mai sus.
+            // PÃ„Æ’strÃ„Æ’m mesajul simplu de mai sus.
           }
         }
 
