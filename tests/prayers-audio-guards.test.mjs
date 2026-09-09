@@ -109,3 +109,27 @@ test('unmount cleanup invalidates stale load and speech identities', () => {
   assert.ok(unmountBody.includes('audioPlayerRef.current?.release();'), 'must release player on cleanup');
   assert.ok(unmountBody.includes('audioPlayerRef.current = null;'), 'must clear player ref on cleanup');
 });
+
+test('AUD2-07 blur invalidates pending audio startup', () => {
+  const focusStart = src.indexOf('useFocusEffect(');
+  const toggleStart = src.indexOf('const toggleAudio = async');
+  const focusBody = src.slice(focusStart, toggleStart);
+  assert.ok(focusBody.includes('speechRequestRef.current += 1;'), 'blur must invalidate pending audio startup');
+  assert.ok(focusBody.includes('void Speech.stop();'), 'blur must still stop speech');
+});
+
+test('AUD2-07 toggleAudio rejects stale startup after awaited Speech.stop', () => {
+  const toggleStart = src.indexOf('const toggleAudio = async');
+  const body = src.slice(toggleStart, src.indexOf('return (', toggleStart));
+  const requestIdx = body.indexOf('const speechRequestId = speechRequestRef.current;');
+  const awaitIdx = body.indexOf('await Speech.stop();', requestIdx);
+  const guardIdx = body.indexOf('if (speechRequestRef.current !== speechRequestId) return;', awaitIdx);
+  const speakingIdx = body.indexOf('setSpeakingId(prayer.id);', awaitIdx);
+  const playerIdx = body.indexOf('createAudioPlayer(', awaitIdx);
+  const speakIdx = body.indexOf('Speech.speak(', awaitIdx);
+  assert.ok(requestIdx >= 0 && awaitIdx > requestIdx, 'startup request must be captured before awaited stop');
+  assert.ok(guardIdx > awaitIdx, 'stale guard must run immediately after awaited stop');
+  assert.ok(speakingIdx > guardIdx, 'guard must precede speaking state');
+  assert.ok(playerIdx > guardIdx, 'guard must precede audio player startup');
+  assert.ok(speakIdx > guardIdx, 'guard must precede TTS startup');
+});

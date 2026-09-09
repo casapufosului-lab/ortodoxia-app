@@ -109,6 +109,7 @@ export default function PrayersScreen() {
   useFocusEffect(
     useCallback(() => {
       return () => {
+        speechRequestRef.current += 1;
         void Speech.stop();
         audioPlayerRef.current?.pause();
         audioPlayerRef.current?.release();
@@ -172,6 +173,7 @@ export default function PrayersScreen() {
     const speechRequestId = speechRequestRef.current;
     try {
       await Speech.stop();
+      if (speechRequestRef.current !== speechRequestId) return;
       audioPlayerRef.current?.pause();
       audioPlayerRef.current?.release();
       audioPlayerRef.current = null;
