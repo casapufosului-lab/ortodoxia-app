@@ -255,7 +255,7 @@ test('non-embeddable live is still reported as live', async () => {
     searchReturn: [{ videoId: 'V', channelId: SOURCE.officialChannelId, title: 't' }],
     verifyReturn: () => ({
       videoId: 'V', channelId: SOURCE.officialChannelId, title: 't',
-      embeddable: false, isLiveContent: true, actualStartTime: undefined, actualEndTime: undefined,
+      embeddable: false, isLiveContent: true, actualStartTime: new Date(now() - 60_000).toISOString(), actualEndTime: undefined,
     }),
   });
   const out = await discoverLiveStatus(youtube, SOURCE);
@@ -422,7 +422,7 @@ test('brand-new source with no row claims lease and populates cache', async () =
     searchReturn: [{ videoId: 'BRANDNEW', channelId: SOURCE.officialChannelId, title: 'Sf. Liturghie' }],
     verifyReturn: (id) => ({
       videoId: id, channelId: SOURCE.officialChannelId, title: 'Sf. Liturghie',
-      embeddable: true, isLiveContent: true, actualStartTime: undefined, actualEndTime: undefined,
+      embeddable: true, isLiveContent: true, actualStartTime: new Date(now() - 60_000).toISOString(), actualEndTime: undefined,
     }),
   });
   const res = await computeSourceStatus(SOURCE, youtube, cache, now(), true);

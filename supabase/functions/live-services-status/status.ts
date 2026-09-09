@@ -93,6 +93,8 @@ export async function discoverLiveStatus(
     return { status: 'NOT_LIVE' };
   }
 
+  let sawUnverifiedCandidate = false;
+
   for (const candidate of candidates) {
     if (candidate.channelId !== source.officialChannelId) continue;
 
@@ -106,6 +108,11 @@ export async function discoverLiveStatus(
     if (!verification) continue;
     if (verification.channelId !== source.officialChannelId) continue;
     if (verification.actualEndTime) continue;
+    if (!verification.isLiveContent) continue;
+    if (!verification.actualStartTime) {
+      sawUnverifiedCandidate = true;
+      continue;
+    }
 
     return {
       status: 'LIVE',
@@ -117,7 +124,7 @@ export async function discoverLiveStatus(
     };
   }
 
-  return { status: 'NOT_LIVE' };
+  return { status: sawUnverifiedCandidate ? 'UNKNOWN' : 'NOT_LIVE' };
 }
 
 // ─── Sanitise cache → response ─────────────────────────────────────────────

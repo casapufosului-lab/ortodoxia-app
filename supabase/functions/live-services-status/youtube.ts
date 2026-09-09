@@ -58,12 +58,10 @@ type VideoListResponse = {
  *
  * @param apiKey  The YouTube Data API key (server-side secret).
  * @param fetchFn Injectable fetch for testability (defaults to global fetch).
- * @param nowFn   Injectable clock for testability (defaults to Date.now).
  */
 export function createYouTubeClient(
   apiKey: string,
   fetchFn: typeof fetch = globalThis.fetch,
-  nowFn: () => number = () => Date.now(),
 ): YouTubeClient {
   async function request<T>(path: string, params: Record<string, string>): Promise<T> {
     const url = new URL(`${YOUTUBE_API_BASE}${path}`);
@@ -86,8 +84,6 @@ export function createYouTubeClient(
 
   return {
     async searchLive(channelId: string): Promise<LiveSearchResult[]> {
-      const now = new Date(nowFn());
-      const publishedAfter = new Date(now.getTime() - 4 * 60 * 60 * 1000).toISOString();
 
       const data = await request<SearchListResponse>('/search', {
         part: 'snippet',
@@ -96,14 +92,17 @@ export function createYouTubeClient(
         type: 'video',
         maxResults: '5',
         order: 'date',
-        publishedAfter,
       });
 
       if (data.error) {
         throw new Error(`YouTube search error: ${data.error.message ?? 'unknown'}`);
       }
 
-      return (data.items ?? [])
+      if (!Array.isArray(data.items)) {
+        throw new Error('YouTube search response malformed');
+      }
+
+      return data.items
         .map((item) => ({
           videoId: item.id?.videoId ?? '',
           channelId: item.snippet?.channelId ?? '',
@@ -123,8 +122,15 @@ export function createYouTubeClient(
         throw new Error(`YouTube videos error: ${data.error.message ?? 'unknown'}`);
       }
 
-      const item = data.items?.[0];
-      if (!item?.id) return null;
+      if (!Array.isArray(data.items)) {
+        throw new Error('YouTube videos response malformed');
+      }
+
+      const item = data.items[0];
+      if (!item) return null;
+      if (!item.id || !item.snippet?.channelId) {
+        throw new Error('YouTube videos response malformed');
+      }
 
       return {
         videoId: item.id,
