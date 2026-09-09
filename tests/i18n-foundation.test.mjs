@@ -51,8 +51,8 @@ test('SUPPORTED_LANGUAGES are exact', () => {
   assert.ok(JSON.stringify(config.SUPPORTED_LANGUAGES) === JSON.stringify(expected), 'SUPPORTED_LANGUAGES match expected');
 });
 
-test('COMPLETE_LANGUAGES is exactly ro, en, el, sr, bg, mk, uk and ka', () => {
-  assert.ok(JSON.stringify(config.COMPLETE_LANGUAGES) === JSON.stringify(['ro', 'en', 'el', 'sr', 'bg', 'mk', 'uk', 'ka']), 'COMPLETE_LANGUAGES match expected');
+test('COMPLETE_LANGUAGES is exactly ro, en, el, sr, bg, mk, uk, ka and ru', () => {
+  assert.ok(JSON.stringify(config.COMPLETE_LANGUAGES) === JSON.stringify(['ro', 'en', 'el', 'sr', 'bg', 'mk', 'uk', 'ka', 'ru']), 'COMPLETE_LANGUAGES match expected');
 });
 
 test('REAL resolveLanguageCode resolves correctly', () => {
@@ -81,13 +81,11 @@ test('REAL translate fallback', () => {
   // Verify Bulgarian uses its real dictionary (no Romanian fallback)
   assert.equal(bgValue, 'Начало');
 
-  // Verify fallback for incomplete languages (ru, sq)
-  const ruValue = config.translate('ru', 'nav.home');
+  // Verify fallback for incomplete language (sq)
   const sqValue = config.translate('sq', 'nav.home');
 
   assert.equal(elValue, 'Αρχική');
   assert.equal(srValue, 'Дом');
-  assert.equal(ruValue, roValue);
   assert.equal(sqValue, roValue);
 });
 
@@ -105,5 +103,9 @@ test('REAL Ukrainian translation returns Ukrainian value', () => {
 
 test('REAL Georgian translation returns Georgian value', () => {
   assert.equal(config.translate('ka', 'nav.home'), 'მთავარი');
+});
+
+test('REAL Russian translation returns Russian value', () => {
+  assert.equal(config.translate('ru', 'nav.home'), 'Главная');
 });
 

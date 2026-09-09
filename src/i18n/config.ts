@@ -1,7 +1,7 @@
 export type CountryCode = 'RO' | 'MD';
 export const SUPPORTED_LANGUAGES = ['ro', 'en', 'el', 'sr', 'bg', 'mk', 'uk', 'ka', 'ru', 'sq'] as const;
 export type LanguageCode = typeof SUPPORTED_LANGUAGES[number];
-export const COMPLETE_LANGUAGES = ['ro', 'en', 'el', 'sr', 'bg', 'mk', 'uk', 'ka'] as const;
+export const COMPLETE_LANGUAGES = ['ro', 'en', 'el', 'sr', 'bg', 'mk', 'uk', 'ka', 'ru'] as const;
 export type CompleteLanguageCode = typeof COMPLETE_LANGUAGES[number];
 
 export function isSupportedLanguage(code: string): code is LanguageCode {
@@ -3931,18 +3931,6 @@ const ka = {
   'terms.s13Support': '[ADRESĂ DE SUPORT DE COMPLETAT]',
   'terms.s13PublicUrl': '[URL PUBLIC AL TERMENILOR DE COMPLETAT]',
 } satisfies Partial<Record<TranslationKey, string>>;
-// Parity guard: COMPLETE_LANGUAGES must have full translation coverage
-export const COMPLETE_DICTIONARIES: Record<CompleteLanguageCode, Record<TranslationKey, string>> = {
-  ro,
-  en,
-  el,
-  sr,
-  bg,
-  mk,
-  uk,
-  ka,
-};
-
 const ru = {
   'nav.home': 'Главная',
   'nav.prayers': 'Молитвы',
@@ -4392,6 +4380,18 @@ const ru = {
   'terms.s13Support': '[ADRESĂ DE SUPORT DE COMPLETAT]',
   'terms.s13PublicUrl': '[URL PUBLIC AL TERMENILOR DE COMPLETAT]',
 } satisfies Partial<Record<TranslationKey, string>>;
+// Parity guard: COMPLETE_LANGUAGES must have full translation coverage
+export const COMPLETE_DICTIONARIES: Record<CompleteLanguageCode, Record<TranslationKey, string>> = {
+  ro,
+  en,
+  el,
+  sr,
+  bg,
+  mk,
+  uk,
+  ka,
+  ru,
+};
 const sq = {} satisfies Partial<Record<TranslationKey, string>>;
 
 const translations: Record<LanguageCode, Partial<Record<TranslationKey, string>>> = {
