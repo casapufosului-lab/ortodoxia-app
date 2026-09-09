@@ -3943,7 +3943,33 @@ export const COMPLETE_DICTIONARIES: Record<CompleteLanguageCode, Record<Translat
   ka,
 };
 
-const ru = {} satisfies Partial<Record<TranslationKey, string>>;
+const ru = {
+  'nav.home': 'Главная',
+  'nav.prayers': 'Молитвы',
+  'nav.calendar': 'Календарь',
+  'nav.bible': 'Библия',
+  'nav.chat': 'Чат',
+  'nav.account': 'Аккаунт',
+  'common.retry': 'Повторить',
+  'common.chooseCalendar': 'Выберите календарь',
+  'home.pageTitle': 'Мир тебе',
+  'home.pageSubtitle': 'Простое место для молитвы, календаря и вопросов.',
+  'home.loadError': 'Не удалось загрузить содержимое дня. Попробуйте ещё раз.',
+  'home.unexpectedError': 'Произошла непредвиденная ошибка.',
+  'home.loadingToday': 'Загружаются данные на сегодня...',
+  'home.verseFallback': '«Мир Мой даю вам.»',
+  'home.verseSourceFallback': 'Иоанн 14, 27',
+  'home.parableSectionTitle': 'Притча дня',
+  'home.parableTitleFallback': 'Притча о сеятеле',
+  'home.parableBodyFallback': 'Внимательная душа принимает доброе слово и воплощает его в поступках.',
+  'home.calendarSectionTitle': 'Сегодня в календаре',
+  'home.calendarDayFallback': 'Сегодня в православном календаре',
+  'home.liveSectionTitle': 'Богослужения LIVE',
+  'home.liveAccessibilityLabel': 'Богослужения LIVE — смотрите Божественную литургию в прямом эфире',
+  'home.liveLocations': 'Бухарест • Яссы • Путна • Сихэстрия • Клуж',
+  'home.liveSubtitle': 'Смотрите Божественную литургию в прямом эфире',
+  'home.askAiGuide': 'Спросить AI-помощника',
+} satisfies Partial<Record<TranslationKey, string>>;
 const sq = {} satisfies Partial<Record<TranslationKey, string>>;
 
 const translations: Record<LanguageCode, Partial<Record<TranslationKey, string>>> = {
