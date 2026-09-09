@@ -20,8 +20,10 @@ export function useSubscription() {
   const [subscription, setSubscription] = useState<SubscriptionRow | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
+  const refreshRequestRef = useRef(0);
 
   const refresh = useCallback(async () => {
+    const requestId = ++refreshRequestRef.current;
     setError('');
 
     if (!user) {
@@ -37,6 +39,8 @@ export function useSubscription() {
       .eq('user_id', user.id)
       .maybeSingle();
 
+    if (refreshRequestRef.current !== requestId) return;
+
     if (queryError) {
       setSubscription(null);
       setError(t('account.planError'));
@@ -49,7 +53,10 @@ export function useSubscription() {
 
   useEffect(() => {
     const timeoutId = setTimeout(() => void refresh(), 0);
-    return () => clearTimeout(timeoutId);
+    return () => {
+      clearTimeout(timeoutId);
+      refreshRequestRef.current += 1;
+    };
   }, [refresh]);
 
   // CustomerInfo din RevenueCat este folosit DOAR pentru afișarea imediată și
