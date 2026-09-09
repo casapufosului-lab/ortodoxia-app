@@ -110,7 +110,7 @@ function ChatConversation() {
         .from('chat_messages')
         .select('id, role, content')
         .eq('thread_id', latestThreadId)
-        .order('created_at', { ascending: true })
+        .order('created_at', { ascending: false })
         .limit(50);
 
       if (loadRequestRef.current !== requestId) return;
@@ -118,7 +118,7 @@ function ChatConversation() {
       if (error) {
         setErrorMessage(t('chat.oldMessagesLoadError'));
       } else if (data && data.length > 0) {
-        setMessages(data.map((message) => ({
+        setMessages([...data].reverse().map((message) => ({
           id: message.id,
           role: message.role as Message['role'],
           text: message.content,
