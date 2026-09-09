@@ -21,6 +21,12 @@ test('MEDIUM #11 RPC exposes explicit denial reason and retry delay', () => {
   );
 });
 
+test('MEDIUM #11 migration uses valid PostgreSQL special-expression syntax', () => {
+assert.ok(!migration.includes('pg_catalog.coalesce'));
+assert.ok(!migration.includes('pg_catalog.extract'));
+assert.match(migration, /COALESCE\(v_used, 0\)/);
+assert.match(migration, /EXTRACT\(EPOCH FROM \(\(v_last_request_at \+ interval '5 seconds'\) - v_now\)\)/i);
+});
 test('MEDIUM #11 RPC serializes reservations for the same identity and date', () => {
   assert.match(migration, /pg_advisory_xact_lock/i);
   assert.match(migration, /hashtextextended\(v_lock_key, 0\)/i);

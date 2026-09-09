@@ -71,7 +71,7 @@ BEGIN
     FOR UPDATE;
   END IF;
 
-  v_used := pg_catalog.coalesce(v_used, 0);
+  v_used := COALESCE(v_used, 0);
 
   IF v_used >= v_limit THEN
     RETURN QUERY SELECT 0, v_limit, false, 'daily_limit'::text, 0;
@@ -81,7 +81,7 @@ BEGIN
   IF v_last_request_at IS NOT NULL
      AND v_last_request_at > v_now - interval '5 seconds' THEN
     v_retry_after := pg_catalog.ceil(
-      pg_catalog.extract(epoch FROM ((v_last_request_at + interval '5 seconds') - v_now))
+      EXTRACT(EPOCH FROM ((v_last_request_at + interval '5 seconds') - v_now))
     )::integer;
 
     IF v_retry_after < 1 THEN

@@ -16,15 +16,22 @@ try {
   const initial = migration('20260829000100_initial_schema');
   await db.exec(initial.match(/create or replace function public\.set_updated_at\(\)[\s\S]*?\$\$;/i)[0]);
   await db.exec(initial.match(/create table public\.usage_daily \([\s\S]*?\);/i)[0]);
-  for (const name of ['20260830000100_add_subscriptions', '20260831000100_add_guest_ai_usage', '20260903000100_harden_ai_usage', '20260907000100_fix_ai_request_reservation']) await db.exec(migration(name));
+  for (const name of ['20260830000100_add_subscriptions', '20260831000100_add_guest_ai_usage', '20260903000100_harden_ai_usage', '20260907000100_fix_ai_request_reservation', '20260909000400_fix_chat_cooldown_contract']) await db.exec(migration(name));
   const guest = 'guest-1234567890123456';
   const user = '11111111-1111-4111-8111-111111111111';
   const reserve = async (u = null, g = guest) => (await db.query('SELECT * FROM public.reserve_ai_request($1::uuid, $2::text)', [u, g])).rows[0];
   const age = async () => db.exec("UPDATE public.guest_usage_daily SET last_request_at = now() - interval '6 seconds'; UPDATE public.usage_daily SET last_request_at = now() - interval '6 seconds';");
-  check(await reserve(), { remaining_limit: 4, daily_limit: 5, success: true });
-  check((await reserve()).success, false);
+  check(await reserve(), { remaining_limit: 4, daily_limit: 5, success: true, denial_reason: null, retry_after_seconds: 0 });
+  const cooldown = await reserve();
+  check(cooldown.success, false);
+  check(cooldown.denial_reason, 'cooldown');
+  assert.ok(cooldown.retry_after_seconds >= 1 && cooldown.retry_after_seconds <= 5); checks++;
   for (let remaining = 3; remaining >= 0; remaining--) { await age(); check((await reserve()).remaining_limit, remaining); }
-  await age(); check((await reserve()).success, false);
+  await age();
+  const exhausted = await reserve();
+  check(exhausted.success, false);
+  check(exhausted.denial_reason, 'daily_limit');
+  check(exhausted.retry_after_seconds, 0);
   check((await db.query('SELECT ai_messages FROM public.guest_usage_daily')).rows[0].ai_messages, 5);
   check((await db.query("SELECT usage_date = timezone('Europe/Bucharest', now())::date AS correct FROM public.guest_usage_daily")).rows[0].correct, true);
   // Simultaneously submitted promises are serialized by PGlite: this is NOT a multi-session lock test.
