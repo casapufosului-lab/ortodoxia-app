@@ -206,3 +206,23 @@ test('send cleanup invalidates pending request', () => {
   assert.ok(src.includes('useEffect(() => () => {'));
   assert.ok(src.includes('sendRequestRef.current += 1;'));
 });
+
+test('AUD2-03 send cannot race conversation loading', () => {
+  const start = src.indexOf('const send = async () => {');
+  const clean = src.indexOf('const clean = input.trim()', start);
+  const guard = src.indexOf('if (isLoading) return;', start);
+  assert.ok(guard > start && guard < clean, 'loading guard must run before send-side state changes');
+});
+
+test('AUD2-03 send invalidates any older conversation load before optimistic mutation', () => {
+  const start = src.indexOf('const send = async () => {');
+  const invalidate = src.indexOf('loadRequestRef.current += 1;', start);
+  const optimistic = src.indexOf('const optimisticId =', start);
+  assert.ok(invalidate > start && invalidate < optimistic, 'pending load must be invalidated before optimistic send state');
+});
+
+test('AUD2-03 composer is disabled while loading or sending', () => {
+  assert.ok(src.includes('editable={!isSending && !isLoading}'));
+  assert.ok(src.includes('disabled={isSending || isLoading}'));
+  assert.ok(src.includes('style={[styles.send, (isSending || isLoading) && styles.disabled]}'));
+});

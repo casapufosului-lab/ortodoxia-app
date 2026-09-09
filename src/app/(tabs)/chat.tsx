@@ -158,6 +158,7 @@ function ChatConversation() {
 
   const send = async () => {
     if (isSendingRef.current) return;
+    if (isLoading) return;
     const clean = input.trim();
     if (!clean) return;
 
@@ -171,6 +172,7 @@ function ChatConversation() {
       return;
     }
 
+    loadRequestRef.current += 1;
     const requestId = ++sendRequestRef.current;
     const isCurrentRequest = () => sendRequestRef.current === requestId;
 
@@ -293,11 +295,11 @@ function ChatConversation() {
             placeholder={t('chat.inputPlaceholder')}
             placeholderTextColor={palette.muted}
             multiline
-            editable={!isSending}
+            editable={!isSending && !isLoading}
             maxLength={1200}
             style={styles.input}
           />
-          <Pressable accessibilityRole="button" disabled={isSending} onPress={() => void send()} style={[styles.send, isSending && styles.disabled]}>
+          <Pressable accessibilityRole="button" disabled={isSending || isLoading} onPress={() => void send()} style={[styles.send, (isSending || isLoading) && styles.disabled]}>
             <Text style={styles.sendText}>{t('chat.sendButton')}</Text>
           </Pressable>
         </View>
