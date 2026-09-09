@@ -34,7 +34,7 @@ function harness(options = {}) {
     auth: { getUser: async () => ({ data: { user: options.user ? { id: userId } : null } }) },
     rpc(name, args) {
       events.push({ kind: 'rpc', name, args });
-      return { single: async () => ({ data: options.reservation ?? { success: true, remaining_limit: 4, daily_limit: 5 }, error: options.rpcError ?? null }) };
+      return { single: async () => ({ data: options.reservation ?? { success: true, remaining_limit: 4, daily_limit: 5, denial_reason: null, retry_after_seconds: 0 }, error: options.rpcError ?? null }) };
     },
     from(table) {
       const event = { kind: 'query', table, filters: [] };
@@ -94,13 +94,39 @@ test('guest success reserves quota before AI and returns server counters', async
   assert.deepEqual(JSON.parse(JSON.stringify(h.events[0].args)), { p_user_id: null, p_guest_id: guestId });
   assert.equal(h.events[1].body.safety_identifier, guestId); assert.ok(h.events[1].signal);
 });
-test('denied quota or database error never calls AI', async () => {
-  for (const options of [{ reservation: { success: false, remaining_limit: 0, daily_limit: 5 } }, { rpcError: { message: 'private' } }, { reservation: {} }]) {
-    const h = harness(options); assert.ok([429, 500].includes((await h.run()).status)); assert.equal(h.events.some(e => e.kind === 'fetch'), false);
+test('daily quota denial returns structured details and never calls AI', async () => {
+  const h = harness({ reservation: { success: false, remaining_limit: 0, daily_limit: 5, denial_reason: 'daily_limit', retry_after_seconds: 0 } });
+  const response = await h.run();
+  assert.equal(response.status, 429);
+  const body = await response.json();
+  assert.equal(body.code, 'daily_limit');
+  assert.equal(body.remaining, 0);
+  assert.equal(body.dailyLimit, 5);
+  assert.equal(body.retryAfter, 0);
+  assert.equal(h.events.some(e => e.kind === 'fetch'), false);
+});
+
+test('cooldown denial preserves remaining quota and returns retryAfter', async () => {
+  const h = harness({ reservation: { success: false, remaining_limit: 4, daily_limit: 5, denial_reason: 'cooldown', retry_after_seconds: 3 } });
+  const response = await h.run();
+  assert.equal(response.status, 429);
+  const body = await response.json();
+  assert.equal(body.code, 'cooldown');
+  assert.equal(body.remaining, 4);
+  assert.equal(body.dailyLimit, 5);
+  assert.equal(body.retryAfter, 3);
+  assert.equal(h.events.some(e => e.kind === 'fetch'), false);
+});
+
+test('database or malformed reservation never calls AI', async () => {
+  for (const options of [{ rpcError: { message: 'private' } }, { reservation: {} }]) {
+    const h = harness(options);
+    assert.equal((await h.run()).status, 500);
+    assert.equal(h.events.some(e => e.kind === 'fetch'), false);
   }
 });
 test('authenticated identity comes from verified user, and history is chronological', async () => {
-  const h = harness({ user: true, reservation: { success: true, remaining_limit: 49, daily_limit: 50 } });
+  const h = harness({ user: true, reservation: { success: true, remaining_limit: 49, daily_limit: 50, denial_reason: null, retry_after_seconds: 0 } });
   const response = await h.run({ guestId: 'forged', userId: 'forged', message: 'question', threadId: 'thread-owned' });
   assert.equal(response.status, 200); assert.equal((await response.json()).dailyLimit, 50);
   assert.equal(h.events.find(e => e.kind === 'rpc').args.p_user_id, userId);
@@ -126,7 +152,7 @@ test('unexpected database exception is sanitized', async () => {
 });
 
 test('rejected authenticated reservation cannot create an empty thread', async () => {
-  const h = harness({ user: true, reservation: { success: false, remaining_limit: 0, daily_limit: 5 } });
+  const h = harness({ user: true, reservation: { success: false, remaining_limit: 0, daily_limit: 5, denial_reason: 'daily_limit', retry_after_seconds: 0 } });
   assert.equal((await h.run({ message: 'question' })).status, 429);
   assert.deepEqual(h.events.map(e => e.kind), ['rpc']);
 });

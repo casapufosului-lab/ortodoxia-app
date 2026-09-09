@@ -116,16 +116,41 @@ Deno.serve(async (req: Request) => {
         const { data: reservation, error: reservationError } = await admin.rpc('reserve_ai_request', {
             p_user_id: user?.id ?? null,
             p_guest_id: user ? null : guestId,
-        }).single<{ success: boolean; remaining_limit: number; daily_limit: number }>();
+        }).single<{ success: boolean; remaining_limit: number; daily_limit: number; denial_reason: 'cooldown' | 'daily_limit' | null; retry_after_seconds: number }>();
         if (reservationError || !reservation || typeof reservation.success !== 'boolean' ||
             ![FREE_DAILY_AI_LIMIT, PREMIUM_DAILY_AI_LIMIT].includes(reservation.daily_limit) ||
             !Number.isInteger(reservation.remaining_limit) || reservation.remaining_limit < 0 ||
             reservation.remaining_limit > reservation.daily_limit) {
             return json({ error: 'Limita zilnică nu a putut fi verificată.' }, 500);
         }
+        const denialReason = reservation.denial_reason;
+        const retryAfter = reservation.retry_after_seconds;
+        if ((denialReason !== null && denialReason !== 'cooldown' && denialReason !== 'daily_limit') ||
+            !Number.isInteger(retryAfter) || retryAfter < 0 || retryAfter > 5 ||
+            (reservation.success && (denialReason !== null || retryAfter !== 0)) ||
+            (!reservation.success && denialReason === null) ||
+            (denialReason === 'daily_limit' && (reservation.remaining_limit !== 0 || retryAfter !== 0)) ||
+            (denialReason === 'cooldown' && (reservation.remaining_limit <= 0 || retryAfter < 1))) {
+            return json({ error: 'Limita zilnic\u0103 nu a putut fi verificat\u0103.' }, 500);
+        }
         const dailyLimit: number = reservation.daily_limit;
         if (!reservation.success) {
-            return json({ error: 'Limita de mesaje a fost atinsă. Încearcă din nou mai târziu.' }, 429);
+            if (denialReason === 'cooldown') {
+                return json({
+                    error: 'A\u0219teapt\u0103 c\u00e2teva secunde \u00eenainte de urm\u0103torul mesaj.',
+                    code: 'cooldown',
+                    remaining: reservation.remaining_limit,
+                    dailyLimit,
+                    retryAfter,
+                }, 429);
+            }
+            return json({
+                error: 'Limita de mesaje a fost atins\u0103. \u00cencearc\u0103 din nou mai t\u00e2rziu.',
+                code: 'daily_limit',
+                remaining: 0,
+                dailyLimit,
+                retryAfter: 0,
+            }, 429);
         }
         if (user && !threadId) {
             const { data: newThread, error: threadError } = await admin

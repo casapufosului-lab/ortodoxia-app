@@ -209,7 +209,8 @@ function ChatConversation() {
             if (typeof details?.error === 'string') message = details.error;
             if (typeof details?.remaining === 'number') setRemaining(details.remaining);
             if (typeof details?.dailyLimit === 'number') setDailyLimit(details.dailyLimit);
-            if (error.context.status === 429 || message.includes('Ai folosit')) setRemaining(0);
+            if (details?.code === 'daily_limit') setRemaining(0);
+            // Cooldown is temporary: preserve the server-provided remaining quota.
           } catch {
             // Păstrăm mesajul simplu de mai sus.
           }
