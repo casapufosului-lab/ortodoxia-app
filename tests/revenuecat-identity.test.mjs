@@ -17,11 +17,11 @@ function functionBlock(source, startMarker, endMarker) {
   return source.slice(start, end);
 }
 
-test('RevenueCat identity helper verifies the current App User ID', () => {
+test('RevenueCat unlocked identity helper verifies the current App User ID', () => {
   const block = functionBlock(
     lib,
+    'async function ensureRevenueCatUserUnlocked',
     'export async function ensureRevenueCatUser',
-    'export async function clearRevenueCatUser',
   );
 
   const firstRead = block.indexOf('await Purchases.getAppUserID()');
@@ -35,39 +35,139 @@ test('RevenueCat identity helper verifies the current App User ID', () => {
   assert.ok(mismatch > secondRead);
 });
 
-test('purchase identifies and verifies RevenueCat user before purchasePackage', () => {
+test('RevenueCat identity operations use the shared global lock', () => {
+  const identify = functionBlock(
+    lib,
+    'export async function identifyRevenueCatUser',
+    'async function ensureRevenueCatUserUnlocked',
+  );
+  const ensure = functionBlock(
+    lib,
+    'export async function ensureRevenueCatUser',
+    'export async function getRevenueCatCustomerInfo',
+  );
+
+  assert.ok(identify.includes('runRevenueCatExclusive(() => ensureRevenueCatUserUnlocked(userId))'));
+  assert.ok(ensure.includes('runRevenueCatExclusive(() => ensureRevenueCatUserUnlocked(userId))'));
+});
+
+test('logout only clears the RevenueCat identity it was asked to clear', () => {
+  const block = functionBlock(
+    lib,
+    'export async function clearRevenueCatUser',
+    'export async function getRevenueCatOfferings',
+  );
+
+  const lock = block.indexOf('runRevenueCatExclusive(async () => {');
+  const read = block.indexOf('await Purchases.getAppUserID()');
+  const guard = block.indexOf('if (currentUserId !== userId) return;');
+  const logout = block.indexOf('await Purchases.logOut()');
+
+  assert.ok(block.includes('clearRevenueCatUser(userId: string)'));
+  assert.ok(lock >= 0);
+  assert.ok(read > lock);
+  assert.ok(guard > read);
+  assert.ok(logout > guard);
+});
+
+test('CustomerInfo read is bound to a verified RevenueCat user inside the global lock', () => {
+  const block = functionBlock(
+    lib,
+    'export async function getRevenueCatCustomerInfo',
+    'export async function clearRevenueCatUser',
+  );
+
+  const lock = block.indexOf('runRevenueCatExclusive(async () => {');
+  const ensure = block.indexOf('await ensureRevenueCatUserUnlocked(userId)');
+  const read = block.indexOf('return Purchases.getCustomerInfo()');
+
+  assert.ok(lock >= 0);
+  assert.ok(ensure > lock);
+  assert.ok(read > ensure);
+});
+
+test('purchase keeps identity verification and purchasePackage in one global lock', () => {
   const block = functionBlock(
     lib,
     'export async function purchaseRevenueCatPackage',
     'export async function restoreRevenueCatPurchases',
   );
 
-  assert.ok(block.includes('userId: string'));
-  const ensure = block.indexOf('await ensureRevenueCatUser(userId)');
+  const lock = block.indexOf('return runRevenueCatExclusive(async () => {');
+  const ensure = block.indexOf('await ensureRevenueCatUserUnlocked(userId)');
   const purchase = block.indexOf('await Purchases.purchasePackage(pkg)');
-  assert.ok(ensure >= 0);
+
+  assert.ok(lock >= 0);
+  assert.ok(ensure > lock);
   assert.ok(purchase > ensure);
 });
 
-test('restore identifies and verifies RevenueCat user before restorePurchases', () => {
+test('restore keeps identity verification and restorePurchases in one global lock', () => {
   const block = functionBlock(
     lib,
     'export async function restoreRevenueCatPurchases',
     'export function isPremiumActive',
   );
 
-  assert.ok(block.includes('userId: string'));
-  const ensure = block.indexOf('await ensureRevenueCatUser(userId)');
+  const lock = block.indexOf('return runRevenueCatExclusive(async () => {');
+  const ensure = block.indexOf('await ensureRevenueCatUserUnlocked(userId)');
   const restore = block.indexOf('return Purchases.restorePurchases()');
-  assert.ok(ensure >= 0);
+
+  assert.ok(lock >= 0);
+  assert.ok(ensure > lock);
   assert.ok(restore > ensure);
 });
 
-test('hook passes authenticated user ID into both critical RevenueCat actions', () => {
+test('hook passes authenticated user ID into purchase and restore', () => {
   assert.ok(hook.includes('purchaseRevenueCatPackage(pkg, userId)'));
   assert.ok(hook.includes('restoreRevenueCatPurchases(userId)'));
   assert.ok(hook.includes('[packages, t, userId]'));
   assert.ok(hook.includes('[t, userId]'));
+});
+
+test('hook rejects purchase and restore results after an account switch', () => {
+  const guard = 'userIdRef.current !== userId';
+  const count = hook.split(guard).length - 1;
+  assert.ok(count >= 4, `expected stale-user guards for purchase/restore (found ${count})`);
+  assert.ok(hook.includes('setCustomerInfoUserId(userId);'));
+});
+
+test('hook never exposes CustomerInfo owned by a previous user', () => {
+  assert.ok(
+    hook.includes('const currentCustomerInfo = customerInfoUserId === userId ? customerInfo : null;'),
+  );
+  assert.ok(hook.includes('customerInfo: currentCustomerInfo'));
+  assert.ok(hook.includes('isPremium: isPremiumActive(currentCustomerInfo)'));
+});
+
+test('CustomerInfo listener re-reads verified current-user state instead of trusting event payload', () => {
+  const listener = functionBlock(
+    hook,
+    'const listener: CustomerInfoUpdateListener',
+    'Purchases.addCustomerInfoUpdateListener(listener)',
+  );
+
+  assert.ok(listener.includes('void refresh();'));
+  assert.ok(!listener.includes('setCustomerInfo(info)'));
+});
+
+test('RevenueCat refresh rejects stale user and stale request results', () => {
+  const block = functionBlock(
+    hook,
+    'const refresh = useCallback',
+    '// Leaga utilizatorul autentificat',
+  );
+
+  assert.ok(block.includes('const requestId = ++refreshRequestRef.current;'));
+  assert.ok(block.includes('const requestUserId = userId;'));
+  assert.ok(block.includes('getRevenueCatCustomerInfo(requestUserId)'));
+  assert.ok(block.includes('refreshRequestRef.current !== requestId'));
+  assert.ok(block.includes('userIdRef.current !== requestUserId'));
+});
+
+test('logout passes the previous authenticated user ID to RevenueCat', () => {
+  assert.ok(hook.includes('const previousUserId = previousUserIdRef.current;'));
+  assert.ok(hook.includes('void clearRevenueCatUser(previousUserId);'));
 });
 
 test('buy and restore fail closed when there is no authenticated user ID', () => {
@@ -76,4 +176,39 @@ test('buy and restore fail closed when there is no authenticated user ID', () =>
 
   assert.ok(buy.includes('if (!userId)'));
   assert.ok(restore.includes('if (!userId)'));
+});
+
+test('buy and restore scope loading state to the current account', () => {
+  const buy = functionBlock(hook, 'const buy = useCallback', 'const restore = useCallback');
+  const restore = functionBlock(hook, 'const restore = useCallback', 'const priceFor = useCallback');
+
+  assert.ok(buy.includes('loadingUserIdRef.current = userId;'));
+  assert.ok(buy.includes('setLoadingUserId(userId);'));
+  assert.ok(restore.includes('loadingUserIdRef.current = userId;'));
+  assert.ok(restore.includes('setLoadingUserId(userId);'));
+  assert.ok(hook.includes('loading: loadingUserId === userId ? loading : false,'));
+});
+
+test('restore publishes CustomerInfo only for its authenticated user', () => {
+  const restore = functionBlock(hook, 'const restore = useCallback', 'const priceFor = useCallback');
+  const guard = restore.indexOf('if (!mountedRef.current || userIdRef.current !== userId)');
+  const owner = restore.indexOf('setCustomerInfoUserId(userId);');
+  const publish = restore.indexOf('setCustomerInfo(info);');
+  assert.ok(guard >= 0);
+  assert.ok(owner > guard);
+  assert.ok(publish > owner);
+});
+
+test('stale operation clears loading only when it still owns the loading slot', () => {
+  const ownerGuard = 'loadingUserIdRef.current === userId';
+  assert.ok(hook.split(ownerGuard).length - 1 >= 2);
+  assert.ok(!hook.includes('userIdRef.current === userId && loadingUserIdRef.current === userId'));
+  assert.ok(hook.includes('loadingUserIdRef.current = null;'));
+  assert.ok(hook.includes('setLoadingUserId(null);'));
+});
+
+test('userId ref is synchronized outside render', () => {
+  assert.ok(hook.includes('useLayoutEffect(() => {'));
+  assert.ok(hook.includes('userIdRef.current = userId;'));
+  assert.ok(!hook.includes('const refreshRequestRef = useRef(0);'+String.fromCharCode(10)+'  userIdRef.current = userId;'));
 });

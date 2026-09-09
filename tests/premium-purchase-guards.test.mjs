@@ -186,7 +186,7 @@ describe('ERR-B4: Premium purchase/restore safety (STRUCTURAL TEST ONLY)', () =>
 
   it('STRUCTURAL: refresh catch sets offeringsError', () => {
     const refreshStart = RC_HOOK.indexOf('const refresh');
-    const refreshEnd = RC_HOOK.indexOf('}, []);', refreshStart);
+    const refreshEnd = RC_HOOK.indexOf('// Leaga utilizatorul autentificat', refreshStart);
     const rBlock = RC_HOOK.slice(refreshStart, refreshEnd + 5);
     assert.ok(/catch/.test(rBlock));
     assert.ok(/setOfferingsError/.test(rBlock));

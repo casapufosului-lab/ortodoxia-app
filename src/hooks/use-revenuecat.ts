@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import Purchases, {
   type CustomerInfo,
   type CustomerInfoUpdateListener,
@@ -9,6 +9,7 @@ import {
   clearRevenueCatUser,
   configureRevenueCat,
   customerInfoToSubscriptionRow,
+  getRevenueCatCustomerInfo,
   identifyRevenueCatUser,
   isPremiumActive,
   isPurchaseCancelledError,
@@ -41,9 +42,18 @@ export function useRevenueCat() {
   const [customerInfo, setCustomerInfo] = useState<CustomerInfo | null>(null);
   const [loading, setLoading] = useState(false);
   const [offeringsError, setOfferingsError] = useState('');
+  const [customerInfoUserId, setCustomerInfoUserId] = useState<string | null>(null);
+  const [loadingUserId, setLoadingUserId] = useState<string | null>(null);
 
   const previousUserIdRef = useRef(userId);
   const mountedRef = useRef(true);
+  const userIdRef = useRef(userId);
+  const loadingUserIdRef = useRef<string | null>(null);
+  const refreshRequestRef = useRef(0);
+
+  useLayoutEffect(() => {
+    userIdRef.current = userId;
+  }, [userId]);
 
   useEffect(() => {
     return () => {
@@ -52,26 +62,42 @@ export function useRevenueCat() {
   }, []);
 
   const refresh = useCallback(async () => {
+    const requestId = ++refreshRequestRef.current;
+    const requestUserId = userId;
+
     if (!isRevenueCatConfigured()) {
       setPackages(null);
+      setCustomerInfoUserId(null);
       setCustomerInfo(null);
       return;
     }
+
     try {
       const [offeringsResult, info] = await Promise.all([
         Purchases.getOfferings(),
-        Purchases.getCustomerInfo(),
+        requestUserId ? getRevenueCatCustomerInfo(requestUserId) : Promise.resolve(null),
       ]);
-      if (!mountedRef.current) return;
+
+      if (
+        !mountedRef.current ||
+        refreshRequestRef.current !== requestId ||
+        userIdRef.current !== requestUserId
+      ) return;
+
       const available = offeringsResult.current?.availablePackages ?? null;
       setPackages(available);
+      setCustomerInfoUserId(requestUserId);
       setCustomerInfo(info);
       setOfferingsError('');
     } catch {
-      if (!mountedRef.current) return;
+      if (
+        !mountedRef.current ||
+        refreshRequestRef.current !== requestId ||
+        userIdRef.current !== requestUserId
+      ) return;
       setOfferingsError(t('premium.offeringsError'));
     }
-  }, [t]);
+  }, [t, userId]);
 
   useEffect(() => {
     configureRevenueCat();
@@ -91,8 +117,9 @@ export function useRevenueCat() {
 
   // La deconectare, dezleaga utilizatorul de RevenueCat.
   useEffect(() => {
-    if (isRevenueCatConfigured() && userId === null && previousUserIdRef.current !== null) {
-      void clearRevenueCatUser();
+    const previousUserId = previousUserIdRef.current;
+    if (isRevenueCatConfigured() && userId === null && previousUserId !== null) {
+      void clearRevenueCatUser(previousUserId);
     }
     previousUserIdRef.current = userId;
   }, [userId]);
@@ -101,17 +128,18 @@ export function useRevenueCat() {
   // revocare, restaurare). Nu sunt impinse activ, deci este doar o sursa suplimentara.
   useEffect(() => {
     if (!isRevenueCatConfigured()) return;
-    const listener: CustomerInfoUpdateListener = (info: CustomerInfo) => {
-      setCustomerInfo(info);
+    const listener: CustomerInfoUpdateListener = (_info: CustomerInfo) => {
+      void refresh();
     };
     Purchases.addCustomerInfoUpdateListener(listener);
     return () => {
       Purchases.removeCustomerInfoUpdateListener(listener);
     };
-  }, []);
+  }, [refresh]);
 
-  const activeRow: SubscriptionRow | null = customerInfo
-    ? (customerInfoToSubscriptionRow(customerInfo) as SubscriptionRow | null)
+  const currentCustomerInfo = customerInfoUserId === userId ? customerInfo : null;
+  const activeRow: SubscriptionRow | null = currentCustomerInfo
+    ? (customerInfoToSubscriptionRow(currentCustomerInfo) as SubscriptionRow | null)
     : null;
 
   const buy = useCallback(
@@ -127,23 +155,30 @@ export function useRevenueCat() {
         return { ok: false, message: t('premium.purchaseFailed'), cancelled: false };
       }
 
+      loadingUserIdRef.current = userId;
+      setLoadingUserId(userId);
       setLoading(true);
       try {
         const info = await purchaseRevenueCatPackage(pkg, userId);
-        if (!mountedRef.current) return { ok: false, message: t('premium.purchaseFailed'), cancelled: false };
+        if (!mountedRef.current || userIdRef.current !== userId) return { ok: false, message: t('premium.purchaseFailed'), cancelled: false };
+        setCustomerInfoUserId(userId);
         setCustomerInfo(info);
         if (isPremiumActive(info)) {
           return { ok: true, message: t('premium.activated') };
         }
         return { ok: false, message: t('premium.paymentPending'), cancelled: false };
       } catch (error) {
-        if (!mountedRef.current) return { ok: false, message: t('premium.purchaseFailed'), cancelled: false };
+        if (!mountedRef.current || userIdRef.current !== userId) return { ok: false, message: t('premium.purchaseFailed'), cancelled: false };
         if (isPurchaseCancelledError(error)) {
           return { ok: false, message: t('premium.purchaseCancelled'), cancelled: true };
         }
         return { ok: false, message: t('premium.purchaseFailed'), cancelled: false };
       } finally {
-        if (mountedRef.current) setLoading(false);
+        if (mountedRef.current && loadingUserIdRef.current === userId) {
+          loadingUserIdRef.current = null;
+          setLoadingUserId(null);
+          setLoading(false);
+        }
       }
     },
     [packages, t, userId],
@@ -157,19 +192,26 @@ export function useRevenueCat() {
       return { ok: false, message: t('premium.restoreFailed'), cancelled: false };
     }
 
+    loadingUserIdRef.current = userId;
+    setLoadingUserId(userId);
     setLoading(true);
     try {
       const info = await restoreRevenueCatPurchases(userId);
-      if (!mountedRef.current) return { ok: false, message: t('premium.restoreFailed'), cancelled: false };
+      if (!mountedRef.current || userIdRef.current !== userId) return { ok: false, message: t('premium.restoreFailed'), cancelled: false };
+      setCustomerInfoUserId(userId);
       setCustomerInfo(info);
       return isPremiumActive(info)
         ? { ok: true, message: t('premium.restoreSuccess') }
         : { ok: false, message: t('premium.restoreNone'), cancelled: false };
     } catch {
-      if (!mountedRef.current) return { ok: false, message: t('premium.restoreFailed'), cancelled: false };
+      if (!mountedRef.current || userIdRef.current !== userId) return { ok: false, message: t('premium.restoreFailed'), cancelled: false };
       return { ok: false, message: t('premium.restoreFailed'), cancelled: false };
     } finally {
-      if (mountedRef.current) setLoading(false);
+      if (mountedRef.current && loadingUserIdRef.current === userId) {
+          loadingUserIdRef.current = null;
+          setLoadingUserId(null);
+          setLoading(false);
+        }
     }
   }, [t, userId]);
 
@@ -184,10 +226,10 @@ export function useRevenueCat() {
 
   return {
     packages,
-    customerInfo,
+    customerInfo: currentCustomerInfo,
     activeRow,
-    isPremium: isPremiumActive(customerInfo),
-    loading,
+    isPremium: isPremiumActive(currentCustomerInfo),
+    loading: loadingUserId === userId ? loading : false,
     offeringsError,
     priceFor,
     buy,

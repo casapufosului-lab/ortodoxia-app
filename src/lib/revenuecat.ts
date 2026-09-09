@@ -29,6 +29,22 @@ export const ENTITLEMENT_PRODUCT_MAPPING: Record<RevenueCatPlan, string> = {
 };
 
 let configured = false;
+let revenueCatOperationTail: Promise<void> = Promise.resolve();
+
+async function runRevenueCatExclusive<T>(operation: () => Promise<T>): Promise<T> {
+  const previousOperation = revenueCatOperationTail;
+  let release!: () => void;
+  revenueCatOperationTail = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+
+  await previousOperation;
+  try {
+    return await operation();
+  } finally {
+    release();
+  }
+}
 
 /**
  * Configurează SDK-ul RevenueCat o singură dată, la pornirea aplicației.
@@ -66,10 +82,10 @@ export function isRevenueCatConfigured() {
  */
 export async function identifyRevenueCatUser(userId: string) {
   if (!isRevenueCatConfigured()) return;
-  await Purchases.logIn(userId);
+  await runRevenueCatExclusive(() => ensureRevenueCatUserUnlocked(userId));
 }
 
-export async function ensureRevenueCatUser(userId: string) {
+async function ensureRevenueCatUserUnlocked(userId: string) {
   if (!isRevenueCatConfigured()) throw new Error('RevenueCat is not configured.');
   const currentUserId = await Purchases.getAppUserID();
   if (currentUserId !== userId) await Purchases.logIn(userId);
@@ -77,13 +93,25 @@ export async function ensureRevenueCatUser(userId: string) {
   if (verifiedUserId !== userId) throw new Error('RevenueCat user identity mismatch.');
 }
 
+export async function ensureRevenueCatUser(userId: string) {
+  return runRevenueCatExclusive(() => ensureRevenueCatUserUnlocked(userId));
+}
+
+export async function getRevenueCatCustomerInfo(userId: string): Promise<CustomerInfo> {
+  return runRevenueCatExclusive(async () => {
+    await ensureRevenueCatUserUnlocked(userId);
+    return Purchases.getCustomerInfo();
+  });
+}
+
 /** Deconectează utilizatorul de la RevenueCat (apelat la sign-out). */
-export async function clearRevenueCatUser() {
+export async function clearRevenueCatUser(userId: string) {
   if (!isRevenueCatConfigured()) return;
-  const customerInfo = await Purchases.getCustomerInfo();
-  if (customerInfo.originalAppUserId) {
+  await runRevenueCatExclusive(async () => {
+    const currentUserId = await Purchases.getAppUserID();
+    if (currentUserId !== userId) return;
     await Purchases.logOut();
-  }
+  });
 }
 
 /**
@@ -119,15 +147,19 @@ export function packagePriceText(pkg: PurchasesPackage): string | null {
  * Aruncă o eroare dacă utilizatorul a anulat, cu codul specific.
  */
 export async function purchaseRevenueCatPackage(pkg: PurchasesPackage, userId: string) {
-  await ensureRevenueCatUser(userId);
-  const { customerInfo } = await Purchases.purchasePackage(pkg);
-  return customerInfo;
+  return runRevenueCatExclusive(async () => {
+    await ensureRevenueCatUserUnlocked(userId);
+    const { customerInfo } = await Purchases.purchasePackage(pkg);
+    return customerInfo;
+  });
 }
 
 /** Restaurează cumpărăturile utilizatorului din magazin. */
 export async function restoreRevenueCatPurchases(userId: string): Promise<CustomerInfo> {
-  await ensureRevenueCatUser(userId);
-  return Purchases.restorePurchases();
+  return runRevenueCatExclusive(async () => {
+    await ensureRevenueCatUserUnlocked(userId);
+    return Purchases.restorePurchases();
+  });
 }
 
 /** Verifică dacă entitelment-ul Premium este activ în CustomerInfo. */
