@@ -1,5 +1,5 @@
 import type { Session, User } from '@supabase/supabase-js';
-import { createContext, type PropsWithChildren, useContext, useEffect, useMemo, useState } from 'react';
+import { createContext, type PropsWithChildren, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { AppState, Platform } from 'react-native';
 
 import { getInitialNativePasswordRecoverySession, subscribeToNativePasswordRecovery } from '@/lib/native-password-recovery';
@@ -19,6 +19,8 @@ export function AuthProvider({ children }: PropsWithChildren) {
   const [session, setSession] = useState<Session | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isPasswordRecovery, setIsPasswordRecovery] = useState(false);
+  const startupResolvedRef = useRef(false);
+  const pendingAuthEventRef = useRef<{ event: string; session: Session | null } | null>(null);
 
   useEffect(() => {
     let isMounted = true;
@@ -27,9 +29,27 @@ export function AuthProvider({ children }: PropsWithChildren) {
       const recoverySession = await getInitialNativePasswordRecoverySession();
       if (!isMounted) return;
 
+      startupResolvedRef.current = true;
+
       if (recoverySession) {
+        pendingAuthEventRef.current = null;
         setSession(recoverySession);
         setIsPasswordRecovery(true);
+        setIsLoading(false);
+        return;
+      }
+
+      const pendingAuthEvent = pendingAuthEventRef.current;
+      pendingAuthEventRef.current = null;
+      if (pendingAuthEvent) {
+        setSession(pendingAuthEvent.session);
+        setIsPasswordRecovery((current) => (
+          pendingAuthEvent.event === 'PASSWORD_RECOVERY'
+            ? true
+            : pendingAuthEvent.event === 'SIGNED_OUT'
+              ? false
+              : current
+        ));
         setIsLoading(false);
         return;
       }
@@ -44,6 +64,11 @@ export function AuthProvider({ children }: PropsWithChildren) {
     void loadInitialSession();
 
     const { data: authListener } = supabase.auth.onAuthStateChange((event, nextSession) => {
+      if (!startupResolvedRef.current) {
+        pendingAuthEventRef.current = { event, session: nextSession };
+        return;
+      }
+
       setSession(nextSession);
       setIsPasswordRecovery((current) => (
         event === 'PASSWORD_RECOVERY' ? true : event === 'SIGNED_OUT' ? false : current

@@ -47,3 +47,20 @@ test('existing password update flow remains connected to recovery mode', () => {
   assert.ok(authScreen.includes("activeMode === 'reset-password'"));
   assert.ok(authScreen.includes('supabase.auth.updateUser({ password: resetPassword })'));
 });
+
+test('startup gate defers auth events until cold-start recovery is resolved', () => {
+  assert.ok(provider.includes('const startupResolvedRef = useRef(false)'));
+  assert.ok(provider.includes('const pendingAuthEventRef = useRef'));
+  assert.ok(provider.includes('if (!startupResolvedRef.current) {'));
+  assert.ok(provider.includes('pendingAuthEventRef.current = { event, session: nextSession };'));
+  assert.ok(provider.includes('startupResolvedRef.current = true;'));
+});
+
+test('cold-start recovery wins over any queued ordinary auth event', () => {
+  const recovery = provider.indexOf('if (recoverySession) {');
+  const clearPending = provider.indexOf('pendingAuthEventRef.current = null;', recovery);
+  const recoveryMode = provider.indexOf('setIsPasswordRecovery(true);', recovery);
+  assert.ok(recovery >= 0);
+  assert.ok(clearPending > recovery);
+  assert.ok(recoveryMode > clearPending);
+});
