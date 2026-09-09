@@ -43,6 +43,15 @@ type Device = {
 const DEFAULT_TIMEZONE = 'Europe/Bucharest';
 
 /** Compute local date and time in the user's timezone. */
+export function isValidTimezone(timezone: string): boolean {
+  try {
+    new Intl.DateTimeFormat('en-CA', { timeZone: timezone });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export function localNow(timezone: string, now: Date = new Date()) {
   const tz = timezone || DEFAULT_TIMEZONE;
   const parts = new Intl.DateTimeFormat('en-CA', {
@@ -141,6 +150,10 @@ Deno.serve(async (req: Request) => {
 
   for (const preference of (preferences ?? []) as Preference[]) {
     const timezone = preference.timezone || DEFAULT_TIMEZONE;
+    if (!isValidTimezone(timezone)) {
+      skipped += 1;
+      continue;
+    }
 
     // ── Local date and time in user's timezone ──
     const now = localNow(timezone);

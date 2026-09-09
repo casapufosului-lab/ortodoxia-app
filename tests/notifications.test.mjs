@@ -442,3 +442,50 @@ test('red_cross with null calendar still produces correct body', () => {
 });
 
 
+
+// HIGH #8 regression: invalid timezone must not abort cron batch
+test('HIGH #8 exports a non-throwing timezone validator', () => {
+  const fn = readFileSync(join(root, 'supabase/functions/send-daily-notifications/index.ts'), 'utf8');
+  const start = fn.indexOf('export function isValidTimezone');
+  const end = fn.indexOf('export function localNow', start);
+  assert.ok(start >= 0 && end > start);
+  const block = fn.slice(start, end);
+  assert.ok(block.includes('try {'));
+  assert.ok(block.includes('return true'));
+  assert.ok(block.includes('catch {'));
+  assert.ok(block.includes('return false'));
+  assert.ok(!block.includes('throw '));
+});
+
+test('HIGH #8 invalid timezone guard skips only that preference before localNow', () => {
+  const fn = readFileSync(join(root, 'supabase/functions/send-daily-notifications/index.ts'), 'utf8');
+  const start = fn.indexOf('for (const preference of');
+  const end = fn.indexOf('return json({ success: true', start);
+  assert.ok(start >= 0 && end > start);
+  const loop = fn.slice(start, end);
+  const guard = loop.indexOf('if (!isValidTimezone(timezone))');
+  const skip = loop.indexOf('skipped += 1', guard);
+  const cont = loop.indexOf('continue', skip);
+  const now = loop.indexOf('const now = localNow(timezone)');
+  assert.ok(guard >= 0 && skip > guard && cont > skip && now > cont);
+});
+
+test('HIGH #8 keeps exactly one timezone, now and sunday declaration in loop', () => {
+  const fn = readFileSync(join(root, 'supabase/functions/send-daily-notifications/index.ts'), 'utf8');
+  const start = fn.indexOf('for (const preference of');
+  const end = fn.indexOf('return json({ success: true', start);
+  const loop = fn.slice(start, end);
+  assert.equal((loop.match(/const timezone = preference\.timezone \|\| DEFAULT_TIMEZONE/g) ?? []).length, 1);
+  assert.equal((loop.match(/const now = localNow\(timezone\)/g) ?? []).length, 1);
+  assert.equal((loop.match(/const sunday = isSunday\(timezone\)/g) ?? []).length, 1);
+});
+
+test('HIGH #8 invalid non-empty timezone is not silently replaced with Bucharest', () => {
+  const fn = readFileSync(join(root, 'supabase/functions/send-daily-notifications/index.ts'), 'utf8');
+  const start = fn.indexOf('for (const preference of');
+  const end = fn.indexOf('return json({ success: true', start);
+  const loop = fn.slice(start, end);
+  assert.ok(loop.includes('const timezone = preference.timezone || DEFAULT_TIMEZONE'));
+  assert.ok(loop.includes('if (!isValidTimezone(timezone))'));
+  assert.ok(loop.includes('continue'));
+});
