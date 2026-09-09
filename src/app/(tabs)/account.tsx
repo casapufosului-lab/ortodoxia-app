@@ -222,14 +222,11 @@ export default function AccountScreen() {
         calendar_code: calendarCode,
       });
       if (preferenceResult.error) throw preferenceResult.error;
-      const deviceResult = await supabase.from('notification_devices').upsert({
-        user_id: user.id,
-        expo_push_token: registration.token,
-        platform: registration.platform,
-        timezone,
-        is_active: true,
-        last_seen_at: new Date().toISOString(),
-      }, { onConflict: 'expo_push_token' });
+      const deviceResult = await supabase.rpc('claim_notification_device', {
+        p_expo_push_token: registration.token,
+        p_platform: registration.platform,
+        p_timezone: timezone,
+      });
       if (deviceResult.error) throw deviceResult.error;
       setNotificationsEnabled(true);
       setNotificationMessage(t('account.notificationsActiveMessage'));
