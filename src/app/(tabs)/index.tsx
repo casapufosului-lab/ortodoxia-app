@@ -52,13 +52,14 @@ export default function HomeScreen() {
       appStateListener?.remove();
     };
   }, []);
-  const isLoadingRef = useRef(false);
+  const homeRequestRef = useRef(0);
 
   const loadHome = useCallback(async () => {
-    if (isLoadingRef.current) return;
-    isLoadingRef.current = true;
+    const requestId = ++homeRequestRef.current;
     setIsLoading(true);
     setErrorMessage('');
+    setDailyContent(null);
+    setCalendarDay(null);
 
     try {
       if (!calendarCode) {
@@ -87,6 +88,8 @@ export default function HomeScreen() {
           .maybeSingle(),
       ]);
 
+      if (homeRequestRef.current !== requestId) return;
+
       const localizationSchemaMissing = [dailyResult.error, calendarResult.error].some((error) => (
         error?.code === '42703' || Boolean(error?.message.match(/(country_code|language_code|calendar_code).*does not exist/i))
       ));
@@ -112,6 +115,8 @@ export default function HomeScreen() {
         return;
       }
 
+      if (homeRequestRef.current !== requestId) return;
+
       if (dailyResult.error || calendarResult.error) {
         setErrorMessage(t('home.loadError'));
         return;
@@ -120,16 +125,21 @@ export default function HomeScreen() {
       setDailyContent(dailyResult.data as DailyContent);
       setCalendarDay(calendarResult.data as CalendarDay);
     } catch {
+      if (homeRequestRef.current !== requestId) return;
       setErrorMessage(t('home.unexpectedError'));
     } finally {
-      isLoadingRef.current = false;
-      setIsLoading(false);
+      if (homeRequestRef.current === requestId) {
+        setIsLoading(false);
+      }
     }
   }, [calendarCode, countryCode, dateKey, region.languageCode, t]);
 
   useEffect(() => {
     const timeoutId = setTimeout(() => void loadHome(), 0);
-    return () => clearTimeout(timeoutId);
+    return () => {
+      clearTimeout(timeoutId);
+      homeRequestRef.current += 1;
+    };
   }, [loadHome]);
 
   return (
