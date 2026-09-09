@@ -156,6 +156,24 @@ export default function AuthScreen() {
     }
   };
 
+  const backToSignIn = async () => {
+    if (loading) return;
+    setLoading(true);
+    try {
+      await signOut();
+      clearRecoveryRedirect();
+      setPassword('');
+      setResetPassword('');
+      setConfirmResetPassword('');
+      setResetMessage(null);
+      setMode('sign-in');
+    } catch (error) {
+      showAuthAlert(t('account.signOutErrorTitle'), friendlyAuthError(error, t));
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const sendResetEmail = async () => {
     if (loading) return; // FIX: Prevent duplicate submit
     setResetMessage(null);
@@ -219,7 +237,7 @@ export default function AuthScreen() {
         {resetMessage ? <Text accessibilityLiveRegion="polite" style={[styles.message, resetMessage.type === 'success' ? styles.success : styles.error]}>{resetMessage.text}</Text> : null}
         {activeMode === 'sign-in' ? <Pressable accessibilityRole="button" accessibilityLabel={t('auth.forgotPassword')} onPress={sendResetEmail}><Text style={styles.link}>{t('auth.forgotPassword')}</Text></Pressable> : null}
         {activeMode === 'reset-password' ? (
-          <Pressable onPress={() => setMode('sign-in')}><Text style={styles.link}>{t('auth.backToSignIn')}</Text></Pressable>
+          <Pressable onPress={backToSignIn}><Text style={styles.link}>{t('auth.backToSignIn')}</Text></Pressable>
         ) : (
           <View style={styles.switchRow}>
             <Text style={styles.note}>{activeMode === 'sign-in' ? t('auth.noAccount') : t('auth.hasAccount')}</Text>

@@ -9,7 +9,7 @@ test('MEDIUM #18 auth feedback has a web alert fallback', () => {
   assert.match(auth, /function showAuthAlert/);
   assert.match(auth, /Platform\.OS === 'web'/);
   assert.match(auth, /window\.alert/);
-  assert.equal((auth.match(/showAuthAlert\(/g) ?? []).length, 11);
+  assert.equal((auth.match(/showAuthAlert\(/g) ?? []).length, 12);
 });
 
 test('MEDIUM #18 account feedback has a web alert fallback', () => {
