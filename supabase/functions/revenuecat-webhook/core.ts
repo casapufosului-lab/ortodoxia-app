@@ -10,7 +10,7 @@
  *  - Se verifică `Authorization: Bearer <token>` împotriva secretului server.
  *  - `app_user_id` trebuie să fie un UUID valid.
  *  - Se acceptă produsele doar din lista explicită (`ro.ortodoxia.premium.*`).
- *  - Evenimentele sunt idempotente (upsert keyed pe `user_id`).
+ *  - Starea finala vine din Customer Info RevenueCat si se scrie atomic dupa snapshot.
  *  - Nu se loghează date personale, tokenuri sau payloaduri complete.
  */
 
@@ -58,6 +58,29 @@ export type SubscriptionUpdate = {
   cancel_at_period_end: boolean;
   product_id: string;
   provider_subscription_id: string | null;
+};
+
+export type RevenueCatCustomerInfo = {
+  request_date_ms?: number;
+  subscriber?: {
+    entitlements?: Record<string, {
+      expires_date?: string | null;
+      grace_period_expires_date?: string | null;
+      product_identifier?: string;
+    }>;
+    subscriptions?: Record<string, {
+      expires_date?: string | null;
+      grace_period_expires_date?: string | null;
+      unsubscribe_detected_at?: string | null;
+      refunded_at?: string | null;
+      period_type?: string | null;
+      store_transaction_id?: string | number | null;
+    }>;
+  };
+};
+
+export type RevenueCatSnapshot = SubscriptionUpdate & {
+  snapshot_at_ms: number;
 };
 
 export function isValidUUID(value: string): boolean {
@@ -188,15 +211,92 @@ export function buildUpsertRow(
   };
 }
 
+function normalizeIsoDate(value: unknown): string | null {
+  if (typeof value !== 'string') return null;
+  const time = new Date(value).getTime();
+  if (Number.isNaN(time)) return null;
+  return new Date(time).toISOString();
+}
+
+function latestPeriodEnd(...values: unknown[]): string | null {
+  let latest: { time: number; iso: string } | null = null;
+  for (const value of values) {
+    const iso = normalizeIsoDate(value);
+    if (!iso) continue;
+    const time = new Date(iso).getTime();
+    if (!latest || time > latest.time) latest = { time, iso };
+  }
+  return latest?.iso ?? null;
+}
+
+export function resolveCustomerSnapshot(
+  customerInfo: RevenueCatCustomerInfo,
+  fallbackProductId: string,
+): RevenueCatSnapshot | null {
+  const snapshotAtMs = customerInfo.request_date_ms;
+  if (!Number.isSafeInteger(snapshotAtMs) || (snapshotAtMs ?? 0) <= 0) return null;
+
+  const entitlement = customerInfo.subscriber?.entitlements?.premium;
+  const entitlementProductId =
+    typeof entitlement?.product_identifier === 'string' ? entitlement.product_identifier : '';
+  const entitlementProductAccepted = ACCEPTED_PRODUCT_SET.has(entitlementProductId);
+  const productId = entitlementProductAccepted ? entitlementProductId : fallbackProductId;
+  if (!ACCEPTED_PRODUCT_SET.has(productId)) return null;
+
+  const subscription = customerInfo.subscriber?.subscriptions?.[productId];
+  const currentPeriodEnd = latestPeriodEnd(
+    entitlement?.expires_date,
+    entitlement?.grace_period_expires_date,
+    subscription?.expires_date,
+    subscription?.grace_period_expires_date,
+  );
+  const currentPeriodEndMs = currentPeriodEnd ? new Date(currentPeriodEnd).getTime() : null;
+  const refunded = typeof subscription?.refunded_at === 'string' && subscription.refunded_at.length > 0;
+  const active =
+    Boolean(entitlement) &&
+    entitlementProductAccepted &&
+    !refunded &&
+    (currentPeriodEndMs === null || currentPeriodEndMs > snapshotAtMs);
+
+  let status: string;
+  if (!active) {
+    status = 'expired';
+  } else if (typeof subscription?.unsubscribe_detected_at === 'string' && subscription.unsubscribe_detected_at.length > 0) {
+    status = 'canceled';
+  } else if (subscription?.period_type === 'trial') {
+    status = 'trialing';
+  } else {
+    status = 'active';
+  }
+
+  const providerSubscriptionId =
+    subscription?.store_transaction_id === null || subscription?.store_transaction_id === undefined
+      ? null
+      : String(subscription.store_transaction_id);
+
+  return {
+    status,
+    plan: PRODUCT_PLAN[productId] ?? 'monthly',
+    current_period_end: currentPeriodEnd,
+    cancel_at_period_end: status === 'canceled' || status === 'expired',
+    product_id: productId,
+    provider_subscription_id: providerSubscriptionId,
+    snapshot_at_ms: snapshotAtMs,
+  };
+}
+
 export type WebhookDeps = {
   webhookAuthToken: string | null;
+  revenueCatApiKey: string | null;
+  fetcher: (
+    input: string | URL | Request,
+    init?: RequestInit,
+  ) => Promise<Response>;
   admin: {
-    from: (table: string) => {
-      upsert: (
-        row: Record<string, unknown>,
-        opts?: { onConflict?: string },
-      ) => Promise<{ error: unknown | null }>;
-    };
+    rpc: (
+      fn: string,
+      args?: Record<string, unknown>,
+    ) => PromiseLike<{ data: unknown; error: unknown | null }>;
   };
 };
 
@@ -205,7 +305,7 @@ export type WebhookResult = { status: number; body: Record<string, unknown> };
 /**
  * Gestionează o cerere webhook. Returnează un rezultat `{ status, body }`
  * care poate fi convertit într-un `Response` de către apelant (Deno/Edge).
- * Nu trimite cereri către RevenueCat și nu citește/modifică baza decât prin
+ * Citeste starea curenta din RevenueCat prin `deps.fetcher` si modifica baza doar prin
  * `deps.admin` (injectat), deci poate fi testat local cu un admin mock.
  */
 export async function handleWebhook(req: Request, deps: WebhookDeps): Promise<WebhookResult> {
@@ -213,7 +313,7 @@ export async function handleWebhook(req: Request, deps: WebhookDeps): Promise<We
     return { status: 405, body: { error: 'Metoda neacceptata.' } };
   }
 
-  if (!deps.webhookAuthToken) {
+  if (!deps.webhookAuthToken || !deps.revenueCatApiKey) {
     return { status: 503, body: { error: 'Serviciul nu este configurat.' } };
   }
 
@@ -251,15 +351,48 @@ export async function handleWebhook(req: Request, deps: WebhookDeps): Promise<We
     return { status: 200, body: { success: true, skipped: true } };
   }
 
-  const update = resolveSubscriptionUpdate(event.type ?? '', productId, event);
-  if (!update) {
-    return { status: 200, body: { success: true, skipped: true } };
+  let response: Response;
+  try {
+    response = await deps.fetcher(
+      `https://api.revenuecat.com/v1/subscribers/${encodeURIComponent(appUserId)}`,
+      {
+        method: 'GET',
+        headers: {
+          Accept: 'application/json',
+          Authorization: `Bearer ${deps.revenueCatApiKey}`,
+        },
+      },
+    );
+  } catch {
+    return { status: 502, body: { error: 'Sincronizarea RevenueCat nu a reusit.' } };
   }
 
-  const row = buildUpsertRow(appUserId, update);
-  const { error } = await deps.admin
-    .from('subscriptions')
-    .upsert(row, { onConflict: 'user_id' });
+  if (!response.ok) {
+    return { status: 502, body: { error: 'Sincronizarea RevenueCat nu a reusit.' } };
+  }
+
+  let customerInfo: RevenueCatCustomerInfo;
+  try {
+    customerInfo = (await response.json()) as RevenueCatCustomerInfo;
+  } catch {
+    return { status: 502, body: { error: 'Sincronizarea RevenueCat nu a reusit.' } };
+  }
+
+  const snapshot = resolveCustomerSnapshot(customerInfo, productId);
+  if (!snapshot) {
+    return { status: 502, body: { error: 'Raspuns RevenueCat invalid.' } };
+  }
+
+  const { error } = await deps.admin.rpc('sync_revenuecat_subscription', {
+    p_user_id: appUserId,
+    p_status: snapshot.status,
+    p_plan: snapshot.plan,
+    p_product_id: snapshot.product_id,
+    p_provider_subscription_id: snapshot.provider_subscription_id,
+    p_current_period_end: snapshot.current_period_end,
+    p_cancel_at_period_end: snapshot.cancel_at_period_end,
+    p_snapshot_at_ms: snapshot.snapshot_at_ms,
+  });
 
   if (error) {
     // Nu logăm detalii personale; doar un mesaj generic.

@@ -23,8 +23,9 @@ Deno.serve(async (req: Request) => {
   const supabaseUrl = Deno.env.get('SUPABASE_URL');
   const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
   const webhookAuthToken = Deno.env.get('REVENUECAT_WEBHOOK_AUTH_TOKEN');
+  const revenueCatApiKey = Deno.env.get('REVENUECAT_API_KEY');
 
-  if (!supabaseUrl || !serviceRoleKey || !webhookAuthToken) {
+  if (!supabaseUrl || !serviceRoleKey || !webhookAuthToken || !revenueCatApiKey) {
     return json({ error: 'Serviciul nu este configurat.' }, 503);
   }
 
@@ -32,6 +33,11 @@ Deno.serve(async (req: Request) => {
     auth: { persistSession: false, autoRefreshToken: false },
   });
 
-  const result = await handleWebhook(req, { webhookAuthToken, admin });
+  const result = await handleWebhook(req, {
+    webhookAuthToken,
+    revenueCatApiKey,
+    fetcher: fetch,
+    admin,
+  });
   return json(result.body, result.status);
 });
