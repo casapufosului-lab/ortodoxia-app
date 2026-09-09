@@ -123,10 +123,13 @@ export function useRevenueCat() {
       if (!pkg) {
         return { ok: false, message: t('premium.planUnavailable'), cancelled: false };
       }
+      if (!userId) {
+        return { ok: false, message: t('premium.purchaseFailed'), cancelled: false };
+      }
 
       setLoading(true);
       try {
-        const info = await purchaseRevenueCatPackage(pkg);
+        const info = await purchaseRevenueCatPackage(pkg, userId);
         if (!mountedRef.current) return { ok: false, message: t('premium.purchaseFailed'), cancelled: false };
         setCustomerInfo(info);
         if (isPremiumActive(info)) {
@@ -143,17 +146,20 @@ export function useRevenueCat() {
         if (mountedRef.current) setLoading(false);
       }
     },
-    [packages, t],
+    [packages, t, userId],
   );
 
   const restore = useCallback(async (): Promise<PurchaseResult> => {
     if (!isRevenueCatConfigured()) {
       return { ok: false, message: t('premium.storeUnavailable'), cancelled: false };
     }
+    if (!userId) {
+      return { ok: false, message: t('premium.restoreFailed'), cancelled: false };
+    }
 
     setLoading(true);
     try {
-      const info = await restoreRevenueCatPurchases();
+      const info = await restoreRevenueCatPurchases(userId);
       if (!mountedRef.current) return { ok: false, message: t('premium.restoreFailed'), cancelled: false };
       setCustomerInfo(info);
       return isPremiumActive(info)
@@ -165,7 +171,7 @@ export function useRevenueCat() {
     } finally {
       if (mountedRef.current) setLoading(false);
     }
-  }, [t]);
+  }, [t, userId]);
 
   const priceFor = useCallback(
     (plan: RevenueCatPlan) => {

@@ -69,6 +69,14 @@ export async function identifyRevenueCatUser(userId: string) {
   await Purchases.logIn(userId);
 }
 
+export async function ensureRevenueCatUser(userId: string) {
+  if (!isRevenueCatConfigured()) throw new Error('RevenueCat is not configured.');
+  const currentUserId = await Purchases.getAppUserID();
+  if (currentUserId !== userId) await Purchases.logIn(userId);
+  const verifiedUserId = await Purchases.getAppUserID();
+  if (verifiedUserId !== userId) throw new Error('RevenueCat user identity mismatch.');
+}
+
 /** Deconectează utilizatorul de la RevenueCat (apelat la sign-out). */
 export async function clearRevenueCatUser() {
   if (!isRevenueCatConfigured()) return;
@@ -110,13 +118,15 @@ export function packagePriceText(pkg: PurchasesPackage): string | null {
  * Efectuează cumpărarea unui pachet. Returnează CustomerInfo actualizat.
  * Aruncă o eroare dacă utilizatorul a anulat, cu codul specific.
  */
-export async function purchaseRevenueCatPackage(pkg: PurchasesPackage) {
+export async function purchaseRevenueCatPackage(pkg: PurchasesPackage, userId: string) {
+  await ensureRevenueCatUser(userId);
   const { customerInfo } = await Purchases.purchasePackage(pkg);
   return customerInfo;
 }
 
 /** Restaurează cumpărăturile utilizatorului din magazin. */
-export async function restoreRevenueCatPurchases(): Promise<CustomerInfo> {
+export async function restoreRevenueCatPurchases(userId: string): Promise<CustomerInfo> {
+  await ensureRevenueCatUser(userId);
   return Purchases.restorePurchases();
 }
 
