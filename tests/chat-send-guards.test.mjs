@@ -178,3 +178,31 @@ test('catch block does not add an assistant message', () => {
     'catch block must not add a fake assistant response',
   );
 });
+
+test('chat remounts conversation state when auth identity changes', () => {
+  assert.ok(src.includes("return <ChatConversation key={user?.id ?? 'guest'} />;"));
+  assert.ok(src.includes('function ChatConversation() {'));
+});
+
+test('loadConversation rejects stale async results', () => {
+  const start = src.indexOf('const loadConversation = useCallback');
+  const end = src.indexOf('const send = async () => {', start);
+  const body = src.slice(start, end);
+  assert.ok(body.includes('const requestId = ++loadRequestRef.current;'));
+  assert.ok((body.split('if (loadRequestRef.current !== requestId) return;').length - 1) >= 2);
+  assert.ok(body.includes('loadRequestRef.current += 1;'));
+});
+
+test('send rejects stale async results', () => {
+  const start = src.indexOf('const send = async () => {');
+  const body = src.slice(start, src.indexOf('return (', start));
+  assert.ok(body.includes('const requestId = ++sendRequestRef.current;'));
+  assert.ok(body.includes('const isCurrentRequest = () => sendRequestRef.current === requestId;'));
+  assert.ok((body.split('if (!isCurrentRequest()) return;').length - 1) >= 4);
+  assert.ok(body.includes('if (isCurrentRequest()) {'));
+});
+
+test('send cleanup invalidates pending request', () => {
+  assert.ok(src.includes('useEffect(() => () => {'));
+  assert.ok(src.includes('sendRequestRef.current += 1;'));
+});

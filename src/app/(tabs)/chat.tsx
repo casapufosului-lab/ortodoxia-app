@@ -42,6 +42,11 @@ function localDateKey() {
 
 export default function ChatScreen() {
   const { user } = useAuth();
+  return <ChatConversation key={user?.id ?? 'guest'} />;
+}
+
+function ChatConversation() {
+  const { user } = useAuth();
   const { t } = useLocalization();
   const [input, setInput] = useState('');
   const [messages, setMessages] = useState<Message[]>([welcomeMessage(t)]);
@@ -51,6 +56,8 @@ export default function ChatScreen() {
   const [isLoading, setIsLoading] = useState(true);
   const [isSending, setIsSending] = useState(false);
   const isSendingRef = useRef(false);
+  const loadRequestRef = useRef(0);
+  const sendRequestRef = useRef(0);
   const [errorMessage, setErrorMessage] = useState('');
 
   const ensureGuestId = useCallback(async () => {
@@ -65,6 +72,7 @@ export default function ChatScreen() {
   }, []);
 
   const loadConversation = useCallback(async () => {
+    const requestId = ++loadRequestRef.current;
     setIsLoading(true);
     setErrorMessage('');
 
@@ -99,6 +107,8 @@ export default function ChatScreen() {
         .maybeSingle(),
     ]);
 
+    if (loadRequestRef.current !== requestId) return;
+
     if (usageResult.error || threadResult.error || subscriptionResult.error) {
       setErrorMessage(t('chat.loadError'));
       setIsLoading(false);
@@ -122,6 +132,8 @@ export default function ChatScreen() {
         .order('created_at', { ascending: true })
         .limit(50);
 
+      if (loadRequestRef.current !== requestId) return;
+
       if (error) {
         setErrorMessage(t('chat.oldMessagesLoadError'));
       } else if (data && data.length > 0) {
@@ -142,8 +154,15 @@ export default function ChatScreen() {
 
   useEffect(() => {
     const timeoutId = setTimeout(() => void loadConversation(), 0);
-    return () => clearTimeout(timeoutId);
+    return () => {
+      clearTimeout(timeoutId);
+      loadRequestRef.current += 1;
+    };
   }, [loadConversation]);
+
+  useEffect(() => () => {
+    sendRequestRef.current += 1;
+  }, []);
 
   const send = async () => {
     if (isSendingRef.current) return;
@@ -160,6 +179,9 @@ export default function ChatScreen() {
       return;
     }
 
+    const requestId = ++sendRequestRef.current;
+    const isCurrentRequest = () => sendRequestRef.current === requestId;
+
     const optimisticId = `local-${Date.now()}`;
     setMessages((current) => [...current, { id: optimisticId, role: 'user', text: clean }]);
     setInput('');
@@ -170,16 +192,20 @@ export default function ChatScreen() {
 
     try {
       const currentGuestId = user ? null : await ensureGuestId();
+      if (!isCurrentRequest()) return;
 
       const { data, error } = await supabase.functions.invoke<ChatResponse>('orthodox-chat', {
         body: { message: clean, threadId, guestId: currentGuestId },
       });
+
+      if (!isCurrentRequest()) return;
 
       if (error || !data?.reply) {
         let message = t('chat.aiResponseError');
         if (error instanceof FunctionsHttpError) {
           try {
             const details = await error.context.json();
+            if (!isCurrentRequest()) return;
             if (typeof details?.error === 'string') message = details.error;
             if (typeof details?.remaining === 'number') setRemaining(details.remaining);
             if (typeof details?.dailyLimit === 'number') setDailyLimit(details.dailyLimit);
@@ -188,6 +214,8 @@ export default function ChatScreen() {
             // Păstrăm mesajul simplu de mai sus.
           }
         }
+
+        if (!isCurrentRequest()) return;
         setErrorMessage(message);
         setMessages((current) => current.filter((m) => m.id !== optimisticId));
         setInput(clean);
@@ -203,12 +231,16 @@ export default function ChatScreen() {
         text: data.reply,
       }]);
     } catch {
-      setErrorMessage(t('chat.serviceUnavailableError'));
-      setMessages((current) => current.filter((m) => m.id !== optimisticId));
-      setInput(clean);
+      if (isCurrentRequest()) {
+        setErrorMessage(t('chat.serviceUnavailableError'));
+        setMessages((current) => current.filter((m) => m.id !== optimisticId));
+        setInput(clean);
+      }
     } finally {
-      isSendingRef.current = false;
-      setIsSending(false);
+      if (isCurrentRequest()) {
+        isSendingRef.current = false;
+        setIsSending(false);
+      }
     }
   };
 
