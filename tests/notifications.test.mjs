@@ -366,6 +366,21 @@ test('migration is LOCAL ONLY', () => {
   const m = readFileSync(join(root, 'supabase/migrations/20260902000200_add_notification_idempotency.sql'), 'utf8');
   assert.ok(m.includes('LOCAL ONLY'));
 });
+test('notification reservation RPCs are service-role only', () => {
+  const m = readFileSync(join(root, 'supabase/migrations/20260909000100_restrict_notification_reservation_rpcs.sql'), 'utf8');
+
+  const signatures = [
+    'public.reserve_notification_deliveries(uuid[], date, text)',
+    'public.release_notification_reservation(uuid[], date)',
+  ];
+
+  for (const signature of signatures) {
+    assert.ok(m.includes('REVOKE EXECUTE ON FUNCTION ' + signature));
+    assert.ok(m.includes('FROM PUBLIC, anon, authenticated;'));
+    assert.ok(m.includes('GRANT EXECUTE ON FUNCTION ' + signature));
+    assert.ok(m.includes('TO service_role;'));
+  }
+});
 
 // notification-logic.ts structural checks
 test('src/lib/notification-logic.ts exports pure functions', () => {
