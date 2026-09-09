@@ -94,7 +94,9 @@ export const LIVE_STATUS_FETCH_ERROR_CODE = 'FETCH_FAILED';
  * - No duplicate requests from rerenders (caller manages invocation).
  */
 export async function fetchLiveStatuses(): Promise<LiveStatusResult> {
-  const { data, error } = await supabase.functions.invoke('live-services-status');
+  const { data, error } = await supabase.functions.invoke('live-services-status', {
+    method: 'GET',
+  });
 
   if (error || !data) {
     console.warn('live-services-status fetch failed:', error?.message ?? 'no data');

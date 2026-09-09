@@ -66,7 +66,7 @@ function createSupacheCacheAdapter(
       // discovery would be skipped forever (always UNKNOWN).
       const { error: seedError } = await admin
         .from('live_service_status_cache')
-        .insert(
+        .upsert(
           {
             source_id: sourceId,
             status: 'unknown',
