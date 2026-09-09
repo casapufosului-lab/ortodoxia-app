@@ -5,6 +5,7 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { Card, PageHeader, PrimaryButton, Screen } from '@/components/mvp-ui';
 import { palette } from '@/constants/palette';
 import type { TranslationKey } from '@/i18n/config';
+import { NATIVE_PASSWORD_RECOVERY_REDIRECT_URL } from '@/lib/native-password-recovery';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/providers/auth-provider';
 import { useLocalization } from '@/providers/localization-provider';
@@ -157,7 +158,7 @@ export default function AuthScreen() {
     try {
       const redirectTo = Platform.OS === 'web' && typeof window !== 'undefined'
         ? `${window.location.origin}/auth`
-        : undefined;
+        : NATIVE_PASSWORD_RECOVERY_REDIRECT_URL;
       const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), redirectTo ? { redirectTo } : undefined);
       if (error) {
         setResetMessage({ type: 'error', text: t('auth.sendEmailErrorPrefix') + friendlyAuthError(error, t) });

@@ -2,6 +2,7 @@ import type { Session, User } from '@supabase/supabase-js';
 import { createContext, type PropsWithChildren, useContext, useEffect, useMemo, useState } from 'react';
 import { AppState, Platform } from 'react-native';
 
+import { getInitialNativePasswordRecoverySession, subscribeToNativePasswordRecovery } from '@/lib/native-password-recovery';
 import { supabase } from '@/lib/supabase';
 
 type AuthContextValue = {
@@ -22,16 +23,38 @@ export function AuthProvider({ children }: PropsWithChildren) {
   useEffect(() => {
     let isMounted = true;
 
-    supabase.auth.getSession().then(({ data }) => {
+    const loadInitialSession = async () => {
+      const recoverySession = await getInitialNativePasswordRecoverySession();
+      if (!isMounted) return;
+
+      if (recoverySession) {
+        setSession(recoverySession);
+        setIsPasswordRecovery(true);
+        setIsLoading(false);
+        return;
+      }
+
+      const { data } = await supabase.auth.getSession();
       if (isMounted) {
         setSession(data.session);
         setIsLoading(false);
       }
-    });
+    };
+
+    void loadInitialSession();
 
     const { data: authListener } = supabase.auth.onAuthStateChange((event, nextSession) => {
       setSession(nextSession);
-      setIsPasswordRecovery(event === 'PASSWORD_RECOVERY');
+      setIsPasswordRecovery((current) => (
+        event === 'PASSWORD_RECOVERY' ? true : event === 'SIGNED_OUT' ? false : current
+      ));
+      setIsLoading(false);
+    });
+
+    const unsubscribeRecovery = subscribeToNativePasswordRecovery((recoverySession) => {
+      if (!isMounted) return;
+      setSession(recoverySession);
+      setIsPasswordRecovery(true);
       setIsLoading(false);
     });
 
@@ -45,6 +68,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
     return () => {
       isMounted = false;
       authListener.subscription.unsubscribe();
+      unsubscribeRecovery();
       appStateListener?.remove();
     };
   }, []);
