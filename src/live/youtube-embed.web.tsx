@@ -7,7 +7,7 @@
  */
 
 import { Modal, Pressable, StyleSheet, Text, View } from 'react-native'
-import { translate } from '@/i18n/config' ;
+import { useLocalization } from '@/providers/localization-provider';
 
 import { palette } from '@/constants/palette';
 
@@ -19,6 +19,7 @@ interface YouTubeEmbedProps {
 }
 
 export function YouTubeEmbed({ videoId, onClose }: YouTubeEmbedProps) {
+  const { t } = useLocalization();
   if (!videoId) return null;
 
   const embedUrl = buildYouTubeEmbedUrl(videoId);
@@ -34,11 +35,11 @@ export function YouTubeEmbed({ videoId, onClose }: YouTubeEmbedProps) {
         <View style={styles.header}>
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel={translate('ro', 'live.closePlayerAccessibilityLabel')}
+            accessibilityLabel={t('live.closePlayerAccessibilityLabel')}
             onPress={onClose}
             style={({ pressed }) => [styles.closeButton, pressed && styles.pressed]}
           >
-            <Text style={styles.closeText}>{translate('ro', 'live.closePlayer')}</Text>
+            <Text style={styles.closeText}>{t('live.closePlayer')}</Text>
           </Pressable>
         </View>
         <iframe

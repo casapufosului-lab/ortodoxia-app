@@ -11,7 +11,7 @@
 import { useCallback, useEffect } from 'react';
 import { BackHandler, Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 import { WebView } from 'react-native-webview'
-import { translate } from '@/i18n/config' ;
+import { useLocalization } from '@/providers/localization-provider';
 
 import { palette } from '@/constants/palette';
 
@@ -23,6 +23,7 @@ export interface YouTubeEmbedProps {
 }
 
 export function YouTubeEmbed({ videoId, onClose }: YouTubeEmbedProps) {
+  const { t } = useLocalization();
   const handleBack = useCallback(() => {
     if (videoId) {
       onClose();
@@ -52,11 +53,11 @@ export function YouTubeEmbed({ videoId, onClose }: YouTubeEmbedProps) {
         <View style={styles.header}>
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel={translate('ro', 'live.closePlayerAccessibilityLabel')}
+            accessibilityLabel={t('live.closePlayerAccessibilityLabel')}
             onPress={onClose}
             style={({ pressed }) => [styles.closeButton, pressed && styles.pressed]}
           >
-            <Text style={styles.closeText}>{translate('ro', 'live.closePlayer')}</Text>
+            <Text style={styles.closeText}>{t('live.closePlayer')}</Text>
           </Pressable>
         </View>
         <WebView
@@ -67,7 +68,7 @@ export function YouTubeEmbed({ videoId, onClose }: YouTubeEmbedProps) {
           mediaPlaybackRequiresUserAction
           startInLoadingState
           originWhitelist={['https://www.youtube.com', 'https://youtube.com']}
-          accessibilityLabel={translate('ro', 'live.playerAccessibilityLabel')}
+          accessibilityLabel={t('live.playerAccessibilityLabel')}
         />
       </View>
     </Modal>
