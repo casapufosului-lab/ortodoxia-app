@@ -41,6 +41,7 @@ export default function PrayersScreen() {
   const audioStartingRef = useRef(false);
   const speechRequestRef = useRef(0);
   const loadRequestRef = useRef(0);
+  const favoriteBusyRef = useRef(new Set<string>());
 
   const loadPrayers = useCallback(async () => {
     const requestId = ++loadRequestRef.current;
@@ -131,18 +132,26 @@ export default function PrayersScreen() {
       return;
     }
 
+    if (favoriteBusyRef.current.has(prayerId)) return;
+    favoriteBusyRef.current.add(prayerId);
+
     const wasFavorite = favoriteIds.includes(prayerId);
     setFavoriteIds((ids) => wasFavorite ? ids.filter((id) => id !== prayerId) : [...ids, prayerId]);
 
-    const result = wasFavorite
-      ? await supabase.from('favorites').delete().eq('user_id', user.id).eq('prayer_id', prayerId)
-      : await supabase.from('favorites').insert({ user_id: user.id, prayer_id: prayerId });
+    try {
+      const result = wasFavorite
+        ? await supabase.from('favorites').delete().eq('user_id', user.id).eq('prayer_id', prayerId)
+        : await supabase.from('favorites').insert({ user_id: user.id, prayer_id: prayerId });
 
-    if (result.error) {
-      setFavoriteIds((ids) => wasFavorite ? [...ids, prayerId] : ids.filter((id) => id !== prayerId));
-      setErrorMessage(t('prayers.favoriteError'));
-    } else {
+      if (result.error) throw result.error;
       setErrorMessage('');
+    } catch {
+      setFavoriteIds((ids) => wasFavorite
+        ? (ids.includes(prayerId) ? ids : [...ids, prayerId])
+        : ids.filter((id) => id !== prayerId));
+      setErrorMessage(t('prayers.favoriteError'));
+    } finally {
+      favoriteBusyRef.current.delete(prayerId);
     }
   };
 
