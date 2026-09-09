@@ -21,3 +21,12 @@ test('MEDIUM #16 UTC month label cannot roll into previous month', () => {
 
   assert.equal(label, 'September 2026');
 });
+test('AUD2-02 calendar keeps valid UTF-8 navigation, cross markers and red-cross rank', () => {
+  assert.ok(calendar.includes('\u2039'));
+  assert.ok(calendar.includes('\u203a'));
+  assert.equal(calendar.split('\u271d').length - 1, 3);
+  assert.ok(calendar.includes('cruce ro\u0219ie'));
+  assert.ok(!calendar.includes(String.fromCodePoint(0x00e2, 0x20ac, 0x00b9)));
+  assert.ok(!calendar.includes(String.fromCodePoint(0x00e2, 0x20ac, 0x00ba)));
+  assert.ok(!calendar.includes(String.fromCodePoint(0x00c8, 0x2122)));
+});

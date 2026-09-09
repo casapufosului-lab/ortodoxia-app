@@ -186,17 +186,17 @@ export default function CalendarScreen() {
       <Card>
         <View style={styles.monthHeader}>
           <Pressable accessibilityRole="button" accessibilityLabel={t('calendar.previousMonth')} onPress={() => setMonthOffset((value) => value - 1)} style={styles.monthButton}>
-            <Text style={styles.monthButtonText}>â€¹</Text>
+            <Text style={styles.monthButtonText}>‹</Text>
           </Pressable>
           <Text style={styles.month}>{calendarView.month}</Text>
           <Pressable accessibilityRole="button" accessibilityLabel={t('calendar.nextMonth')} onPress={() => setMonthOffset((value) => value + 1)} style={styles.monthButton}>
-            <Text style={styles.monthButtonText}>â€º</Text>
+            <Text style={styles.monthButtonText}>›</Text>
           </Pressable>
         </View>
         {monthOffset !== 0 ? <Pressable accessibilityRole="button" onPress={() => setMonthOffset(0)}><Text style={styles.todayLink}>{t('calendar.backToCurrentMonth')}</Text></Pressable> : null}
         <View style={styles.legend}>
-          <Text style={styles.legendItem}><Text style={styles.redCross}>âœ</Text> {t('calendar.redCrossLegend')}</Text>
-          <Text style={styles.legendItem}><Text style={styles.blackCross}>âœ</Text> {t('calendar.documentedDayLegend')}</Text>
+          <Text style={styles.legendItem}><Text style={styles.redCross}>✝</Text> {t('calendar.redCrossLegend')}</Text>
+          <Text style={styles.legendItem}><Text style={styles.blackCross}>✝</Text> {t('calendar.documentedDayLegend')}</Text>
         </View>
         <View style={styles.grid}>{weekdays.map((day) => <Text key={day} style={styles.weekday}>{day}</Text>)}</View>
         {isLoading ? (
@@ -220,10 +220,10 @@ export default function CalendarScreen() {
                   const dateKey = toDateKey(calendarView.year, calendarView.monthIndex, day);
                   const entry = entriesByDate.get(dateKey);
                   if (!entry) return null;
-                  const isRedCross = ['red-cross', 'red_cross', 'cruce roÈ™ie', 'cruce rosie'].some((marker) => entry.feast_rank?.toLowerCase().includes(marker));
+                  const isRedCross = ['red-cross', 'red_cross', 'cruce roșie', 'cruce rosie'].some((marker) => entry.feast_rank?.toLowerCase().includes(marker));
                   const primaryFeast = entry.title.split(';')[0].trim();
                   return <View style={styles.dayDetails}>
-                    <Text style={[styles.crossMarker, isRedCross ? styles.redCross : styles.blackCross, selectedDay === day && styles.markerSelected]}>âœ</Text>
+                    <Text style={[styles.crossMarker, isRedCross ? styles.redCross : styles.blackCross, selectedDay === day && styles.markerSelected]}>✝</Text>
                     <Text numberOfLines={2} ellipsizeMode="tail" style={[styles.dayCaption, selectedDay === day && styles.captionSelected]}>{primaryFeast}</Text>
                   </View>;
                 })()}
