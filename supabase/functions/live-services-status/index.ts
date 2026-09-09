@@ -30,8 +30,14 @@ function json(body: Record<string, unknown>, status = 200) {
 
 // ─── Supabase cache adapter ────────────────────────────────────────────────
 
+function createAdminClient(url: string, key: string) {
+  return createClient(url, key, {
+    auth: { persistSession: false, autoRefreshToken: false },
+  });
+}
+
 function createSupacheCacheAdapter(
-  admin: ReturnType<typeof createClient>,
+  admin: ReturnType<typeof createAdminClient>,
 ): CacheStore {
   return {
     async get(sourceId: string): Promise<CachedStatusRow | null> {
@@ -119,9 +125,7 @@ Deno.serve(async (req: Request) => {
     return json({ error: 'Serviciul nu este configurat.' }, 503);
   }
 
-  const admin = createClient(supabaseUrl, serviceRoleKey, {
-    auth: { persistSession: false, autoRefreshToken: false },
-  });
+  const admin = createAdminClient(supabaseUrl, serviceRoleKey);
 
   const cache = createSupacheCacheAdapter(admin);
   const apiKeyPresent = Boolean(youtubeApiKey);

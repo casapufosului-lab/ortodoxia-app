@@ -234,7 +234,7 @@ export function resolveCustomerSnapshot(
   fallbackProductId: string,
 ): RevenueCatSnapshot | null {
   const snapshotAtMs = customerInfo.request_date_ms;
-  if (!Number.isSafeInteger(snapshotAtMs) || (snapshotAtMs ?? 0) <= 0) return null;
+  if (typeof snapshotAtMs !== 'number' || !Number.isSafeInteger(snapshotAtMs) || snapshotAtMs <= 0) return null;
 
   const entitlement = customerInfo.subscriber?.entitlements?.premium;
   const entitlementProductId =
