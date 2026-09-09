@@ -73,21 +73,32 @@ test('MEDIUM #9 malformed Expo ticket payload fails closed', () => {
   assert.equal(classifyExpoPushTickets({ data: [{ status: 'ok' }] }, 1)?.retryIndexes[0], 0);
 });
 
-test('MEDIUM #9 index catches fetch failures and releases reservations', () => {
-  const fn = readFileSync(
-    join(root, 'supabase/functions/send-daily-notifications/index.ts'),
-    'utf8',
+test('MEDIUM #9 ambiguous Expo outcomes preserve reservations to prevent duplicate sends', async () => {
+  const { readFileSync } = await import('node:fs');
+  const { dirname, join } = await import('node:path');
+  const { fileURLToPath } = await import('node:url');
+  const here = dirname(fileURLToPath(import.meta.url));
+  const source = readFileSync(join(here, '..', 'supabase/functions/send-daily-notifications/index.ts'), 'utf8');
+
+  const fetchBlock = source.slice(
+    source.indexOf('let response: Response;'),
+    source.indexOf('if (!response.ok)'),
   );
+  assert.ok(fetchBlock.includes('catch'));
+  assert.ok(!fetchBlock.includes('release_notification_reservation'));
 
-  const fetchPos = fn.indexOf("response = await fetch(");
-  assert.ok(fetchPos >= 0);
-  const beforeFetch = fn.slice(Math.max(0, fetchPos - 200), fetchPos);
-  assert.ok(beforeFetch.includes('try {'));
+  const jsonBlock = source.slice(
+    source.indexOf('let expoPayload: unknown;'),
+    source.indexOf('const tickets = classifyExpoPushTickets'),
+  );
+  assert.ok(jsonBlock.includes('response.json()'));
+  assert.ok(!jsonBlock.includes('release_notification_reservation'));
 
-  const catchPos = fn.indexOf('} catch {', fetchPos);
-  assert.ok(catchPos > fetchPos);
-  const catchBlock = fn.slice(catchPos, catchPos + 400);
-  assert.ok(catchBlock.includes("release_notification_reservation"));
+  const malformedStart = source.indexOf('if (!tickets) {');
+  const malformedEnd = source.indexOf('const retryDeviceIds', malformedStart);
+  const malformedBlock = source.slice(malformedStart, malformedEnd);
+  assert.ok(malformedStart >= 0);
+  assert.ok(!malformedBlock.includes('release_notification_reservation'));
 });
 
 test('MEDIUM #9 index parses Expo tickets and counts only accepted tickets', () => {

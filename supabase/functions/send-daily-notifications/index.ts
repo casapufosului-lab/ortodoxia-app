@@ -255,10 +255,8 @@ Deno.serve(async (req: Request) => {
         body: JSON.stringify(messages),
       });
     } catch {
-      await admin.rpc('release_notification_reservation', {
-        p_device_ids: pendingDevices.map((d) => d.id),
-        p_content_date: now.date,
-      });
+      // Ambiguous outcome: Expo may have accepted the push before the transport failed.
+      // Keep the reservation so a later cron run cannot send the same notification twice.
       skipped += 1;
       continue;
     }
@@ -276,20 +274,16 @@ Deno.serve(async (req: Request) => {
     try {
       expoPayload = await response.json();
     } catch {
-      await admin.rpc('release_notification_reservation', {
-        p_device_ids: pendingDevices.map((d) => d.id),
-        p_content_date: now.date,
-      });
+      // Ambiguous outcome: Expo may have accepted the push before the transport failed.
+      // Keep the reservation so a later cron run cannot send the same notification twice.
       skipped += 1;
       continue;
     }
 
     const tickets = classifyExpoPushTickets(expoPayload, pendingDevices.length);
     if (!tickets) {
-      await admin.rpc('release_notification_reservation', {
-        p_device_ids: pendingDevices.map((d) => d.id),
-        p_content_date: now.date,
-      });
+      // A successful Expo HTTP response with an unusable payload has an unknown delivery outcome.
+      // Preserve the reservation to prevent an accidental duplicate on retry.
       skipped += 1;
       continue;
     }
