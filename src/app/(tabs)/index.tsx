@@ -1,6 +1,6 @@
 import { router } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, AppState, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { Card, PageHeader, PrimaryButton, Screen, SectionTitle } from '@/components/mvp-ui';
 import { palette } from '@/constants/palette';
@@ -24,7 +24,7 @@ type CalendarDay = {
 
 export default function HomeScreen() {
   const { calendar, calendarCode, countryCode, region, t } = useLocalization();
-  const today = useMemo(() => new Date(), []);
+  const [today, setToday] = useState(() => new Date());
   const dateKey = useMemo(() => dateKeyInTimeZone(today, region.timeZone), [region.timeZone, today]);
   const dateLabel = useMemo(() => new Intl.DateTimeFormat(region.locale, {
     day: 'numeric',
@@ -37,6 +37,21 @@ export default function HomeScreen() {
   const [calendarDay, setCalendarDay] = useState<CalendarDay | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState('');
+
+  useEffect(() => {
+    const refreshToday = () => setToday(new Date());
+    const intervalId = setInterval(refreshToday, 60_000);
+    const appStateListener = Platform.OS === 'web'
+      ? null
+      : AppState.addEventListener('change', (state) => {
+          if (state === 'active') refreshToday();
+        });
+
+    return () => {
+      clearInterval(intervalId);
+      appStateListener?.remove();
+    };
+  }, []);
   const isLoadingRef = useRef(false);
 
   const loadHome = useCallback(async () => {
