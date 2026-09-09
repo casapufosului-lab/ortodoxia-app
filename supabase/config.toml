@@ -14,3 +14,6 @@ verify_jwt = false
 
 [functions.live-services-status]
 verify_jwt = false
+
+[auth]
+enable_anonymous_sign_ins = true

@@ -31,7 +31,7 @@ function harness(options = {}) {
   const events = [];
   let handler;
   const client = {
-    auth: { getUser: async () => ({ data: { user: options.user ? { id: userId } : null } }) },
+    auth: { getUser: async () => ({ data: { user: options.user === false ? null : { id: userId, is_anonymous: options.user !== true } } }) },
     rpc(name, args) {
       events.push({ kind: 'rpc', name, args });
       return { single: async () => ({ data: options.reservation ?? { success: true, remaining_limit: 4, daily_limit: 5, denial_reason: null, retry_after_seconds: 0 }, error: options.rpcError ?? null }) };
@@ -69,7 +69,7 @@ function harness(options = {}) {
   return {
     events,
     run: (body = { guestId, message: 'question' }, method = 'POST') => handler(new Request('https://example.invalid', {
-      method, headers: options.user ? { Authorization: 'Bearer test-only' } : {},
+      method, headers: options.user === false ? {} : { Authorization: 'Bearer test-only' },
       ...(method === 'POST' ? { body: typeof body === 'string' ? body : JSON.stringify(body) } : {}),
     })),
   };
@@ -81,7 +81,7 @@ for (const body of ['{', null, [], 3, '"string"', { guestId, message: '' }, { gu
   });
 }
 test('guest ID validation rejects UUID and missing ID', async () => {
-  for (const id of [undefined, userId]) { const h = harness(); assert.equal((await h.run({ guestId: id, message: 'question' })).status, 401); assert.equal(h.events.length, 0); }
+  for (const id of [undefined, userId, guestId]) { const h = harness({ user: false }); assert.equal((await h.run({ guestId: id, message: 'question' })).status, 401); assert.equal(h.events.length, 0); }
 });
 test('methods and missing configuration fail before database access', async () => {
   const h = harness(); assert.equal((await h.run(null, 'GET')).status, 405); assert.equal((await h.run(null, 'OPTIONS')).status, 200);
@@ -91,8 +91,8 @@ test('guest success reserves quota before AI and returns server counters', async
   const h = harness(); const response = await h.run({ guestId, message: ' question ', threadId: 'foreign' });
   assert.equal(response.status, 200); assert.deepEqual(await response.json(), { reply: 'răspuns', threadId: null, remaining: 4, dailyLimit: 5 });
   assert.deepEqual(h.events.map(e => e.kind), ['rpc', 'fetch']);
-  assert.deepEqual(JSON.parse(JSON.stringify(h.events[0].args)), { p_user_id: null, p_guest_id: guestId });
-  assert.equal(h.events[1].body.safety_identifier, guestId); assert.ok(h.events[1].signal);
+  assert.deepEqual(JSON.parse(JSON.stringify(h.events[0].args)), { p_user_id: userId, p_guest_id: null });
+  assert.equal(h.events[1].body.safety_identifier, userId); assert.ok(h.events[1].signal);
 });
 test('daily quota denial returns structured details and never calls AI', async () => {
   const h = harness({ reservation: { success: false, remaining_limit: 0, daily_limit: 5, denial_reason: 'daily_limit', retry_after_seconds: 0 } });

@@ -1,13 +1,12 @@
 import { FunctionsHttpError } from '@supabase/supabase-js';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { router } from 'expo-router';
 import { ActivityIndicator, KeyboardAvoidingView, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { Card, PageHeader, PrimaryButton, Screen } from '@/components/mvp-ui';
 import { palette } from '@/constants/palette';
 import { type TranslationKey } from '@/i18n/config';
-import { supabase } from '@/lib/supabase';
+import { chatGuestSupabase, ensureGuestChatSession, supabase } from '@/lib/supabase';
 import { FREE_DAILY_AI_LIMIT, hasPremiumAccess, PREMIUM_DAILY_AI_LIMIT, type SubscriptionRow } from '@/lib/subscription';
 import { useAuth } from '@/providers/auth-provider';
 import { useLocalization } from '@/providers/localization-provider';
@@ -27,12 +26,6 @@ function welcomeMessage(t: (key: TranslationKey) => string): Message {
     role: 'assistant',
     text: t('chat.welcome'),
   };
-}
-
-const GUEST_ID_STORAGE_KEY = 'orthodox_guest_id';
-
-function createGuestId() {
-  return `guest-${Date.now()}-${Math.random().toString(36).slice(2, 14)}`;
 }
 
 function localDateKey() {
@@ -60,17 +53,6 @@ function ChatConversation() {
   const sendRequestRef = useRef(0);
   const [errorMessage, setErrorMessage] = useState('');
 
-  const ensureGuestId = useCallback(async () => {
-    const storedId = await AsyncStorage.getItem(GUEST_ID_STORAGE_KEY);
-    if (storedId) {
-      return storedId;
-    }
-
-    const nextId = createGuestId();
-    await AsyncStorage.setItem(GUEST_ID_STORAGE_KEY, nextId);
-    return nextId;
-  }, []);
-
   const loadConversation = useCallback(async () => {
     const requestId = ++loadRequestRef.current;
     setIsLoading(true);
@@ -81,7 +63,6 @@ function ChatConversation() {
       setThreadId(null);
       setDailyLimit(FREE_DAILY_AI_LIMIT);
       setRemaining(FREE_DAILY_AI_LIMIT);
-      void ensureGuestId();
       setIsLoading(false);
       return;
     }
@@ -150,7 +131,7 @@ function ChatConversation() {
     }
 
     setIsLoading(false);
-  }, [ensureGuestId, t, user]);
+  }, [t, user]);
 
   useEffect(() => {
     const timeoutId = setTimeout(() => void loadConversation(), 0);
@@ -191,11 +172,12 @@ function ChatConversation() {
     setIsSending(true);
 
     try {
-      const currentGuestId = user ? null : await ensureGuestId();
+      if (!user) await ensureGuestChatSession();
+      const chatClient = user ? supabase : chatGuestSupabase;
       if (!isCurrentRequest()) return;
 
-      const { data, error } = await supabase.functions.invoke<ChatResponse>('orthodox-chat', {
-        body: { message: clean, threadId, guestId: currentGuestId },
+      const { data, error } = await chatClient.functions.invoke<ChatResponse>('orthodox-chat', {
+        body: { message: clean, threadId },
       });
 
       if (!isCurrentRequest()) return;

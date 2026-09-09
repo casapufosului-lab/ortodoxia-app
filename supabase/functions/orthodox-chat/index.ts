@@ -68,6 +68,7 @@ Deno.serve(async (req: Request) => {
         });
         let user: {
             id: string;
+            is_anonymous?: boolean;
         } | null = null;
         if (authHeader?.startsWith('Bearer ')) {
             const token = authHeader.slice('Bearer '.length);
@@ -91,16 +92,14 @@ Deno.serve(async (req: Request) => {
         }
         const message = typeof body.message === 'string' ? body.message.trim() : '';
         const requestedThreadId = typeof body.threadId === 'string' ? body.threadId : null;
-        const guestId = typeof body.guestId === 'string' && /^guest-[A-Za-z0-9-]{16,80}$/.test(body.guestId)
-            ? body.guestId
-            : null;
-        if (!user && !guestId)
-            return json({ error: 'Autentificare necesară sau identificator de vizitator invalid.' }, 401);
+        if (!user)
+            return json({ error: 'Autentificare necesară pentru chat.' }, 401);
         if (!message || message.length > 1200) {
             return json({ error: 'Întrebarea trebuie să aibă între 1 și 1.200 de caractere.' }, 400);
         }
+        const isAnonymous = user?.is_anonymous === true;
         let threadId = requestedThreadId;
-        if (!user) {
+        if (!user || isAnonymous) {
             threadId = null;
         }
         else if (threadId) {
@@ -114,8 +113,8 @@ Deno.serve(async (req: Request) => {
                 return json({ error: 'Conversația nu a fost găsită.' }, 404);
         }
         const { data: reservation, error: reservationError } = await admin.rpc('reserve_ai_request', {
-            p_user_id: user?.id ?? null,
-            p_guest_id: user ? null : guestId,
+            p_user_id: user.id,
+            p_guest_id: null,
         }).single<{ success: boolean; remaining_limit: number; daily_limit: number; denial_reason: 'cooldown' | 'daily_limit' | null; retry_after_seconds: number }>();
         if (reservationError || !reservation || typeof reservation.success !== 'boolean' ||
             ![FREE_DAILY_AI_LIMIT, PREMIUM_DAILY_AI_LIMIT].includes(reservation.daily_limit) ||
@@ -152,7 +151,7 @@ Deno.serve(async (req: Request) => {
                 retryAfter: 0,
             }, 429);
         }
-        if (user && !threadId) {
+        if (user && !isAnonymous && !threadId) {
             const { data: newThread, error: threadError } = await admin
                 .from('chat_threads')
                 .insert({ user_id: user.id, title: message.slice(0, 80) })
@@ -169,7 +168,7 @@ Deno.serve(async (req: Request) => {
             role: 'user' | 'assistant';
             content: string;
         }[] = [{ role: 'user', content: message }];
-        if (user && threadId) {
+        if (user && !isAnonymous && threadId) {
             const savedMessageResult = await admin
                 .from('chat_messages')
                 .insert({ thread_id: threadId, user_id: user.id, role: 'user', content: message })
@@ -210,7 +209,7 @@ Deno.serve(async (req: Request) => {
                     reasoning: { effort: 'none' },
                     text: { verbosity: 'low' },
                     max_output_tokens: 700,
-                    safety_identifier: user?.id ?? guestId,
+                    safety_identifier: user.id,
                     store: false,
                 }),
             });
@@ -227,14 +226,14 @@ Deno.serve(async (req: Request) => {
                 await admin.from('chat_messages').delete().eq('id', savedUserMessage.id);
             return json({ error: 'Serviciul AI nu a răspuns. Încearcă din nou mai târziu.' }, 502);
         }
-        if (user && threadId) {
+        if (user && !isAnonymous && threadId) {
             const { error: saveAssistantError } = await admin
                 .from('chat_messages')
                 .insert({ thread_id: threadId, user_id: user.id, role: 'assistant', content: reply });
             if (saveAssistantError)
                 return json({ error: 'Răspunsul a fost generat, dar nu a putut fi salvat.' }, 500);
         }
-        if (user && threadId) {
+        if (user && !isAnonymous && threadId) {
             await admin
                 .from('chat_threads')
                 .update({ updated_at: new Date().toISOString() })

@@ -28,3 +28,26 @@ export const supabase = createClient(supabaseUrl, supabasePublishableKey, {
     detectSessionInUrl: Platform.OS === 'web',
   },
 });
+
+export const chatGuestSupabase = createClient(supabaseUrl, supabasePublishableKey, {
+  auth: {
+    storage: Platform.OS === 'web' ? webStorage : AsyncStorage,
+    storageKey: 'ortodoxia-chat-guest-auth',
+    autoRefreshToken: true,
+    persistSession: true,
+    detectSessionInUrl: false,
+  },
+});
+
+export async function ensureGuestChatSession() {
+  const { data: existing, error: sessionError } = await chatGuestSupabase.auth.getSession();
+  if (sessionError) throw sessionError;
+  if (existing.session?.user.is_anonymous === true) return;
+  if (existing.session) throw new Error('Sesiune guest chat invalidă.');
+
+  const { data, error } = await chatGuestSupabase.auth.signInAnonymously();
+  if (error) throw error;
+  if (!data.session || data.user?.is_anonymous !== true) {
+    throw new Error('Sesiunea anonimă pentru chat nu a putut fi creată.');
+  }
+}
