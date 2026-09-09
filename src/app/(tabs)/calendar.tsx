@@ -44,15 +44,15 @@ export default function CalendarScreen() {
       ] as (number | null)[],
       month: new Intl.DateTimeFormat(region.locale, {
         month: 'long',
-        timeZone: region.timeZone,
+        timeZone: 'UTC',
         year: 'numeric',
-      }).format(viewedMonth),
+      }).format(new Date(Date.UTC(viewedYear, monthIndex, 1))),
       monthEnd: toDateKey(viewedYear, monthIndex, daysInMonth),
       monthIndex,
       monthStart: toDateKey(viewedYear, monthIndex, 1),
       year: viewedYear,
     };
-  }, [currentDateKey, monthOffset, region.locale, region.timeZone]);
+  }, [currentDateKey, monthOffset, region.locale]);
   const selectionKey = `${countryCode}:${calendarCode ?? 'neales'}`;
   const viewSelectionKey = `${selectionKey}:${calendarView.monthStart}`;
   const [selection, setSelection] = useState({ key: viewSelectionKey, day: calendarView.currentDay });
