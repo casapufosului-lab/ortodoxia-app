@@ -46,6 +46,17 @@ function hasRecoveryRedirect() {
   return searchParams.get('type') === 'recovery' || hashParams.get('type') === 'recovery';
 }
 
+function showAuthAlert(title: string, message: string) {
+  if (Platform.OS === 'web' && typeof window !== 'undefined') {
+    window.alert(`${title}
+
+${message}`);
+    return;
+  }
+
+  Alert.alert(title, message);
+}
+
 function clearRecoveryRedirect() {
   if (Platform.OS === 'web' && typeof window !== 'undefined') {
     window.history.replaceState({}, document.title, window.location.pathname);
@@ -79,22 +90,22 @@ export default function AuthScreen() {
   const validate = () => {
     if (activeMode === 'reset-password') {
       if (resetPassword.length < 6) {
-        Alert.alert(t('auth.passwordTooShortTitle'), t('auth.passwordTooShortMessage'));
+        showAuthAlert(t('auth.passwordTooShortTitle'), t('auth.passwordTooShortMessage'));
         return false;
       }
       if (resetPassword !== confirmResetPassword) {
-        Alert.alert(t('auth.passwordMismatchTitle'), t('auth.passwordMismatchMessage'));
+        showAuthAlert(t('auth.passwordMismatchTitle'), t('auth.passwordMismatchMessage'));
         return false;
       }
       return true;
     }
 
     if (!email.trim() || !email.includes('@')) {
-      Alert.alert(t('auth.emailInvalidTitle'), t('auth.emailInvalidMessage'));
+      showAuthAlert(t('auth.emailInvalidTitle'), t('auth.emailInvalidMessage'));
       return false;
     }
     if (password.length < 6) {
-      Alert.alert(t('auth.passwordTooShortTitle'), t('auth.passwordTooShortMessage'));
+      showAuthAlert(t('auth.passwordTooShortTitle'), t('auth.passwordTooShortMessage'));
       return false;
     }
     return true;
@@ -115,7 +126,7 @@ export default function AuthScreen() {
         setResetPassword('');
         setConfirmResetPassword('');
         setMode('sign-in');
-        Alert.alert(t('auth.passwordChangedTitle'), t('auth.passwordChangedMessage'));
+        showAuthAlert(t('auth.passwordChangedTitle'), t('auth.passwordChangedMessage'));
         return;
       }
 
@@ -128,7 +139,7 @@ export default function AuthScreen() {
         if (error) throw error;
 
         if (!data.session) {
-          Alert.alert(t('auth.checkEmailTitle'), t('auth.checkEmailMessage'));
+          showAuthAlert(t('auth.checkEmailTitle'), t('auth.checkEmailMessage'));
           setMode('sign-in');
           return;
         }
@@ -139,7 +150,7 @@ export default function AuthScreen() {
 
       router.replace(destination);
     } catch (error) {
-      Alert.alert(t('auth.signInFailedTitle'), friendlyAuthError(error, t));
+      showAuthAlert(t('auth.signInFailedTitle'), friendlyAuthError(error, t));
     } finally {
       setLoading(false);
     }
@@ -150,7 +161,7 @@ export default function AuthScreen() {
     setResetMessage(null);
     if (!email.trim() || !email.includes('@')) {
       setResetMessage({ type: 'error', text: t('auth.emailRequiredMessage') });
-      Alert.alert(t('auth.emailRequiredTitle'), t('auth.emailRequiredAlertMessage'));
+      showAuthAlert(t('auth.emailRequiredTitle'), t('auth.emailRequiredAlertMessage'));
       return;
     }
 
@@ -162,7 +173,7 @@ export default function AuthScreen() {
       const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), redirectTo ? { redirectTo } : undefined);
       if (error) {
         setResetMessage({ type: 'error', text: t('auth.sendEmailErrorPrefix') + friendlyAuthError(error, t) });
-        Alert.alert(t('auth.sendEmailErrorTitle'), friendlyAuthError(error, t));
+        showAuthAlert(t('auth.sendEmailErrorTitle'), friendlyAuthError(error, t));
       } else {
         setResetMessage({ type: 'success', text: t('auth.sendEmailSuccess') });
         router.replace('/reset-confirmation' as never);
@@ -170,7 +181,7 @@ export default function AuthScreen() {
     } catch (error) {
       const message = friendlyAuthError(error, t);
       setResetMessage({ type: 'error', text: t('auth.sendEmailErrorPrefix') + message });
-      Alert.alert(t('auth.sendEmailErrorTitle'), message);
+      showAuthAlert(t('auth.sendEmailErrorTitle'), message);
     } finally {
       setLoading(false);
     }

@@ -1,6 +1,6 @@
 import { router } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Alert, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { Card, PageHeader, PrimaryButton, Screen, SecondaryButton, SectionTitle } from '@/components/mvp-ui';
 import { palette } from '@/constants/palette';
@@ -14,6 +14,15 @@ import { useAuth } from '@/providers/auth-provider';
 import { useLocalization } from '@/providers/localization-provider';
 
 /** Mapăm erorile Supabase la mesaje prietenoase în limba română. */
+function showAccountAlert(title: string, message?: string) {
+  if (Platform.OS === 'web' && typeof window !== 'undefined') {
+    window.alert(message ? `${title}\n\n${message}` : title);
+    return;
+  }
+
+  Alert.alert(title, message);
+}
+
 function friendlyDbError(error: unknown, t: (key: TranslationKey) => string): string {
   if (!(error instanceof Error)) return t('account.dbErrorRetry');
   const msg = error.message.toLowerCase();
@@ -82,7 +91,7 @@ export default function AccountScreen() {
       .single()
       .then(({ data, error }) => {
         if (!active) return;
-        if (error) Alert.alert(t('account.profileUnavailableTitle'), friendlyDbError(error, t));
+        if (error) showAccountAlert(t('account.profileUnavailableTitle'), friendlyDbError(error, t));
         else setDisplayName(data?.display_name ?? '');
       });
 
@@ -100,7 +109,7 @@ export default function AccountScreen() {
       .then(({ data, error }) => {
         if (!active) return;
         if (error) {
-          Alert.alert(t('account.notificationsUnavailableTitle'), friendlyDbError(error, t));
+          showAccountAlert(t('account.notificationsUnavailableTitle'), friendlyDbError(error, t));
         } else {
           setNotificationsEnabled(Boolean(data?.enabled));
         }
@@ -117,14 +126,14 @@ export default function AccountScreen() {
       const { error } = await supabase.from('profiles').update({ display_name: displayName.trim() }).eq('id', user.id);
       if (error) {
         setSaveMessage({ type: 'error', text: t('account.profileSaveFailedMessage') });
-        Alert.alert(t('account.profileSaveFailedTitle'), friendlyDbError(error, t));
+        showAccountAlert(t('account.profileSaveFailedTitle'), friendlyDbError(error, t));
       } else {
         setSaveMessage({ type: 'success', text: t('account.profileSavedMessage') });
-        Alert.alert(t('account.profileSavedTitle'));
+        showAccountAlert(t('account.profileSavedTitle'));
       }
     } catch {
       setSaveMessage({ type: 'error', text: t('account.unexpectedError') });
-      Alert.alert(t('account.errorTitle'), t('account.unexpectedError'));
+      showAccountAlert(t('account.errorTitle'), t('account.unexpectedError'));
     } finally {
       isSavingRef.current = false;
       setSaving(false);
@@ -137,13 +146,25 @@ export default function AccountScreen() {
     try {
       await signOut();
     } catch (error) {
-      Alert.alert(t('account.signOutErrorTitle'), friendlyDbError(error, t));
+      showAccountAlert(t('account.signOutErrorTitle'), friendlyDbError(error, t));
     } finally {
       isSignOutRef.current = false;
     }
   };
 
   const handleDeleteAccount = () => {
+    if (Platform.OS === 'web' && typeof window !== 'undefined') {
+      const firstConfirmed = window.confirm(
+        t('account.deleteAccountTitle') + '\n\n' + t('account.deleteAccountMessage'),
+      );
+      if (!firstConfirmed) return;
+
+      const finalConfirmed = window.confirm(
+        t('account.deleteConfirmTitle') + '\n\n' + t('account.deleteConfirmMessage'),
+      );
+      if (finalConfirmed) void executeDeleteAccount();
+      return;
+    }
     // First confirmation — explain what will happen.
     Alert.alert(
       t('account.deleteAccountTitle'),
@@ -196,7 +217,7 @@ export default function AccountScreen() {
         message = error instanceof Error ? error.message : t('account.deleteFailedFallback');
       }
       setDeleteError(message);
-      Alert.alert(t('account.errorTitle'), message);
+      showAccountAlert(t('account.errorTitle'), message);
     } finally {
       // Only reset busy state if we didn't sign out (signOut triggers re-render).
       isDeleteRef.current = false;
