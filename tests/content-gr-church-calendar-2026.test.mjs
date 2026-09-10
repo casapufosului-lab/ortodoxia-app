@@ -1,0 +1,10 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+const p='supabase/migrations/20260911000100_seed_gr_church_of_greece_calendar_2026.sql';
+const sql=fs.readFileSync(p,'utf8');
+const dates=[...sql.matchAll(/\('GR', 'el', 'gr-church-of-greece', '(2026-\d{2}-\d{2})'/g)].map(m=>m[1]);
+test('GR 2026 coverage',()=>{assert.equal(dates.length,365);assert.equal(new Set(dates).size,365);assert.equal(dates.includes('2026-02-29'),false);});
+test('GR 2026 Pascha',()=>{assert.match(sql,/'2026-04-12'[\s\S]*?Άγιον Πάσχα, Η Ανάστασις του Κυρίου/);});
+test('GR 2026 fasting anchors',()=>{assert.match(sql,/'2026-03-25'[\s\S]*?Κατάλυσις ιχθύος/);assert.match(sql,/'2026-09-14'[\s\S]*?Νηστεία άλαδη/);});
+test('GR 2026 no Romanian rank leak',()=>{assert.doesNotMatch(sql,/cruce roșie|cruce neagră|red_cross|red-cross/i);});
