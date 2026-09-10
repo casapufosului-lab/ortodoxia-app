@@ -5,6 +5,7 @@ import { ActivityIndicator, AppState, Platform, Pressable, StyleSheet, Text, Vie
 import { Card, PageHeader, PrimaryButton, Screen, SectionTitle } from '@/components/mvp-ui';
 import { palette } from '@/constants/palette';
 import { dateKeyInTimeZone } from '@/i18n/config';
+import { getEnabledLiveSources } from '@/live/live-services';
 import { supabase } from '@/lib/supabase';
 import { useLocalization } from '@/providers/localization-provider';
 
@@ -24,6 +25,7 @@ type CalendarDay = {
 
 export default function HomeScreen() {
   const { calendar, calendarCode, countryCode, region, t } = useLocalization();
+  const liveLocations = getEnabledLiveSources(countryCode).map((source) => source.location).join(' • ');
   const [today, setToday] = useState(() => new Date());
   const dateKey = useMemo(() => dateKeyInTimeZone(today, region.timeZone), [region.timeZone, today]);
   const dateLabel = useMemo(() => new Intl.DateTimeFormat(region.locale, {
@@ -206,7 +208,7 @@ export default function HomeScreen() {
           <View style={styles.liveFlex}>
             <Text style={styles.liveTitle}>{t('home.liveSectionTitle')}</Text>
             <Text style={styles.liveSubtitle}>{t('home.liveSubtitle')}</Text>
-            <Text style={styles.liveLocation}>{t('home.liveLocations')}</Text>
+            {liveLocations ? <Text style={styles.liveLocation}>{liveLocations}</Text> : null}
           </View>
           <Text style={styles.liveArrow}>›</Text>
         </View>

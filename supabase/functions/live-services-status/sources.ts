@@ -53,6 +53,20 @@ export const LIVE_SOURCES: readonly LiveSourceDef[] = [
     enabled: true,
     supportsDynamicLiveDetection: true,
   },
+  {
+    id: 'gr-corfu',
+    countryCode: 'GR',
+    officialChannelId: 'UC-ox8zScPlH6xz9XbW6qD7g',
+    enabled: true,
+    supportsDynamicLiveDetection: true,
+  },
+  {
+    id: 'gr-4e',
+    countryCode: 'GR',
+    officialChannelId: 'UCme3CT1jvhMFAHDhY589Eyw',
+    enabled: true,
+    supportsDynamicLiveDetection: true,
+  },
 ];
 
 /** Enabled sources eligible for dynamic YouTube discovery. */

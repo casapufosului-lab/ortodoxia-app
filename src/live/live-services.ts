@@ -32,6 +32,10 @@ export const ALLOWED_DOMAINS = [
   'www.mitropolia-clujului.ro',
   'patriarhia.ro',
   'www.patriarhia.ro',
+  'imcorfu.gr',
+  'www.imcorfu.gr',
+  'tv4e.gr',
+  'www.tv4e.gr',
 ] as const;
 
 /** A stable handle on an allowed domain (used for quick lookups). */
@@ -127,6 +131,34 @@ export const LIVE_SOURCES: readonly PermanentLiveSource[] = [
     enabled: true,
     supportsDynamicLiveDetection: true,
     scheduleNote: translate('ro', 'live.scheduleNoteRadioRenasterea'),
+  },
+  {
+    id: 'gr-corfu',
+    countryCode: 'GR',
+    name: 'Mitropolia Corfu',
+    location: 'Corfu',
+    provider: 'Mitropolia Corfu',
+    officialWebsiteUrl: 'https://imcorfu.gr',
+    officialChannelUrl: 'https://www.youtube.com/channel/UC-ox8zScPlH6xz9XbW6qD7g',
+    officialChannelId: 'UC-ox8zScPlH6xz9XbW6qD7g',
+    streamType: 'youtube',
+    priority: 1,
+    enabled: true,
+    supportsDynamicLiveDetection: true,
+  },
+  {
+    id: 'gr-4e',
+    countryCode: 'GR',
+    name: '4E Orthodox TV',
+    location: 'Salonic',
+    provider: '4E',
+    officialWebsiteUrl: 'https://tv4e.gr',
+    officialChannelUrl: 'https://www.youtube.com/channel/UCme3CT1jvhMFAHDhY589Eyw',
+    officialChannelId: 'UCme3CT1jvhMFAHDhY589Eyw',
+    streamType: 'youtube',
+    priority: 2,
+    enabled: true,
+    supportsDynamicLiveDetection: true,
   },
 ];
 

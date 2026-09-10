@@ -1,4 +1,4 @@
-export type CountryCode = 'RO' | 'MD';
+export type CountryCode = 'RO' | 'MD' | 'GR' | 'CY' | 'RS' | 'ME' | 'BG' | 'MK' | 'UA' | 'GE' | 'RU' | 'BY' | 'AL';
 export const SUPPORTED_LANGUAGES = ['ro', 'en', 'el', 'sr', 'bg', 'mk', 'uk', 'ka', 'ru', 'sq'] as const;
 export type LanguageCode = typeof SUPPORTED_LANGUAGES[number];
 export const COMPLETE_LANGUAGES = ['ro', 'en', 'el', 'sr', 'bg', 'mk', 'uk', 'ka', 'ru', 'sq'] as const;
@@ -16,11 +16,11 @@ export type CalendarCode = 'ro-bor' | 'md-basarabia' | 'md-chisinau';
 export type RegionConfig = {
   countryCode: CountryCode;
   countryLabel: string;
-  currencyCode: 'RON' | 'MDL';
+  currencyCode: 'RON' | 'MDL' | 'EUR' | 'RSD' | 'MKD' | 'UAH' | 'GEL' | 'RUB' | 'BYN' | 'ALL';
   languageCode: LanguageCode;
   languageLabel: string;
-  locale: 'ro-RO' | 'ro-MD';
-  timeZone: 'Europe/Bucharest' | 'Europe/Chisinau';
+  locale: 'ro-RO' | 'ro-MD' | 'el-GR' | 'el-CY' | 'sr-RS' | 'sr-ME' | 'bg-BG' | 'mk-MK' | 'uk-UA' | 'ka-GE' | 'ru-RU' | 'ru-BY' | 'sq-AL';
+  timeZone: 'Europe/Bucharest' | 'Europe/Chisinau' | 'Europe/Athens' | 'Asia/Nicosia' | 'Europe/Belgrade' | 'Europe/Podgorica' | 'Europe/Sofia' | 'Europe/Skopje' | 'Europe/Kyiv' | 'Asia/Tbilisi' | 'Europe/Moscow' | 'Europe/Minsk' | 'Europe/Tirane';
 };
 
 export type CalendarConfig = {
@@ -52,6 +52,105 @@ export const SUPPORTED_REGIONS: readonly RegionConfig[] = [
     languageLabel: 'Română',
     locale: 'ro-MD',
     timeZone: 'Europe/Chisinau',
+  },
+  {
+    countryCode: 'GR',
+    countryLabel: 'Grecia',
+    currencyCode: 'EUR',
+    languageCode: 'el',
+    languageLabel: 'Ελληνικά',
+    locale: 'el-GR',
+    timeZone: 'Europe/Athens',
+  },
+  {
+    countryCode: 'CY',
+    countryLabel: 'Cipru',
+    currencyCode: 'EUR',
+    languageCode: 'el',
+    languageLabel: 'Ελληνικά',
+    locale: 'el-CY',
+    timeZone: 'Asia/Nicosia',
+  },
+  {
+    countryCode: 'RS',
+    countryLabel: 'Serbia',
+    currencyCode: 'RSD',
+    languageCode: 'sr',
+    languageLabel: 'Српски',
+    locale: 'sr-RS',
+    timeZone: 'Europe/Belgrade',
+  },
+  {
+    countryCode: 'ME',
+    countryLabel: 'Muntenegru',
+    currencyCode: 'EUR',
+    languageCode: 'sr',
+    languageLabel: 'Српски',
+    locale: 'sr-ME',
+    timeZone: 'Europe/Podgorica',
+  },
+  {
+    countryCode: 'BG',
+    countryLabel: 'Bulgaria',
+    currencyCode: 'EUR',
+    languageCode: 'bg',
+    languageLabel: 'Български',
+    locale: 'bg-BG',
+    timeZone: 'Europe/Sofia',
+  },
+  {
+    countryCode: 'MK',
+    countryLabel: 'Macedonia de Nord',
+    currencyCode: 'MKD',
+    languageCode: 'mk',
+    languageLabel: 'Македонски',
+    locale: 'mk-MK',
+    timeZone: 'Europe/Skopje',
+  },
+  {
+    countryCode: 'UA',
+    countryLabel: 'Ucraina',
+    currencyCode: 'UAH',
+    languageCode: 'uk',
+    languageLabel: 'Українська',
+    locale: 'uk-UA',
+    timeZone: 'Europe/Kyiv',
+  },
+  {
+    countryCode: 'GE',
+    countryLabel: 'Georgia',
+    currencyCode: 'GEL',
+    languageCode: 'ka',
+    languageLabel: 'ქართული',
+    locale: 'ka-GE',
+    timeZone: 'Asia/Tbilisi',
+  },
+  {
+    countryCode: 'RU',
+    countryLabel: 'Rusia',
+    currencyCode: 'RUB',
+    languageCode: 'ru',
+    languageLabel: 'Русский',
+    locale: 'ru-RU',
+    timeZone: 'Europe/Moscow',
+  },
+  {
+    countryCode: 'BY',
+    countryLabel: 'Belarus',
+    currencyCode: 'BYN',
+    languageCode: 'ru',
+    languageLabel: 'Русский',
+    locale: 'ru-BY',
+    timeZone: 'Europe/Minsk',
+  },
+  {
+    countryCode: 'AL',
+    countryLabel: 'Albania',
+    currencyCode: 'ALL',
+    languageCode: 'sq',
+    languageLabel: 'Shqip',
+    locale: 'sq-AL',
+    timeZone: 'Europe/Tirane',
   },
 ] as const;
 
