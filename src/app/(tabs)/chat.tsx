@@ -62,9 +62,15 @@ function ChatConversation() {
   const isSendingRef = useRef(false);
   const loadRequestRef = useRef(0);
   const sendRequestRef = useRef(0);
+  const pendingLoadRef = useRef(false);
   const [errorMessage, setErrorMessage] = useState('');
 
   const loadConversation = useCallback(async () => {
+    if (isSendingRef.current) {
+      pendingLoadRef.current = true;
+      return;
+    }
+
     const requestId = ++loadRequestRef.current;
     setIsLoading(true);
     setErrorMessage('');
@@ -155,6 +161,14 @@ function ChatConversation() {
   useEffect(() => () => {
     sendRequestRef.current += 1;
   }, []);
+
+  useEffect(() => {
+    if (isSending || !pendingLoadRef.current) return;
+
+    pendingLoadRef.current = false;
+    const timeoutId = setTimeout(() => void loadConversation(), 0);
+    return () => clearTimeout(timeoutId);
+  }, [isSending, loadConversation]);
 
   const send = async () => {
     if (isSendingRef.current) return;
