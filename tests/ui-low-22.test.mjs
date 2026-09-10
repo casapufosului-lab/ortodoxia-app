@@ -9,9 +9,8 @@ test('LOW #22 native LIVE player uses selected localization', () => {
   assert.match(native, /useLocalization/);
   assert.match(native, /const \{ t \} = useLocalization\(\);/);
   assert.doesNotMatch(native, /translate\('ro'/);
-  assert.match(native, /t\('live\.closePlayerAccessibilityLabel'\)/);
-  assert.match(native, /t\('live\.closePlayer'\)/);
   assert.match(native, /t\('live\.playerAccessibilityLabel'\)/);
+  assert.doesNotMatch(native, /t\('live\.closePlayer/);
 });
 
 test('LOW #22 web LIVE player uses selected localization', () => {

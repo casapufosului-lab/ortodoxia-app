@@ -68,10 +68,10 @@ test('11. URL validation enforces domain allowlist', () => {
   assert.ok(sv.includes('isAllowedDomain'));
   assert.ok(s.includes('isValidSourceUrl'));
 });
-test('12. No autoplay in embed', () => {
+test('12. No autoplay in native player', () => {
+  assert.ok(e.includes('react-native-youtube-iframe'));
+  assert.ok(!e.includes('play={true}'));
   assert.ok(p.includes('autoplay=0'));
-  assert.ok(e.includes('mediaPlaybackRequiresUserAction'));
-  assert.ok(p.includes('youtube.com/embed/'));
 });
 test('13. Single player state', () => {
   assert.ok(s.includes('activePlayerVideoId'));
@@ -129,8 +129,10 @@ test('No download/proxy/restream', () => {
   assert.ok(!p.includes('proxy'));
   assert.ok(!p.includes('restream'));
 });
-test('Native embed uses WebView', () => {
-  assert.ok(e.includes('react-native-webview'));
-  assert.ok(e.includes('buildYouTubeEmbedUrl'));
-  assert.ok(e.includes('originWhitelist'));
+test('Native embed uses YouTube iframe player', () => {
+  assert.ok(e.includes("from 'react-native-youtube-iframe'"));
+  assert.ok(e.includes('onFullScreenChange'));
+  assert.ok(e.includes('allowsFullscreenVideo'));
+  assert.ok(e.includes('OrientationLock.LANDSCAPE'));
+  assert.ok(e.includes('OrientationLock.PORTRAIT_UP'));
 });

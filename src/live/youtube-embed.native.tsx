@@ -1,21 +1,18 @@
 /**
- * YouTube embed player using react-native-webview (native platforms).
+ * YouTube player for native platforms.
  *
- * Renders a full-screen Modal with an official YouTube embed iframe.
- * - No autoplay: user must tap to play inside the embed.
- * - Preserves YouTube branding and controls.
- * - No download, no proxy, no restream.
- * - Properly cleans up on close/unmount.
+ * Uses the official YouTube IFrame Player API through react-native-youtube-iframe.
+ * Normal playback stays in portrait.
+ * Android fullscreen rotates to landscape only after the user requests fullscreen.
  */
 
 import { useCallback, useEffect } from 'react';
-import { BackHandler, Modal, Pressable, StyleSheet, Text, View } from 'react-native';
-import { WebView } from 'react-native-webview'
+import * as ScreenOrientation from 'expo-screen-orientation';
+import { BackHandler, Modal, StyleSheet, useWindowDimensions, View } from 'react-native';
+import YoutubePlayer from 'react-native-youtube-iframe';
+
 import { useLocalization } from '@/providers/localization-provider';
 
-import { palette } from '@/constants/palette';
-
-import { buildYouTubeEmbedUrl } from './live-playback';
 
 export interface YouTubeEmbedProps {
   videoId: string | null;
@@ -24,52 +21,68 @@ export interface YouTubeEmbedProps {
 
 export function YouTubeEmbed({ videoId, onClose }: YouTubeEmbedProps) {
   const { t } = useLocalization();
+  const { width } = useWindowDimensions();
+
   const handleBack = useCallback(() => {
     if (videoId) {
       onClose();
-      return true; // consumed
+      return true;
     }
     return false;
   }, [videoId, onClose]);
 
-  // Handle hardware back button
   useEffect(() => {
     const sub = BackHandler.addEventListener('hardwareBackPress', handleBack);
     return () => sub.remove();
   }, [handleBack]);
 
+  const handleFullScreenChange = useCallback((isFullScreen: boolean) => {
+    const orientation = isFullScreen
+      ? ScreenOrientation.OrientationLock.LANDSCAPE
+      : ScreenOrientation.OrientationLock.PORTRAIT_UP;
+
+    void ScreenOrientation.lockAsync(orientation).catch(() => undefined);
+  }, []);
+
+  useEffect(() => {
+    if (!videoId) return;
+
+    return () => {
+      void ScreenOrientation.lockAsync(
+        ScreenOrientation.OrientationLock.PORTRAIT_UP,
+      ).catch(() => undefined);
+    };
+  }, [videoId]);
+
   if (!videoId) return null;
 
-  const embedUrl = buildYouTubeEmbedUrl(videoId);
+  const playerHeight = Math.max(220, Math.round(width * 9 / 16));
 
   return (
     <Modal
-      visible={true}
+      visible
       animationType="slide"
       presentationStyle="pageSheet"
       onRequestClose={onClose}
     >
       <View style={styles.container}>
-        <View style={styles.header}>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel={t('live.closePlayerAccessibilityLabel')}
-            onPress={onClose}
-            style={({ pressed }) => [styles.closeButton, pressed && styles.pressed]}
-          >
-            <Text style={styles.closeText}>{t('live.closePlayer')}</Text>
-          </Pressable>
+        <View style={styles.playerArea}>
+          <YoutubePlayer
+            height={playerHeight}
+            videoId={videoId}
+            onFullScreenChange={handleFullScreenChange}
+            initialPlayerParams={{
+              controls: true,
+              preventFullScreen: false,
+              rel: false,
+            }}
+            webViewProps={{
+              allowsFullscreenVideo: true,
+
+              accessibilityLabel: t('live.playerAccessibilityLabel'),
+            }}
+          />
         </View>
-        <WebView
-          source={{ uri: embedUrl }}
-          style={styles.webview}
-          allowsFullscreenVideo
-          allowsInlineMediaPlayback
-          mediaPlaybackRequiresUserAction
-          startInLoadingState
-          originWhitelist={['https://www.youtube.com', 'https://youtube.com']}
-          accessibilityLabel={t('live.playerAccessibilityLabel')}
-        />
       </View>
     </Modal>
   );
@@ -77,24 +90,9 @@ export function YouTubeEmbed({ videoId, onClose }: YouTubeEmbedProps) {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#000' },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'flex-end',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingTop: 12,
-    paddingBottom: 8,
+  playerArea: {
+    flex: 1,
+    justifyContent: 'center',
     backgroundColor: '#000',
   },
-  closeButton: {
-    backgroundColor: palette.blueSoft,
-    borderRadius: 10,
-    paddingHorizontal: 14,
-    minHeight: 40,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  closeText: { color: palette.ink, fontSize: 14, fontWeight: '700' },
-  webview: { flex: 1 },
-  pressed: { opacity: 0.75 },
 });
