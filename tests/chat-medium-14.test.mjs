@@ -24,5 +24,6 @@ test('MEDIUM #14 quota date follows Bucharest across UTC midnight boundary', () 
 });
 
 test('MEDIUM #14 usage query uses the Bucharest quota date helper', () => {
-  assert.match(chat, /\.eq\('usage_date', localDateKey\(\)\)/);
+  assert.match(chat, /const quotaDate = localDateKey\(\);/);
+  assert.match(chat, /\.eq\('usage_date', quotaDate\)/);
 });

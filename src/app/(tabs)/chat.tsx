@@ -1,7 +1,7 @@
 import { FunctionsHttpError } from '@supabase/supabase-js';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { router } from 'expo-router';
-import { ActivityIndicator, KeyboardAvoidingView, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { router, useFocusEffect } from 'expo-router';
+import { ActivityIndicator, AppState, KeyboardAvoidingView, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { Card, PageHeader, PrimaryButton, Screen } from '@/components/mvp-ui';
 import { palette } from '@/constants/palette';
@@ -63,6 +63,7 @@ function ChatConversation() {
   const loadRequestRef = useRef(0);
   const sendRequestRef = useRef(0);
   const pendingLoadRef = useRef(false);
+  const quotaDateRef = useRef(localDateKey());
   const [errorMessage, setErrorMessage] = useState('');
 
   const loadConversation = useCallback(async () => {
@@ -71,6 +72,8 @@ function ChatConversation() {
       return;
     }
 
+    const quotaDate = localDateKey();
+    quotaDateRef.current = quotaDate;
     const requestId = ++loadRequestRef.current;
     setIsLoading(true);
     setErrorMessage('');
@@ -89,7 +92,7 @@ function ChatConversation() {
         .from('usage_daily')
         .select('ai_messages')
         .eq('user_id', user.id)
-        .eq('usage_date', localDateKey())
+        .eq('usage_date', quotaDate)
         .maybeSingle(),
       supabase
         .from('chat_threads')
@@ -150,12 +153,34 @@ function ChatConversation() {
     setIsLoading(false);
   }, [t, user]);
 
+  useFocusEffect(
+    useCallback(() => {
+      const timeoutId = setTimeout(() => void loadConversation(), 0);
+      return () => {
+        clearTimeout(timeoutId);
+        loadRequestRef.current += 1;
+      };
+    }, [loadConversation]),
+  );
+
   useEffect(() => {
-    const timeoutId = setTimeout(() => void loadConversation(), 0);
-    return () => {
-      clearTimeout(timeoutId);
-      loadRequestRef.current += 1;
-    };
+    if (Platform.OS === 'web') return undefined;
+
+    const subscription = AppState.addEventListener('change', (state) => {
+      if (state === 'active') void loadConversation();
+    });
+
+    return () => subscription.remove();
+  }, [loadConversation]);
+
+  useEffect(() => {
+    const intervalId = setInterval(() => {
+      const currentQuotaDate = localDateKey();
+      if (currentQuotaDate === quotaDateRef.current) return;
+      void loadConversation();
+    }, 60_000);
+
+    return () => clearInterval(intervalId);
   }, [loadConversation]);
 
   useEffect(() => () => {
@@ -272,6 +297,9 @@ function ChatConversation() {
             <Text style={styles.errorText}>{t('chat.noMessagesLeft').replace('{limit}', String(dailyLimit))}</Text>
             <Text style={styles.premiumOffer}>{t('chat.premiumOffer')}</Text>
             <PrimaryButton label={t('chat.choosePremiumButton')} onPress={() => router.push('/premium')} />
+            <Pressable accessibilityRole="button" disabled={isLoading} onPress={() => void loadConversation()}>
+              <Text style={styles.retry}>{t('chat.retry')}</Text>
+            </Pressable>
           </Card>
         ) : errorMessage ? (
           <Card style={styles.errorCard}>
