@@ -11,6 +11,7 @@
 
 export interface LiveSourceDef {
   readonly id: string;
+  readonly countryCode: string;
   readonly officialChannelId: string;
   readonly enabled: boolean;
   readonly supportsDynamicLiveDetection: boolean;
@@ -19,30 +20,35 @@ export interface LiveSourceDef {
 export const LIVE_SOURCES: readonly LiveSourceDef[] = [
   {
     id: 'trinitas-tv',
+    countryCode: 'RO',
     officialChannelId: 'UCcqFHIDYfKsaJ5KXZjzW7ZQ',
     enabled: true,
     supportsDynamicLiveDetection: true,
   },
   {
     id: 'doxologia',
+    countryCode: 'RO',
     officialChannelId: 'UC48EI8pmHeFuZIn1O4qKu8A',
     enabled: true,
     supportsDynamicLiveDetection: true,
   },
   {
     id: 'putna',
+    countryCode: 'RO',
     officialChannelId: 'UCFwQ9MMZSMYJ8pevvLHS79g',
     enabled: true,
     supportsDynamicLiveDetection: true,
   },
   {
     id: 'sihastria',
+    countryCode: 'RO',
     officialChannelId: 'UCD3L96gliife4V-II9izsPA',
     enabled: false,
     supportsDynamicLiveDetection: true,
   },
   {
     id: 'radio-renasterea',
+    countryCode: 'RO',
     officialChannelId: 'UCMV6BZET4_LpJlUOaBj-QWw',
     enabled: true,
     supportsDynamicLiveDetection: true,
@@ -50,8 +56,10 @@ export const LIVE_SOURCES: readonly LiveSourceDef[] = [
 ];
 
 /** Enabled sources eligible for dynamic YouTube discovery. */
-export function getEligibleSources(): readonly LiveSourceDef[] {
-  return LIVE_SOURCES.filter((s) => s.enabled && s.supportsDynamicLiveDetection);
+export function getEligibleSources(countryCode: string = 'RO'): readonly LiveSourceDef[] {
+  return LIVE_SOURCES.filter(
+    (s) => s.countryCode === countryCode && s.enabled && s.supportsDynamicLiveDetection,
+  );
 }
 
 /** Resolve a known source by ID. Returns undefined for unknown IDs. */

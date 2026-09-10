@@ -29,7 +29,7 @@ const configToml = readFileSync(join(root, 'supabase/config.toml'), 'utf8');
 const envExample = readFileSync(join(root, '.env.example'), 'utf8');
 
 // Extract the server-side canonical list via the imported module.
-const { LIVE_SOURCES } = await import(pathToFileURL(join(fnDir, 'sources.ts')));
+const { LIVE_SOURCES, getEligibleSources } = await import(pathToFileURL(join(fnDir, 'sources.ts')));
 
 function extractClientSources(src) {
   const objects = [];
@@ -72,9 +72,24 @@ test('server-side sources match the LIVE-A canonical client registry', () => {
       getField(entry.block, 'officialChannelId') ?? '',
       `channelId mismatch for ${entry.id}`,
     );
+    assert.equal(
+      server.countryCode,
+      getField(entry.block, 'countryCode'),
+      `countryCode mismatch for ${entry.id}`,
+    );
     const clientEnabled = entry.block.includes('enabled: true');
     assert.equal(server.enabled, clientEnabled, `enabled mismatch for ${entry.id}`);
   }
+});
+
+test('server eligibility is filtered by country', () => {
+  const countryCodes = new Set(LIVE_SOURCES.map((s) => s.countryCode));
+  for (const countryCode of countryCodes) {
+    const eligible = getEligibleSources(countryCode);
+    assert.ok(eligible.every((s) => s.countryCode === countryCode));
+    assert.ok(eligible.every((s) => s.enabled && s.supportsDynamicLiveDetection));
+  }
+  assert.equal(getEligibleSources('ZZ').length, 0);
 });
 
 test('server source list has no videoId field (transient data never permanent)', () => {
@@ -136,6 +151,7 @@ test('.env.example contains YouTube placeholder without a real key value', () =>
 test('every server source has id, channelId, enabled, supportsDynamicLiveDetection', () => {
   for (const s of LIVE_SOURCES) {
     assert.ok(s.id, 'id required');
+    assert.match(s.countryCode, /^[A-Z]{2}$/);
     assert.ok(s.officialChannelId.startsWith('UC'), `channel must start with UC: ${s.id}`);
     assert.equal(typeof s.enabled, 'boolean');
     assert.equal(typeof s.supportsDynamicLiveDetection, 'boolean');

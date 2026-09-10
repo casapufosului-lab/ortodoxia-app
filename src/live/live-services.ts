@@ -58,6 +58,7 @@ export function isAllowedDomain(hostname: string): boolean {
 export const LIVE_SOURCES: readonly PermanentLiveSource[] = [
   {
     id: 'trinitas-tv',
+    countryCode: 'RO',
     name: 'TRINITAS TV',
     location: 'București',
     provider: 'Patriarhia Română',
@@ -71,6 +72,7 @@ export const LIVE_SOURCES: readonly PermanentLiveSource[] = [
   },
   {
     id: 'doxologia',
+    countryCode: 'RO',
     name: 'Doxologia',
     location: 'Iași',
     provider: 'Mitropolia Moldovei și Bucovinei',
@@ -84,6 +86,7 @@ export const LIVE_SOURCES: readonly PermanentLiveSource[] = [
   },
   {
     id: 'putna',
+    countryCode: 'RO',
     name: 'Mănăstirea Putna',
     location: 'Putna',
     provider: 'Mănăstirea Putna',
@@ -98,6 +101,7 @@ export const LIVE_SOURCES: readonly PermanentLiveSource[] = [
   },
   {
     id: 'sihastria',
+    countryCode: 'RO',
     name: 'Mănăstirea Sihăstria',
     location: 'Neamț',
     provider: 'Mănăstirea Sihăstria',
@@ -111,6 +115,7 @@ export const LIVE_SOURCES: readonly PermanentLiveSource[] = [
   },
   {
     id: 'radio-renasterea',
+    countryCode: 'RO',
     name: 'Radio Renașterea',
     location: 'Cluj-Napoca',
     provider: 'Arhiepiscopia Vadului, Feleacului și Clujului',
@@ -126,8 +131,8 @@ export const LIVE_SOURCES: readonly PermanentLiveSource[] = [
 ];
 
 /** Enabled sources, sorted by priority. */
-export function getEnabledLiveSources(): readonly PermanentLiveSource[] {
+export function getEnabledLiveSources(countryCode: string = 'RO'): readonly PermanentLiveSource[] {
   return [...LIVE_SOURCES]
-    .filter((source) => source.enabled)
+    .filter((source) => source.enabled && source.countryCode === countryCode)
     .sort((a, b) => a.priority - b.priority);
 }

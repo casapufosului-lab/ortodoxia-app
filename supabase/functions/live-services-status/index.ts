@@ -18,7 +18,7 @@ import { computeAllSourceStatuses, computeSourceStatus } from './status.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-country-code',
 };
 
 function json(body: Record<string, unknown>, status = 200) {
@@ -134,6 +134,7 @@ Deno.serve(async (req: Request) => {
     : null;
 
   const nowMs = Date.now();
+  const requestedCountryCode = (req.headers.get('x-country-code') ?? 'RO').trim().toUpperCase();
 
   // Optional single-source filter: ?id=trinitas-tv (must be a known canonical ID)
   const requestedId = new URL(req.url).searchParams.get('id');
@@ -155,7 +156,7 @@ Deno.serve(async (req: Request) => {
     return json({ sources: [result] });
   }
 
-  const eligible = getEligibleSources();
+  const eligible = getEligibleSources(requestedCountryCode);
   const results = await computeAllSourceStatuses(eligible, youtube, cache, nowMs, apiKeyPresent);
 
   return json({ sources: results });

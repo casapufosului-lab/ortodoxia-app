@@ -29,7 +29,7 @@ test('2. Enabled sources render', () => {
   assert.ok((sv.match(/enabled:\s*true/g) || []).length >= 4);
 });
 test('3. Disabled sources filtered out', () => {
-  assert.ok(sv.includes('.filter((source) => source.enabled)'));
+  assert.ok(sv.includes('source.enabled && source.countryCode === countryCode'));
   assert.ok((sv.match(/enabled:\s*false/g) || []).length >= 1);
 });
 test('4. LIVE renders LIVE ACUM', () => {
@@ -75,7 +75,7 @@ test('12. No autoplay in native player', () => {
 });
 test('13. Single player state', () => {
   assert.ok(s.includes('activePlayerVideoId'));
-  assert.ok(s.includes('isFetchingRef'));
+  assert.ok(s.includes('requestRef'));
   assert.ok((s.match(/<YouTubeEmbed/g) || []).length === 1);
 });
 test('14. Close clears player', () => {
@@ -114,6 +114,15 @@ test('20. UNKNOWN not transformed to NOT_LIVE', () => {
   assert.ok(s.includes("case 'live'"));
   assert.ok(!s.includes("status === 'not_live' &&"));
 });
+test('LIVE request is scoped to selected country', () => {
+  assert.ok(s.includes('getEnabledLiveSources(countryCode)'));
+  assert.ok(s.includes('fetchLiveStatuses(countryCode)'));
+  assert.ok(c.includes("'x-country-code': countryCode"));
+  assert.ok(s.includes('}, [countryCode, t]);'));
+  assert.ok(s.includes('const requestId = ++requestRef.current;'));
+  assert.ok(s.includes('if (requestId !== requestRef.current) return;'));
+});
+
 test('Edge Function contract', () => {
   assert.ok(c.includes("'live-services-status'"));
   assert.ok(c.includes('supabase.functions.invoke'));

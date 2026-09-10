@@ -35,38 +35,38 @@ interface SourceViewModel {
  * and provides offline/error/retry UX.
  */
 export default function LiveScreen() {
-  const { t } = useLocalization();
+  const { t, countryCode } = useLocalization();
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [sourceStatuses, setSourceStatuses] = useState<Map<string, SourceStatusResponse>>(
     new Map(),
   );
   const [activePlayerVideoId, setActivePlayerVideoId] = useState<string | null>(null);
-  const isFetchingRef = useRef(false);
-  const sources = getEnabledLiveSources();
+  const requestRef = useRef(0);
+  const sources = getEnabledLiveSources(countryCode);
 
   const loadStatuses = useCallback(async () => {
-    if (isFetchingRef.current) return;
-    isFetchingRef.current = true;
+    const requestId = ++requestRef.current;
     setIsLoading(true);
     setError(null);
     try {
-      const result = await fetchLiveStatuses();
+      const result = await fetchLiveStatuses(countryCode);
+      if (requestId !== requestRef.current) return;
       const map = new Map<string, SourceStatusResponse>();
       for (const s of result.sources) map.set(s.sourceId, s);
       setSourceStatuses(map);
     } catch {
-      setError(t('live.errorStatusFetch'));
+      if (requestId === requestRef.current) setError(t('live.errorStatusFetch'));
     } finally {
-      setIsLoading(false);
-      isFetchingRef.current = false;
+      if (requestId === requestRef.current) setIsLoading(false);
     }
-  }, [t]);
+  }, [countryCode, t]);
 
   // Single fetch on mount — no polling, no repeated effects
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     void loadStatuses();
+    return () => { requestRef.current += 1; };
   }, [loadStatuses]);
 
   const closePlayer = useCallback(() => { setActivePlayerVideoId(null); }, []);

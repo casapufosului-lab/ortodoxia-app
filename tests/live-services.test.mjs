@@ -92,7 +92,7 @@ test('all permanent source domains are on the allowlist', () => {
 test('disabled sources exist and are filtered from enabled view', () => {
   const disabled = sources.filter((s) => !s.enabled);
   assert.ok(disabled.length >= 1, 'expected at least one disabled source');
-  assert.ok(registrySource.includes('.filter((source) => source.enabled)'));
+  assert.ok(registrySource.includes('source.enabled && source.countryCode === countryCode'));
   assert.ok(registrySource.includes('.sort((a, b) => a.priority - b.priority)'));
 });
 

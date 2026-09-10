@@ -27,6 +27,9 @@ export interface PermanentLiveSource {
   /** Stable unique identifier for this source (e.g. 'trinitas-tv'). */
   id: string;
 
+  /** App country code that owns this source (RO, MD, GR, etc.). */
+  countryCode: string;
+
   /** Public-facing source/church/monastery name. */
   name: string;
 

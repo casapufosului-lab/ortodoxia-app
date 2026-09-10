@@ -93,9 +93,10 @@ export const LIVE_STATUS_FETCH_ERROR_CODE = 'FETCH_FAILED';
  * - Malformed data fails safely (filtered out, never crashes).
  * - No duplicate requests from rerenders (caller manages invocation).
  */
-export async function fetchLiveStatuses(): Promise<LiveStatusResult> {
+export async function fetchLiveStatuses(countryCode: string = 'RO'): Promise<LiveStatusResult> {
   const { data, error } = await supabase.functions.invoke('live-services-status', {
     method: 'GET',
+    headers: { 'x-country-code': countryCode },
   });
 
   if (error || !data) {
