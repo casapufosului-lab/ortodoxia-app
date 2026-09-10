@@ -3,6 +3,8 @@ import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
+import vm from 'node:vm';
+import ts from 'typescript';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = join(__dirname, '..');
@@ -211,4 +213,119 @@ test('userId ref is synchronized outside render', () => {
   assert.ok(hook.includes('useLayoutEffect(() => {'));
   assert.ok(hook.includes('userIdRef.current = userId;'));
   assert.ok(!hook.includes('const refreshRequestRef = useRef(0);'+String.fromCharCode(10)+'  userIdRef.current = userId;'));
+});
+
+function loadRealRevenueCatExclusive() {
+  const start = lib.indexOf('let revenueCatOperationTail');
+  const end = lib.indexOf('export function configureRevenueCat', start);
+
+  assert.ok(start >= 0, 'RevenueCat operation tail not found');
+  assert.ok(end > start, 'RevenueCat lock implementation end not found');
+
+  // Execute the real production lock implementation without exporting a
+  // test-only API from revenuecat.ts.
+  const instrumented = `${lib.slice(start, end)}
+globalThis.__runRevenueCatExclusive = runRevenueCatExclusive;
+`;
+
+  const javascript = ts.transpileModule(instrumented, {
+    compilerOptions: {
+      target: ts.ScriptTarget.ES2022,
+      module: ts.ModuleKind.None,
+    },
+  }).outputText;
+
+  const context = vm.createContext({});
+  vm.runInContext(javascript, context);
+
+  assert.equal(typeof context.__runRevenueCatExclusive, 'function');
+  return context.__runRevenueCatExclusive;
+}
+
+function nextEventLoopTurn() {
+  return new Promise((resolve) => setImmediate(resolve));
+}
+
+test('TG-01 real RevenueCat lock blocks a competing account operation until the first promise settles', async () => {
+  const runExclusive = loadRealRevenueCatExclusive();
+
+  let releaseFirst;
+  const firstGate = new Promise((resolve) => {
+    releaseFirst = resolve;
+  });
+
+  const events = [];
+  let activeAccount = null;
+
+  const first = runExclusive(async () => {
+    events.push('A:start');
+    activeAccount = 'A';
+    await firstGate;
+    events.push('A:end');
+    return 'A';
+  });
+
+  const second = runExclusive(async () => {
+    events.push('B:start');
+    activeAccount = 'B';
+    return 'B';
+  });
+
+  // Give the second operation enough time to start if the lock releases early.
+  await nextEventLoopTurn();
+
+  assert.deepEqual(events, ['A:start']);
+  assert.equal(activeAccount, 'A');
+
+  releaseFirst();
+
+  assert.equal(await first, 'A');
+  assert.equal(await second, 'B');
+  assert.deepEqual(events, ['A:start', 'A:end', 'B:start']);
+  assert.equal(activeAccount, 'B');
+});
+
+test('TG-01 real RevenueCat lock releases only after a rejected operation has actually settled', async () => {
+  const runExclusive = loadRealRevenueCatExclusive();
+
+  let rejectFirst;
+  const firstGate = new Promise((resolve, reject) => {
+    void resolve;
+    rejectFirst = reject;
+  });
+
+  const events = [];
+  let activeAccount = null;
+
+  const first = runExclusive(async () => {
+    events.push('A:start');
+    activeAccount = 'A';
+    await firstGate;
+    return 'A';
+  });
+
+  // Attach the rejection handler immediately so the intentional rejection
+  // can never become an unhandled promise rejection.
+  const firstResult = first.then(
+    () => 'unexpected-success',
+    (error) => error instanceof Error ? error.message : String(error),
+  );
+
+  const second = runExclusive(async () => {
+    events.push('B:start');
+    activeAccount = 'B';
+    return 'B';
+  });
+
+  await nextEventLoopTurn();
+
+  assert.deepEqual(events, ['A:start']);
+  assert.equal(activeAccount, 'A');
+
+  rejectFirst(new Error('expected TG-01 rejection'));
+
+  assert.equal(await firstResult, 'expected TG-01 rejection');
+  assert.equal(await second, 'B');
+  assert.deepEqual(events, ['A:start', 'B:start']);
+  assert.equal(activeAccount, 'B');
 });
