@@ -35,6 +35,7 @@ export type ExpoTicketClassification = {
   acceptedIndexes: number[];
   retryIndexes: number[];
   deactivateIndexes: number[];
+  ambiguousIndexes: number[];
 };
 
 export function classifyExpoPushTickets(
@@ -54,10 +55,11 @@ export function classifyExpoPushTickets(
   const acceptedIndexes: number[] = [];
   const retryIndexes: number[] = [];
   const deactivateIndexes: number[] = [];
+  const ambiguousIndexes: number[] = [];
 
   data.forEach((rawTicket, index) => {
     if (!rawTicket || typeof rawTicket !== 'object') {
-      retryIndexes.push(index);
+      ambiguousIndexes.push(index);
       return;
     }
 
@@ -67,13 +69,23 @@ export function classifyExpoPushTickets(
       return;
     }
 
+    if (ticket.status === 'ok') {
+      ambiguousIndexes.push(index);
+      return;
+    }
+
     if (ticket.status === 'error' && ticket.details?.error === 'DeviceNotRegistered') {
       deactivateIndexes.push(index);
       return;
     }
 
-    retryIndexes.push(index);
+    if (ticket.status === 'error') {
+      retryIndexes.push(index);
+      return;
+    }
+
+    ambiguousIndexes.push(index);
   });
 
-  return { acceptedIndexes, retryIndexes, deactivateIndexes };
+  return { acceptedIndexes, retryIndexes, deactivateIndexes, ambiguousIndexes };
 }

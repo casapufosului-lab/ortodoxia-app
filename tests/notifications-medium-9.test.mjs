@@ -50,6 +50,7 @@ test('MEDIUM #9 mixed Expo HTTP-200 tickets are classified individually', () => 
     acceptedIndexes: [0],
     retryIndexes: [1],
     deactivateIndexes: [2],
+    ambiguousIndexes: [],
   });
 });
 
@@ -63,6 +64,7 @@ test('MEDIUM #9 accepts a single Expo ticket object for one recipient', () => {
     acceptedIndexes: [0],
     retryIndexes: [],
     deactivateIndexes: [],
+    ambiguousIndexes: [],
   });
 });
 
@@ -70,7 +72,17 @@ test('MEDIUM #9 malformed Expo ticket payload fails closed', () => {
   assert.equal(classifyExpoPushTickets(null, 1), null);
   assert.equal(classifyExpoPushTickets({}, 1), null);
   assert.equal(classifyExpoPushTickets({ data: [] }, 1), null);
-  assert.equal(classifyExpoPushTickets({ data: [{ status: 'ok' }] }, 1)?.retryIndexes[0], 0);
+  const missingId = classifyExpoPushTickets({ data: [{ status: 'ok' }] }, 1);
+  assert.deepEqual(missingId?.retryIndexes, []);
+  assert.deepEqual(missingId?.ambiguousIndexes, [0]);
+
+  const invalidTicket = classifyExpoPushTickets({ data: [null] }, 1);
+  assert.deepEqual(invalidTicket?.retryIndexes, []);
+  assert.deepEqual(invalidTicket?.ambiguousIndexes, [0]);
+
+  const unknownTicket = classifyExpoPushTickets({ data: [{ status: 'unknown' }] }, 1);
+  assert.deepEqual(unknownTicket?.retryIndexes, []);
+  assert.deepEqual(unknownTicket?.ambiguousIndexes, [0]);
 });
 
 test('MEDIUM #9 ambiguous Expo outcomes preserve reservations to prevent duplicate sends', async () => {

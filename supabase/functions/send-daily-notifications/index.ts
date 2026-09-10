@@ -290,6 +290,10 @@ Deno.serve(async (req: Request) => {
 
     const retryDeviceIds = tickets.retryIndexes.map((index) => pendingDevices[index].id);
     const deactivateDeviceIds = tickets.deactivateIndexes.map((index) => pendingDevices[index].id);
+    const hasAmbiguousTickets = tickets.ambiguousIndexes.length > 0;
+
+    // Ambiguous individual tickets intentionally keep their reservations.
+    // Expo may have accepted them, so releasing here could cause duplicate delivery.
 
     if (retryDeviceIds.length > 0) {
       await admin.rpc('release_notification_reservation', {
@@ -306,7 +310,7 @@ Deno.serve(async (req: Request) => {
     }
 
     sent += tickets.acceptedIndexes.length;
-    if (retryDeviceIds.length > 0 || deactivateDeviceIds.length > 0) skipped += 1;
+    if (retryDeviceIds.length > 0 || deactivateDeviceIds.length > 0 || hasAmbiguousTickets) skipped += 1;
   }
 
   return json({ success: true, eligible, sent, skipped });
