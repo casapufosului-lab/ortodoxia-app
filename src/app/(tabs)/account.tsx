@@ -68,6 +68,7 @@ export default function AccountScreen() {
     t,
   } = useLocalization();
   const [displayName, setDisplayName] = useState('');
+  const [profileOwnerId, setProfileOwnerId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [saveMessage, setSaveMessage] = useState<{ type: 'error' | 'success'; text: string } | null>(null);
   const isSavingRef = useRef(false);
@@ -81,22 +82,30 @@ export default function AccountScreen() {
   const [deleteError, setDeleteError] = useState('');
 
   useEffect(() => {
-    if (!user) return;
+    const userId = user?.id ?? null;
+
+    if (!userId) return;
     let active = true;
 
     supabase
       .from('profiles')
       .select('display_name')
-      .eq('id', user.id)
+      .eq('id', userId)
       .single()
       .then(({ data, error }) => {
         if (!active) return;
-        if (error) showAccountAlert(t('account.profileUnavailableTitle'), friendlyDbError(error, t));
-        else setDisplayName(data?.display_name ?? '');
+        setSaveMessage(null);
+
+        if (error) {
+          showAccountAlert(t('account.profileUnavailableTitle'), friendlyDbError(error, t));
+        } else {
+          setDisplayName(data?.display_name ?? '');
+          setProfileOwnerId(userId);
+        }
       });
 
     return () => { active = false; };
-  }, [user, t]);
+  }, [user?.id, t]);
 
   useEffect(() => {
     if (!user) return;
@@ -117,8 +126,10 @@ export default function AccountScreen() {
     return () => { active = false; };
   }, [user, t]);
 
+  const hasCurrentProfile = Boolean(user && profileOwnerId === user.id);
+
   const saveProfile = async () => {
-    if (!user || saving || isSavingRef.current) return;
+    if (!user || !hasCurrentProfile || saving || isSavingRef.current) return;
     isSavingRef.current = true;
     setSaveMessage(null);
     setSaving(true);
@@ -273,7 +284,8 @@ export default function AccountScreen() {
           <Text style={styles.email}>{user.email}</Text>
           <Text style={styles.label}>{t('account.displayNameLabel')}</Text>
           <TextInput
-            value={displayName}
+            value={hasCurrentProfile ? displayName : ''}
+          editable={hasCurrentProfile && !saving}
             onChangeText={(value) => {
               setDisplayName(value);
               setSaveMessage(null);
@@ -283,7 +295,7 @@ export default function AccountScreen() {
             style={styles.input}
           />
           <PrimaryButton label={saving ? t('account.saving') : t('account.saveProfileButton')} onPress={saveProfile} />
-          {saveMessage ? (
+          {hasCurrentProfile && saveMessage ? (
             <Text accessibilityLiveRegion="polite" style={saveMessage.type === 'success' ? styles.saveSuccess : styles.saveError}>
               {saveMessage.text}
             </Text>
