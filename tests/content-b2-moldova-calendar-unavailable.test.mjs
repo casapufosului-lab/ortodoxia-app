@@ -131,6 +131,19 @@ test('config.ts: CALENDAR_OPTIONS still includes ro-bor, md-basarabia, md-chisin
   assert.ok(configSrc.includes("'md-chisinau'"), 'md-chisinau must remain in CALENDAR_OPTIONS');
 });
 
+test('config.ts: Greece has gr-church-of-greece as default available calendar', () => {
+  const greekCalendar = /calendarCode:\s*'gr-church-of-greece'[\s\S]*?countryCode:\s*'GR'/.test(configSrc);
+  assert.ok(greekCalendar, 'GR must have gr-church-of-greece in CALENDAR_OPTIONS');
+  assert.ok(configSrc.includes("return getCalendarsForCountry(countryCode)[0] ?? null;"),
+    'non-MD countries must default to their first available calendar');
+  assert.ok(configSrc.includes("'calendar.majorFeastLegend': 'sărbătoare importantă'"),
+    'Romanian UI must have a country-neutral major-feast label');
+  assert.ok(calendarSrc.includes("countryCode === 'GR' ? 'calendar.majorFeastLegend' : 'calendar.redCrossLegend'"),
+    'Greece must not label its important feasts as the Romanian red-cross convention');
+  assert.ok(calendarSrc.includes("'δεσποτική εορτή'") && calendarSrc.includes("'θεομητορική εορτή'"),
+    'Greek major-feast ranks must be recognized explicitly');
+});
+
 // ── 7. Explicit Moldova unavailable message/state exists ─────────────────
 
 test('calendar.tsx: MD unavailable card shows "Calendar indisponibil" title', () => {

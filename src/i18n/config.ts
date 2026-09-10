@@ -11,7 +11,7 @@ export function isSupportedLanguage(code: string): code is LanguageCode {
 export function resolveLanguageCode(code: string | null | undefined): LanguageCode {
   return code && isSupportedLanguage(code) ? code : 'ro';
 }
-export type CalendarCode = 'ro-bor' | 'md-basarabia' | 'md-chisinau';
+export type CalendarCode = 'ro-bor' | 'md-basarabia' | 'md-chisinau' | 'gr-church-of-greece';
 
 export type RegionConfig = {
   countryCode: CountryCode;
@@ -178,6 +178,14 @@ export const CALENDAR_OPTIONS: readonly CalendarConfig[] = [
     jurisdictionLabel: 'Biserica Ortodoxă Rusă',
     label: 'Mitropolia Moldovei',
     officialUrl: 'https://mitropolia.md/',
+  },
+  {
+    calendarCode: 'gr-church-of-greece',
+    countryCode: 'GR',
+    description: 'Calendarul bisericesc al Bisericii Greciei.',
+    jurisdictionLabel: 'Biserica Greciei',
+    label: 'Calendar ortodox grec 2026',
+    officialUrl: 'https://www.ecclesia.gr/',
   },
 ] as const;
 
@@ -393,6 +401,7 @@ const ro = {
   'calendar.nextMonth': 'Luna următoare',
   'calendar.backToCurrentMonth': 'Revino la luna curentă',
   'calendar.redCrossLegend': 'sărbătoare cu cruce roșie',
+  'calendar.majorFeastLegend': 'sărbătoare importantă',
   'calendar.documentedDayLegend': 'zi înscrisă în calendar',
   'calendar.emptyDay': 'Nu există încă informații publicate pentru această zi.',
   'calendar.feastRankFallback': 'Pomenire',
@@ -789,6 +798,7 @@ const en = {
   'calendar.nextMonth': 'Next month',
   'calendar.backToCurrentMonth': 'Back to current month',
   'calendar.redCrossLegend': 'feast marked with a red cross',
+  'calendar.majorFeastLegend': 'major feast',
   'calendar.documentedDayLegend': 'day listed in the calendar',
   'calendar.emptyDay': 'No published information for this day yet.',
   'calendar.feastRankFallback': 'Commemoration',
@@ -1330,6 +1340,7 @@ const el = {
   'calendar.nextMonth': 'Επόμενος μήνας',
   'calendar.backToCurrentMonth': 'Επιστροφή στον τρέχοντα μήνα',
   'calendar.redCrossLegend': 'εορτή με κόκκινο σταυρό',
+  'calendar.majorFeastLegend': 'μεγάλη εορτή',
   'calendar.documentedDayLegend': 'ημέρα εγγεγραμμένη στο ημερολόγιο',
   'calendar.emptyDay': 'Δεν υπάρχουν ακόμη δημοσιευμένες πληροφορίες για αυτήν την ημέρα.',
   'calendar.feastRankFallback': 'Μνήμη',
@@ -1817,6 +1828,7 @@ const sr = {
   'calendar.nextMonth': 'Следећи месец',
   'calendar.backToCurrentMonth': 'Вратите се на текући месец',
   'calendar.redCrossLegend': 'празник са црвеним крстом',
+  'calendar.majorFeastLegend': 'велики празник',
   'calendar.documentedDayLegend': 'дан уписан у календар',
   'calendar.emptyDay': 'Још нема објављених информација за овај дан.',
   'calendar.feastRankFallback': 'Помен',
@@ -2282,6 +2294,7 @@ const bg = {
   'calendar.nextMonth': 'Следващ месец',
   'calendar.backToCurrentMonth': 'Връщане към текущия месец',
   'calendar.redCrossLegend': 'празник с червен кръст',
+  'calendar.majorFeastLegend': 'голям празник',
   'calendar.documentedDayLegend': 'ден, записан в календара',
   'calendar.emptyDay': 'Все още няма публикувана информация за този ден.',
   'calendar.feastRankFallback': 'Спомен',
@@ -2784,6 +2797,7 @@ const mk = {
   'calendar.nextMonth': 'Следен месец',
   'calendar.backToCurrentMonth': 'Врати се на тековниот месец',
   'calendar.redCrossLegend': 'празник со црвен крст',
+  'calendar.majorFeastLegend': 'голем празник',
   'calendar.documentedDayLegend': 'ден запишан во календар',
   'calendar.emptyDay': 'Сè уште нема објавени информации за овој ден.',
   'calendar.feastRankFallback': 'Спомен',
@@ -3286,6 +3300,7 @@ const uk = {
   'calendar.nextMonth': 'Наступний місяць',
   'calendar.backToCurrentMonth': 'Повернутися до поточного місяця',
   'calendar.redCrossLegend': 'свято з червиним хрестом',
+  'calendar.majorFeastLegend': 'велике свято',
   'calendar.documentedDayLegend': 'день, внесений до календаря',
   'calendar.emptyDay': 'Немає ще опублікованої інформації про цей день.',
   'calendar.feastRankFallback': 'Пам\'ятка',
@@ -3763,6 +3778,7 @@ const ka = {
   'calendar.nextMonth': 'შემდეგი თვე',
   'calendar.backToCurrentMonth': 'მიმდინარე თვეზე დაბრუნება',
   'calendar.redCrossLegend': 'დღესასწაული წითელი ჯვრით',
+  'calendar.majorFeastLegend': 'დიდი დღესასწაული',
   'calendar.documentedDayLegend': 'კალენდარში შეტანილი დღე',
   'calendar.emptyDay': 'ამ დღისთვის ინფორმაცია ჯერ არ არის გამოქვეყნებული.',
   'calendar.feastRankFallback': 'ხსენება',
@@ -4214,6 +4230,7 @@ const ru = {
   'calendar.nextMonth': 'Следующий месяц',
   'calendar.backToCurrentMonth': 'Вернуться к текущему месяцу',
   'calendar.redCrossLegend': 'праздник с красным крестом',
+  'calendar.majorFeastLegend': 'великий праздник',
   'calendar.documentedDayLegend': 'день, отмеченный в календаре',
   'calendar.emptyDay': 'Для этого дня пока нет опубликованной информации.',
   'calendar.feastRankFallback': 'Память',
@@ -4663,6 +4680,7 @@ const sq = {
   'calendar.nextMonth': 'Muaji tjetër',
   'calendar.backToCurrentMonth': 'Kthehu te muaji aktual',
   'calendar.redCrossLegend': 'festë me kryq të kuq',
+  'calendar.majorFeastLegend': 'festë e madhe',
   'calendar.documentedDayLegend': 'ditë e shënuar në kalendar',
   'calendar.emptyDay': 'Nuk ka ende informacion të publikuar për këtë ditë.',
   'calendar.feastRankFallback': 'Përkujtim',
