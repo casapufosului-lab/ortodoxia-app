@@ -134,7 +134,12 @@ export default function AuthScreen() {
         const { data, error } = await supabase.auth.signUp({
           email: email.trim(),
           password,
-          options: { data: { display_name: displayName.trim() } },
+          options: {
+            data: { display_name: displayName.trim() },
+            emailRedirectTo: Platform.OS === 'web' && typeof window !== 'undefined'
+              ? window.location.origin + '/auth'
+              : NATIVE_PASSWORD_RECOVERY_REDIRECT_URL,
+          },
         });
         if (error) throw error;
 
