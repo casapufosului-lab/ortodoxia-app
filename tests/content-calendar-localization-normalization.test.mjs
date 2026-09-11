@@ -1,0 +1,11 @@
+﻿import test from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+const sql=fs.readFileSync(new URL('../supabase/migrations/20260911000200_normalize_calendar_translations.sql',import.meta.url),'utf8');
+test('creates calendar translation table',()=>assert.match(sql,/create table public\.calendar_day_translations/i));
+test('translation identity is day plus language',()=>assert.match(sql,/primary key\s*\(calendar_day_id,\s*language_code\)/i));
+test('canonical day identity excludes language',()=>assert.match(sql,/calendar_days_country_calendar_date_idx[\s\S]*country_code,\s*calendar_code,\s*calendar_date/i));
+test('existing calendar text is backfilled',()=>assert.match(sql,/select id,\s*language_code,\s*title,\s*saints,\s*details,\s*fasting_note[\s\S]*from public\.calendar_days/i));
+test('translations use published-day RLS',()=>assert.match(sql,/calendar_translations_read_published[\s\S]*is_published\s*=\s*true/i));
+test('migration fails on duplicate canonical days',()=>assert.match(sql,/duplicate canonical country\/calendar\/date rows/i));
+test('migration is non-destructive',()=>assert.doesNotMatch(sql,/drop\s+(column|table)/i));

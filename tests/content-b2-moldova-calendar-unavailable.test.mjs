@@ -32,14 +32,22 @@ test('calendar.tsx: MD guard returns before any Supabase query', () => {
   assert.ok(mdBlock.includes('return;'), 'MD guard must return early');
 });
 
-test('calendar.tsx: legacy RO fallback still requires countryCode RO', () => {
-  assert.ok(calendarSrc.includes("localizationSchemaMissing && countryCode === 'RO'"),
-    'legacy fallback must be gated on countryCode RO');
+test('calendar.tsx: localized RPC fallback remains scoped to selected country and calendar', () => {
+  assert.ok(calendarSrc.includes('if (localizationRpcMissing)'),
+    'localized RPC fallback must exist');
+  assert.ok(calendarSrc.includes(".eq('country_code', countryCode)"),
+    'calendar fallback must remain scoped to selected country');
+  assert.ok(calendarSrc.includes(".eq('calendar_code', calendarCode)"),
+    'calendar fallback must remain scoped to selected calendar');
 });
 
-test('index.tsx: legacy RO fallback still requires countryCode RO', () => {
-  assert.ok(indexSrc.includes("localizationSchemaMissing && countryCode === 'RO'"),
-    'legacy fallback must be gated on countryCode RO');
+test('index.tsx: localized RPC fallback remains scoped to selected country and calendar', () => {
+  assert.ok(indexSrc.includes('if (calendarRpcMissing)'),
+    'localized RPC fallback must exist');
+  assert.ok(indexSrc.includes(".eq('country_code', countryCode)"),
+    'home calendar fallback must remain scoped to selected country');
+  assert.ok(indexSrc.includes(".eq('calendar_code', calendarCode)"),
+    'home calendar fallback must remain scoped to selected calendar');
 });
 
 // ── 2. Moldova calendar is marked unavailable ───────────────────────────

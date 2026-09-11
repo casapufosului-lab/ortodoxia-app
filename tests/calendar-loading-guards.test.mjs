@@ -20,7 +20,7 @@ const src = readFileSync(calendarFile, 'utf8');
 function loadBody() {
   const loadStart = src.indexOf('const loadCalendar = useCallback(async () => {');
   assert.ok(loadStart !== -1, 'loadCalendar must exist');
-  const deps = '}, [calendarCode, calendarView, countryCode, region.languageCode, t]);';
+  const deps = '}, [calendarCode, calendarLanguageCode, calendarView, countryCode, region.languageCode, t]);';
   const end = src.indexOf(deps, loadStart);
   assert.ok(end !== -1, 'loadCalendar dependency array must be found');
   return src.slice(loadStart, end + deps.length);
@@ -65,10 +65,10 @@ test('loadCalendar guards stale failure so it cannot replace newer data', () => 
 
 // 4. Retry/navigation reload the currently displayed month (calendarView dep)
 test('loadCalendar reloads the current month via calendarView dependency', () => {
-  const depsLine = '}, [calendarCode, calendarView, countryCode, region.languageCode, t]);';
+  const depsLine = '}, [calendarCode, calendarLanguageCode, calendarView, countryCode, region.languageCode, t]);';
   assert.ok(src.includes(depsLine), 'loadCalendar deps must include calendarView');
   const loadStart = src.indexOf('const loadCalendar = useCallback(async () => {');
-  assert.ok(src.indexOf('.gte(\'calendar_date\', calendarView.monthStart)', loadStart) !== -1, 'loadCalendar must query current monthStart');
+  assert.ok(src.indexOf('p_start_date: calendarView.monthStart', loadStart) !== -1, 'loadCalendar must query current monthStart');
 });
 
 // 5. Empty result differs from error result

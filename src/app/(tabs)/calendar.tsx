@@ -23,7 +23,8 @@ function toDateKey(year: number, monthIndex: number, day: number) {
 }
 
 export default function CalendarScreen() {
-  const { calendar, calendarCode, countryCode, region, t } = useLocalization();
+  const { calendar, calendarCode, countryCode, languageCode, region, t } = useLocalization();
+  const calendarLanguageCode = languageCode === region.languageCode ? region.languageCode : 'en';
   const weekdays = [t('calendar.weekdayLu'), t('calendar.weekdayMa'), t('calendar.weekdayMi'), t('calendar.weekdayJo'), t('calendar.weekdayVi'), t('calendar.weekdaySa'), t('calendar.weekdayDu')];
   const [today, setToday] = useState(() => new Date());
   const currentDateKey = useMemo(() => dateKeyInTimeZone(today, region.timeZone), [region.timeZone, today]);
@@ -42,7 +43,7 @@ export default function CalendarScreen() {
         ...Array.from({ length: leadingEmptyDays }, () => null),
         ...Array.from({ length: daysInMonth }, (_, index) => index + 1),
       ] as (number | null)[],
-      month: new Intl.DateTimeFormat(region.locale, {
+      month: new Intl.DateTimeFormat(languageCode, {
         month: 'long',
         timeZone: 'UTC',
         year: 'numeric',
@@ -52,7 +53,7 @@ export default function CalendarScreen() {
       monthStart: toDateKey(viewedYear, monthIndex, 1),
       year: viewedYear,
     };
-  }, [currentDateKey, monthOffset, region.locale]);
+  }, [currentDateKey, languageCode, monthOffset]);
   const selectionKey = `${countryCode}:${calendarCode ?? 'neales'}`;
   const viewSelectionKey = `${selectionKey}:${calendarView.monthStart}`;
   const [selection, setSelection] = useState({ key: viewSelectionKey, day: calendarView.currentDay });
@@ -94,33 +95,31 @@ export default function CalendarScreen() {
     }
 
     try {
-      let { data, error } = await supabase
-        .from('calendar_days')
-        .select('calendar_date, feast_rank, saints, title, details, fasting_note, editorial_source')
-        .eq('country_code', countryCode)
-        .eq('language_code', region.languageCode)
-        .eq('calendar_code', calendarCode)
-        .eq('is_published', true)
-        .gte('calendar_date', calendarView.monthStart)
-        .lte('calendar_date', calendarView.monthEnd)
-        .order('calendar_date', { ascending: true });
+      let { data, error } = await supabase.rpc('get_calendar_days_localized', {
+        p_country_code: countryCode,
+        p_calendar_code: calendarCode,
+        p_language_code: calendarLanguageCode,
+        p_start_date: calendarView.monthStart,
+        p_end_date: calendarView.monthEnd,
+      });
 
-      const localizationSchemaMissing = error?.code === '42703'
-        || Boolean(error?.message.match(/(country_code|language_code|calendar_code).*does not exist/i));
+      const localizationRpcMissing = error?.code === 'PGRST202'
+        || error?.code === '42883'
+        || Boolean(error?.message.match(/get_calendar_days_localized/i));
 
-      if (localizationSchemaMissing && countryCode === 'RO') {
+      if (localizationRpcMissing) {
         const legacyResult = await supabase
           .from('calendar_days')
           .select('calendar_date, feast_rank, saints, title, details, fasting_note, editorial_source')
+          .eq('country_code', countryCode)
+          .eq('language_code', region.languageCode)
+          .eq('calendar_code', calendarCode)
           .eq('is_published', true)
           .gte('calendar_date', calendarView.monthStart)
           .lte('calendar_date', calendarView.monthEnd)
           .order('calendar_date', { ascending: true });
         data = legacyResult.data;
         error = legacyResult.error;
-      } else if (localizationSchemaMissing) {
-        data = [];
-        error = null;
       }
 
       if (error) {
@@ -140,7 +139,7 @@ export default function CalendarScreen() {
         setIsLoading(false);
       }
     }
-  }, [calendarCode, calendarView, countryCode, region.languageCode, t]);
+  }, [calendarCode, calendarLanguageCode, calendarView, countryCode, region.languageCode, t]);
 
   useEffect(() => {
     const timeoutId = setTimeout(() => void loadCalendar(), 0);

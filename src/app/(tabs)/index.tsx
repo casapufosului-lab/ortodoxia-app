@@ -24,16 +24,17 @@ type CalendarDay = {
 };
 
 export default function HomeScreen() {
-  const { calendar, calendarCode, countryCode, region, t } = useLocalization();
+  const { calendar, calendarCode, countryCode, languageCode, region, t } = useLocalization();
+  const calendarLanguageCode = languageCode === region.languageCode ? region.languageCode : 'en';
   const liveLocations = getEnabledLiveSources(countryCode).map((source) => source.location).join(' • ');
   const [today, setToday] = useState(() => new Date());
   const dateKey = useMemo(() => dateKeyInTimeZone(today, region.timeZone), [region.timeZone, today]);
-  const dateLabel = useMemo(() => new Intl.DateTimeFormat(region.locale, {
+  const dateLabel = useMemo(() => new Intl.DateTimeFormat(languageCode, {
     day: 'numeric',
     month: 'long',
     timeZone: region.timeZone,
     weekday: 'long',
-  }).format(today), [region.locale, region.timeZone, today]);
+  }).format(today), [languageCode, region.timeZone, today]);
   const dayNumber = Number(dateKey.slice(-2));
   const [dailyContent, setDailyContent] = useState<DailyContent | null>(null);
   const [calendarDay, setCalendarDay] = useState<CalendarDay | null>(null);
@@ -80,6 +81,24 @@ export default function HomeScreen() {
           .eq('is_published', true)
           .maybeSingle(),
         supabase
+          .rpc('get_calendar_days_localized', {
+            p_country_code: countryCode,
+            p_calendar_code: calendarCode,
+            p_language_code: calendarLanguageCode,
+            p_start_date: dateKey,
+            p_end_date: dateKey,
+          })
+          .maybeSingle(),
+      ]);
+
+      if (homeRequestRef.current !== requestId) return;
+
+      const calendarRpcMissing = calendarResult.error?.code === 'PGRST202'
+        || calendarResult.error?.code === '42883'
+        || Boolean(calendarResult.error?.message.match(/get_calendar_days_localized/i));
+
+      if (calendarRpcMissing) {
+        calendarResult = await supabase
           .from('calendar_days')
           .select('title, saints, fasting_note')
           .eq('country_code', countryCode)
@@ -87,31 +106,20 @@ export default function HomeScreen() {
           .eq('calendar_code', calendarCode)
           .eq('calendar_date', dateKey)
           .eq('is_published', true)
-          .maybeSingle(),
-      ]);
+          .maybeSingle();
+      }
 
-      if (homeRequestRef.current !== requestId) return;
+      const dailyLocalizationSchemaMissing = dailyResult.error?.code === '42703'
+        || Boolean(dailyResult.error?.message.match(/(country_code|language_code).*does not exist/i));
 
-      const localizationSchemaMissing = [dailyResult.error, calendarResult.error].some((error) => (
-        error?.code === '42703' || Boolean(error?.message.match(/(country_code|language_code|calendar_code).*does not exist/i))
-      ));
-
-      if (localizationSchemaMissing && countryCode === 'RO') {
-        [dailyResult, calendarResult] = await Promise.all([
-          supabase
-            .from('daily_content')
-            .select('verse_text, verse_source, parable_title, parable_text, editorial_source')
-            .eq('content_date', dateKey)
-            .eq('is_published', true)
-            .maybeSingle(),
-          supabase
-            .from('calendar_days')
-            .select('title, saints, fasting_note')
-            .eq('calendar_date', dateKey)
-            .eq('is_published', true)
-            .maybeSingle(),
-        ]);
-      } else if (localizationSchemaMissing) {
+      if (dailyLocalizationSchemaMissing && countryCode === 'RO') {
+        dailyResult = await supabase
+          .from('daily_content')
+          .select('verse_text, verse_source, parable_title, parable_text, editorial_source')
+          .eq('content_date', dateKey)
+          .eq('is_published', true)
+          .maybeSingle();
+      } else if (dailyLocalizationSchemaMissing) {
         setDailyContent(null);
         setCalendarDay(null);
         return;
@@ -134,7 +142,7 @@ export default function HomeScreen() {
         setIsLoading(false);
       }
     }
-  }, [calendarCode, countryCode, dateKey, region.languageCode, t]);
+  }, [calendarCode, calendarLanguageCode, countryCode, dateKey, region.languageCode, t]);
 
   useEffect(() => {
     const timeoutId = setTimeout(() => void loadHome(), 0);

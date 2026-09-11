@@ -1,0 +1,10 @@
+﻿import test from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+const sql=fs.readFileSync(new URL('../supabase/migrations/20260911000300_add_localized_calendar_rpc.sql',import.meta.url),'utf8');
+test('localized calendar RPC exists',()=>assert.match(sql,/get_calendar_days_localized/i));
+test('RPC selects requested language',()=>assert.match(sql,/requested\.language_code\s*=\s*p_language_code/i));
+test('RPC keeps country and calendar independent from language',()=>assert.match(sql,/d\.country_code\s*=\s*p_country_code[\s\S]*d\.calendar_code\s*=\s*p_calendar_code/i));
+test('RPC falls back without returning blank calendar',()=>assert.match(sql,/source_text\.language_code\s*=\s*d\.language_code/i));
+test('translation table is readable by app roles',()=>assert.match(sql,/grant select on public\.calendar_day_translations to anon, authenticated/i));
+test('RPC runs with caller RLS',()=>assert.match(sql,/security invoker/i));
