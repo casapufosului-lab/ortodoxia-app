@@ -67,6 +67,34 @@ export const LIVE_SOURCES: readonly LiveSourceDef[] = [
     enabled: true,
     supportsDynamicLiveDetection: true,
   },
+  {
+    id: 'cy-tamasos',
+    countryCode: 'CY',
+    officialChannelId: 'UCYoHUCkzSJ3388LgfR0cLOQ',
+    enabled: true,
+    supportsDynamicLiveDetection: true,
+  },
+  {
+    id: 'cy-kykkos',
+    countryCode: 'CY',
+    officialChannelId: 'UCb-R-Q9gHsx2NGHAuGmViGA',
+    enabled: true,
+    supportsDynamicLiveDetection: true,
+  },
+  {
+    id: 'cy-constantias',
+    countryCode: 'CY',
+    officialChannelId: 'UCPK1fmyUVKgzIs-e-J2Cf2Q',
+    enabled: true,
+    supportsDynamicLiveDetection: true,
+  },
+  {
+    id: 'cy-paphos',
+    countryCode: 'CY',
+    officialChannelId: 'UC_XV53qPmRZOCk_ghQZKR_g',
+    enabled: true,
+    supportsDynamicLiveDetection: false,
+  },
 ];
 
 /** Enabled sources eligible for dynamic YouTube discovery. */

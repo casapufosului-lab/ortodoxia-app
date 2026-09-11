@@ -61,7 +61,7 @@ test('source IDs are unique', () => {
 });
 
 test('expected number of candidate sources in registry', () => {
-  assert.equal(sources.length, 7, 'expected 7 candidate sources');
+  assert.equal(sources.length, 11, 'expected 11 candidate sources');
 });
 
 test('enabled sources have all required fields', () => {
