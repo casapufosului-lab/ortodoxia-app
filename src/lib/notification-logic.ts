@@ -149,6 +149,8 @@ export function deliveryIdempotencyKey(
 const SUPPORTED_CALENDARS: Record<string, readonly string[]> = {
   RO: ['ro-bor'],
   MD: ['md-basarabia', 'md-chisinau'],
+  GR: ['gr-church-of-greece'],
+  CY: ['cy-church-of-cyprus'],
 };
 
 /**
@@ -178,5 +180,7 @@ export function calendarCountryMismatch(
   if (calendarCode == null) return false;
   if (countryCode === 'RO' && calendarCode !== 'ro-bor') return true;
   if (countryCode === 'MD' && calendarCode === 'ro-bor') return true;
+  if (countryCode === 'GR' && calendarCode !== 'gr-church-of-greece') return true;
+  if (countryCode === 'CY' && calendarCode !== 'cy-church-of-cyprus') return true;
   return false;
 }

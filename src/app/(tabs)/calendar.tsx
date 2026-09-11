@@ -194,7 +194,7 @@ export default function CalendarScreen() {
         </View>
         {monthOffset !== 0 ? <Pressable accessibilityRole="button" onPress={() => setMonthOffset(0)}><Text style={styles.todayLink}>{t('calendar.backToCurrentMonth')}</Text></Pressable> : null}
         <View style={styles.legend}>
-          <Text style={styles.legendItem}><Text style={styles.redCross}>✝</Text> {t(countryCode === 'GR' ? 'calendar.majorFeastLegend' : 'calendar.redCrossLegend')}</Text>
+          <Text style={styles.legendItem}><Text style={styles.redCross}>✝</Text> {t((countryCode === 'GR' || countryCode === 'CY') ? 'calendar.majorFeastLegend' : 'calendar.redCrossLegend')}</Text>
           <Text style={styles.legendItem}><Text style={styles.blackCross}>✝</Text> {t('calendar.documentedDayLegend')}</Text>
         </View>
         <View style={styles.grid}>{weekdays.map((day) => <Text key={day} style={styles.weekday}>{day}</Text>)}</View>
@@ -220,7 +220,7 @@ export default function CalendarScreen() {
                   const entry = entriesByDate.get(dateKey);
                   if (!entry) return null;
                   const normalizedRank = entry.feast_rank?.toLowerCase() ?? '';
-                  const isHighlightedFeast = countryCode === 'GR'
+                  const isHighlightedFeast = (countryCode === 'GR' || countryCode === 'CY')
                     ? ['δεσποτική εορτή', 'θεομητορική εορτή', 'μεγάλη εορτή'].some((marker) => normalizedRank.includes(marker))
                     : ['red-cross', 'red_cross', 'cruce roșie', 'cruce rosie'].some((marker) => normalizedRank.includes(marker));
                   const primaryFeast = entry.title.split(';')[0].trim();

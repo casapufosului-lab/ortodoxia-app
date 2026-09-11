@@ -146,7 +146,7 @@ test('config.ts: Greece has gr-church-of-greece as default available calendar', 
     'non-MD countries must default to their first available calendar');
   assert.ok(configSrc.includes("'calendar.majorFeastLegend': 'sărbătoare importantă'"),
     'Romanian UI must have a country-neutral major-feast label');
-  assert.ok(calendarSrc.includes("countryCode === 'GR' ? 'calendar.majorFeastLegend' : 'calendar.redCrossLegend'"),
+  assert.ok(calendarSrc.includes("(countryCode === 'GR' || countryCode === 'CY') ? 'calendar.majorFeastLegend' : 'calendar.redCrossLegend'"),
     'Greece must not label its important feasts as the Romanian red-cross convention');
   assert.ok(calendarSrc.includes("'δεσποτική εορτή'") && calendarSrc.includes("'θεομητορική εορτή'"),
     'Greek major-feast ranks must be recognized explicitly');

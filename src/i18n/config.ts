@@ -11,7 +11,7 @@ export function isSupportedLanguage(code: string): code is LanguageCode {
 export function resolveLanguageCode(code: string | null | undefined): LanguageCode {
   return code && isSupportedLanguage(code) ? code : 'ro';
 }
-export type CalendarCode = 'ro-bor' | 'md-basarabia' | 'md-chisinau' | 'gr-church-of-greece';
+export type CalendarCode = 'ro-bor' | 'md-basarabia' | 'md-chisinau' | 'gr-church-of-greece' | 'cy-church-of-cyprus';
 
 export type RegionConfig = {
   countryCode: CountryCode;
@@ -186,6 +186,14 @@ export const CALENDAR_OPTIONS: readonly CalendarConfig[] = [
     jurisdictionLabel: 'Biserica Greciei',
     label: 'Calendar ortodox grec 2026',
     officialUrl: 'https://www.ecclesia.gr/',
+  },
+  {
+    calendarCode: 'cy-church-of-cyprus',
+    countryCode: 'CY',
+    description: 'Calendarul bisericesc 2026 al Bisericii Ciprului.',
+    jurisdictionLabel: 'Biserica Ciprului',
+    label: 'Calendar ortodox cipriot 2026',
+    officialUrl: 'https://imtrimythountos.org.cy/',
   },
 ] as const;
 
