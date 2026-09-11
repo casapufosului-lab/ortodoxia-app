@@ -116,6 +116,48 @@ export const LIVE_SOURCES: readonly LiveSourceDef[] = [
     enabled: true,
     supportsDynamicLiveDetection: false,
   },
+  {
+    id: 'ua-ocu',
+    countryCode: 'UA',
+    officialChannelId: 'UCFgJSKKWeYsoJLeJoeQVFdg',
+    enabled: true,
+    supportsDynamicLiveDetection: true,
+  },
+  {
+    id: 'ua-uoc',
+    countryCode: 'UA',
+    officialChannelId: 'UCR912pfv8uTtWr9h4YzJA6Q',
+    enabled: true,
+    supportsDynamicLiveDetection: true,
+  },
+  {
+    id: 'ua-pochaiv-lavra',
+    countryCode: 'UA',
+    officialChannelId: 'UCUmvxPTUfflU3v_mcRNGAeg',
+    enabled: true,
+    supportsDynamicLiveDetection: true,
+  },
+  {
+    id: 'ua-kyiv-pechersk-lavra',
+    countryCode: 'UA',
+    officialChannelId: 'UCKzsQXAGrL_0jWlTBgGey1Q',
+    enabled: true,
+    supportsDynamicLiveDetection: true,
+  },
+  {
+    id: 'ua-sviatogirsk-lavra',
+    countryCode: 'UA',
+    officialChannelId: 'UCZ8xSa5ceifaA5hVIIXzq-g',
+    enabled: true,
+    supportsDynamicLiveDetection: true,
+  },
+  {
+    id: 'ua-odesa-cathedral',
+    countryCode: 'UA',
+    officialChannelId: 'UCH-3BH5X3lNH6JiKGMMi7IQ',
+    enabled: true,
+    supportsDynamicLiveDetection: true,
+  },
 ];
 
 /** Enabled sources eligible for dynamic YouTube discovery. */
