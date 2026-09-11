@@ -95,6 +95,27 @@ export const LIVE_SOURCES: readonly LiveSourceDef[] = [
     enabled: true,
     supportsDynamicLiveDetection: false,
   },
+  {
+    id: 'rs-tv-hram',
+    countryCode: 'RS',
+    officialChannelId: 'UCXnRkfjybyv7931skQWumDQ',
+    enabled: true,
+    supportsDynamicLiveDetection: true,
+  },
+  {
+    id: 'rs-sumadija',
+    countryCode: 'RS',
+    officialChannelId: 'UCFt8ASyX5TKQrYDe1u69tmg',
+    enabled: true,
+    supportsDynamicLiveDetection: false,
+  },
+  {
+    id: 'rs-tumane',
+    countryCode: 'RS',
+    officialChannelId: 'UCg-nhkZOWy8Qi0r4st-u2VQ',
+    enabled: true,
+    supportsDynamicLiveDetection: false,
+  },
 ];
 
 /** Enabled sources eligible for dynamic YouTube discovery. */
