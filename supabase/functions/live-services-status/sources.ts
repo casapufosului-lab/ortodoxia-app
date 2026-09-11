@@ -158,6 +158,20 @@ export const LIVE_SOURCES: readonly LiveSourceDef[] = [
     enabled: true,
     supportsDynamicLiveDetection: true,
   },
+  {
+    id: 'bg-patriarchate',
+    countryCode: 'BG',
+    officialChannelId: 'UCJJc8kgu0rSKoyCnZiSRLXA',
+    enabled: true,
+    supportsDynamicLiveDetection: true,
+  },
+  {
+    id: 'bg-plovdiv',
+    countryCode: 'BG',
+    officialChannelId: 'UC9AoegqiRGrm1IQie6YDCcg',
+    enabled: true,
+    supportsDynamicLiveDetection: true,
+  },
 ];
 
 /** Enabled sources eligible for dynamic YouTube discovery. */
