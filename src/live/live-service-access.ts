@@ -1,4 +1,9 @@
-import { openBrowserAsync, WebBrowserPresentationStyle } from 'expo-web-browser';
+import { Platform } from 'react-native';
+import {
+  getCustomTabsSupportingBrowsersAsync,
+  openBrowserAsync,
+  WebBrowserPresentationStyle,
+} from 'expo-web-browser';
 
 import { isAllowedDomain } from './live-services';
 import type { PermanentLiveSource } from './types';
@@ -40,7 +45,22 @@ export async function openLiveSourceUrl(rawUrl: string): Promise<string | null> 
   if (!isValidSourceUrl(rawUrl)) return LIVE_OPEN_ERROR_CODE;
 
   try {
-    await openBrowserAsync(rawUrl.trim(), { presentationStyle: WebBrowserPresentationStyle.AUTOMATIC });
+    if (Platform.OS === 'android') {
+      const browsers = await getCustomTabsSupportingBrowsersAsync();
+      const browserPackage =
+        browsers.preferredBrowserPackage ??
+        browsers.defaultBrowserPackage ??
+        browsers.browserPackages[0];
+
+      await openBrowserAsync(rawUrl.trim(), {
+        ...(browserPackage ? { browserPackage } : {}),
+        createTask: false,
+      });
+    } else {
+      await openBrowserAsync(rawUrl.trim(), {
+        presentationStyle: WebBrowserPresentationStyle.AUTOMATIC,
+      });
+    }
     return null;
   } catch {
     return LIVE_OPEN_ERROR_CODE;
