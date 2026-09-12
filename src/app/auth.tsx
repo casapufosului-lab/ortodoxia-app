@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
 import { Alert, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import * as Linking from 'expo-linking';
 import { router, useLocalSearchParams } from 'expo-router';
+import * as WebBrowser from 'expo-web-browser';
 
 import { Card, PageHeader, PrimaryButton, Screen } from '@/components/mvp-ui';
 import { palette } from '@/constants/palette';
@@ -9,6 +11,8 @@ import { NATIVE_PASSWORD_RECOVERY_REDIRECT_URL } from '@/lib/native-password-rec
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/providers/auth-provider';
 import { useLocalization } from '@/providers/localization-provider';
+
+WebBrowser.maybeCompleteAuthSession();
 
 /** Mapăm erorile Supabase la mesaje prietenoase în limba română. */
 function friendlyAuthError(error: unknown, t: (key: TranslationKey) => string): string {
@@ -61,6 +65,52 @@ function clearRecoveryRedirect() {
   if (Platform.OS === 'web' && typeof window !== 'undefined') {
     window.history.replaceState({}, document.title, window.location.pathname);
   }
+}
+
+function getAuthRedirectUrl() {
+  if (Platform.OS === 'web' && typeof window !== 'undefined') {
+    return `${window.location.origin}/auth`;
+  }
+
+  return Linking.createURL('auth');
+}
+
+function authErrorFromUrl(url: string) {
+  const parsed = new URL(url);
+  const searchParams = parsed.searchParams;
+  const hashParams = new URLSearchParams(parsed.hash.replace(/^#/, ''));
+  return searchParams.get('error_description')
+    ?? hashParams.get('error_description')
+    ?? searchParams.get('error')
+    ?? hashParams.get('error');
+}
+
+async function completeNativeOAuthSession(url: string) {
+  const parsed = new URL(url);
+  const searchParams = parsed.searchParams;
+  const hashParams = new URLSearchParams(parsed.hash.replace(/^#/, ''));
+  const code = searchParams.get('code') ?? hashParams.get('code');
+  const accessToken = hashParams.get('access_token') ?? searchParams.get('access_token');
+  const refreshToken = hashParams.get('refresh_token') ?? searchParams.get('refresh_token');
+
+  if (code) {
+    const { error } = await supabase.auth.exchangeCodeForSession(code);
+    if (error) throw error;
+    return;
+  }
+
+  if (accessToken && refreshToken) {
+    const { error } = await supabase.auth.setSession({
+      access_token: accessToken,
+      refresh_token: refreshToken,
+    });
+    if (error) throw error;
+    return;
+  }
+
+  const oauthError = authErrorFromUrl(url);
+  if (oauthError) throw new Error(oauthError);
+  throw new Error('OAuth session could not be completed.');
 }
 
 export default function AuthScreen() {
@@ -179,6 +229,44 @@ export default function AuthScreen() {
     }
   };
 
+  const signInWithOAuth = async (provider: 'google' | 'apple') => {
+    if (loading) return;
+    setLoading(true);
+
+    try {
+      const redirectTo = getAuthRedirectUrl();
+
+      if (Platform.OS === 'web') {
+        const { error } = await supabase.auth.signInWithOAuth({
+          provider,
+          options: { redirectTo },
+        });
+        if (error) throw error;
+        return;
+      }
+
+      const { data, error } = await supabase.auth.signInWithOAuth({
+        provider,
+        options: {
+          redirectTo,
+          skipBrowserRedirect: true,
+        },
+      });
+      if (error) throw error;
+      if (!data.url) throw new Error('OAuth URL missing.');
+
+      const result = await WebBrowser.openAuthSessionAsync(data.url, redirectTo);
+      if (result.type !== 'success') return;
+
+      await completeNativeOAuthSession(result.url);
+      router.replace(destination);
+    } catch (error) {
+      showAuthAlert(t('auth.signInFailedTitle'), friendlyAuthError(error, t));
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const sendResetEmail = async () => {
     if (loading) return; // FIX: Prevent duplicate submit
     setResetMessage(null);
@@ -217,6 +305,31 @@ export default function AuthScreen() {
         subtitle={t('auth.subtitle')}
       />
       <Card>
+        {activeMode !== 'reset-password' ? (
+          <View style={styles.socialSection}>
+            <Pressable
+              accessibilityRole="button"
+              disabled={loading}
+              onPress={() => signInWithOAuth('google')}
+              style={({ pressed }) => [styles.socialButton, pressed && styles.pressed, loading && styles.disabledButton]}>
+              <Text style={styles.socialIcon}>G</Text>
+              <Text style={styles.socialButtonText}>{t('auth.continueWithGoogle')}</Text>
+            </Pressable>
+            <Pressable
+              accessibilityRole="button"
+              disabled={loading}
+              onPress={() => signInWithOAuth('apple')}
+              style={({ pressed }) => [styles.socialButton, pressed && styles.pressed, loading && styles.disabledButton]}>
+              <Text style={styles.socialIcon}></Text>
+              <Text style={styles.socialButtonText}>{t('auth.continueWithApple')}</Text>
+            </Pressable>
+            <View style={styles.dividerRow}>
+              <View style={styles.dividerLine} />
+              <Text style={styles.dividerText}>{t('auth.orEmail')}</Text>
+              <View style={styles.dividerLine} />
+            </View>
+          </View>
+        ) : null}
         {activeMode === 'sign-up' ? (
           <>
             <Text style={styles.label}>{t('auth.displayNameLabel')}</Text>
@@ -265,4 +378,13 @@ const styles = StyleSheet.create({
   success: { color: palette.success },
   error: { color: palette.danger },
   switchRow: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 6 },
+  socialSection: { gap: 10, marginBottom: 4 },
+  socialButton: { minHeight: 50, borderColor: palette.line, borderWidth: 1, borderRadius: 14, backgroundColor: '#FFFFFF', alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 10, paddingHorizontal: 14 },
+  pressed: { opacity: 0.82 },
+  socialIcon: { color: palette.ink, fontSize: 18, fontWeight: '900', width: 22, textAlign: 'center' },
+  socialButtonText: { color: palette.ink, fontSize: 15, fontWeight: '800' },
+  disabledButton: { opacity: 0.55 },
+  dividerRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginVertical: 4 },
+  dividerLine: { flex: 1, height: 1, backgroundColor: palette.line },
+  dividerText: { color: palette.muted, fontSize: 12, fontWeight: '700' },
 });
