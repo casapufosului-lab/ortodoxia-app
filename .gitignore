@@ -53,3 +53,6 @@ example
 /work/*
 !/work/CALENDAR_MD_STATUS.md
 !/work/REVENUECAT_SETUP_CHECKLIST.md
+
+# Supabase local project metadata
+/supabase/.temp/
