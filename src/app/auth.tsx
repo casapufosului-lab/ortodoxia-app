@@ -305,31 +305,6 @@ export default function AuthScreen() {
         subtitle={t('auth.subtitle')}
       />
       <Card>
-        {activeMode !== 'reset-password' ? (
-          <View style={styles.socialSection}>
-            <Pressable
-              accessibilityRole="button"
-              disabled={loading}
-              onPress={() => signInWithOAuth('google')}
-              style={({ pressed }) => [styles.socialButton, pressed && styles.pressed, loading && styles.disabledButton]}>
-              <Text style={styles.socialIcon}>G</Text>
-              <Text style={styles.socialButtonText}>{t('auth.continueWithGoogle')}</Text>
-            </Pressable>
-            <Pressable
-              accessibilityRole="button"
-              disabled={loading}
-              onPress={() => signInWithOAuth('apple')}
-              style={({ pressed }) => [styles.socialButton, pressed && styles.pressed, loading && styles.disabledButton]}>
-              <Text style={styles.socialIcon}></Text>
-              <Text style={styles.socialButtonText}>{t('auth.continueWithApple')}</Text>
-            </Pressable>
-            <View style={styles.dividerRow}>
-              <View style={styles.dividerLine} />
-              <Text style={styles.dividerText}>{t('auth.orEmail')}</Text>
-              <View style={styles.dividerLine} />
-            </View>
-          </View>
-        ) : null}
         {activeMode === 'sign-up' ? (
           <>
             <Text style={styles.label}>{t('auth.displayNameLabel')}</Text>
@@ -364,6 +339,31 @@ export default function AuthScreen() {
             </Pressable>
           </View>
         )}
+        {activeMode !== 'reset-password' ? (
+          <View style={styles.socialSection}>
+            <View style={styles.dividerRow}>
+              <View style={styles.dividerLine} />
+              <Text style={styles.dividerText}>{t('auth.orEmail')}</Text>
+              <View style={styles.dividerLine} />
+            </View>
+            <Pressable
+              accessibilityRole="button"
+              disabled={loading}
+              onPress={() => signInWithOAuth('google')}
+              style={({ pressed }) => [styles.socialButton, pressed && styles.pressed, loading && styles.disabledButton]}>
+              <Text style={styles.socialIcon}>G</Text>
+              <Text style={styles.socialButtonText}>{t('auth.continueWithGoogle')}</Text>
+            </Pressable>
+            <Pressable
+              accessibilityRole="button"
+              disabled={loading}
+              onPress={() => signInWithOAuth('apple')}
+              style={({ pressed }) => [styles.socialButton, pressed && styles.pressed, loading && styles.disabledButton]}>
+              <Text style={styles.socialIcon}></Text>
+              <Text style={styles.socialButtonText}>{t('auth.continueWithApple')}</Text>
+            </Pressable>
+          </View>
+        ) : null}
       </Card>
     </Screen>
   );
