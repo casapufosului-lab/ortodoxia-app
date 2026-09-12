@@ -11,7 +11,7 @@ export function isSupportedLanguage(code: string): code is LanguageCode {
 export function resolveLanguageCode(code: string | null | undefined): LanguageCode {
   return code && isSupportedLanguage(code) ? code : 'ro';
 }
-export type CalendarCode = 'ro-bor' | 'md-basarabia' | 'md-chisinau' | 'gr-church-of-greece' | 'cy-church-of-cyprus' | 'rs-serbian-orthodox-church' | 'ua-orthodox-church-of-ukraine' | 'bg-bulgarian-patriarchate';
+export type CalendarCode = 'ro-bor' | 'md-basarabia' | 'md-chisinau' | 'gr-church-of-greece' | 'cy-church-of-cyprus' | 'rs-serbian-orthodox-church' | 'ua-orthodox-church-of-ukraine' | 'bg-bulgarian-patriarchate' | 'mk-macedonian-orthodox-church';
 
 export type RegionConfig = {
   countryCode: CountryCode;
@@ -210,6 +210,14 @@ export const CALENDAR_OPTIONS: readonly CalendarConfig[] = [
   jurisdictionLabel: 'Biserica Ortodoxă Bulgară',
   label: 'Calendar ortodox bulgar 2026',
   officialUrl: 'https://bg-patriarshia.bg/calendar',
+},
+{
+  calendarCode: 'mk-macedonian-orthodox-church',
+  countryCode: 'MK',
+  description: 'Calendarul bisericesc 2026 al Bisericii Ortodoxe Macedonene - Arhiepiscopia Ohridului.',
+  jurisdictionLabel: 'Biserica Ortodoxă Macedoneană - Arhiepiscopia Ohridului',
+  label: 'Calendar ortodox macedonean 2026',
+  officialUrl: 'https://www.m-p-c.org/?page_id=27',
 },
 {
   calendarCode: 'ua-orthodox-church-of-ukraine',
