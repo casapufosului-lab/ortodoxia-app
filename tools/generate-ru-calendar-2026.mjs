@@ -44,6 +44,18 @@ function transliterateRu(value) {
   return [...value].map((char) => map[char] ?? char).join('');
 }
 
+function normalizeText(value) {
+  return value
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/\s+([,;:.])/g, '$1')
+    .replace(/,\s*;/g, ';')
+    .replace(/\(\s+/g, '(')
+    .replace(/\s+\)/g, ')')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 function englishTitle(ruTitle) {
   const replacements = [
     [/Рождество Господа Бога и Спаса нашего Иисуса Христа/g, 'Nativity of Our Lord God and Savior Jesus Christ'],
@@ -66,27 +78,94 @@ function englishTitle(ruTitle) {
     [/Святителя Николая/g, 'Saint Nicholas'],
     [/Пресвятой Богородицы/g, 'Most Holy Theotokos'],
     [/Господ[аняе]* /g, 'of the Lord '],
+    [/Свтт\./g, 'Saint Hierarchs'],
+    [/свтт\./g, 'Saint Hierarchs'],
+    [/Сщмчч\./g, 'Hieromartyrs'],
+    [/сщмчч\./g, 'Hieromartyrs'],
+    [/Мчч\./g, 'Martyrs'],
+    [/мчч\./g, 'Martyrs'],
+    [/Прпп\./g, 'Venerables'],
+    [/прпп\./g, 'Venerables'],
+    [/Прмч\./g, 'Venerable Martyr'],
+    [/прмч\./g, 'Venerable Martyr'],
+    [/Прмц\./g, 'Venerable Martyr'],
+    [/прмц\./g, 'Venerable Martyr'],
+    [/Мц\./g, 'Martyr'],
+    [/мц\./g, 'Martyr'],
+    [/Свт\./g, 'Saint Hierarch'],
     [/свт\./g, 'Saint Hierarch'],
+    [/Сщмч\./g, 'Hieromartyr'],
     [/сщмч\./g, 'Hieromartyr'],
+    [/Вмч\./g, 'Great Martyr'],
     [/вмч\./g, 'Great Martyr'],
+    [/Мч\./g, 'Martyr'],
     [/мч\./g, 'Martyr'],
+    [/Прп\./g, 'Venerable'],
     [/прп\./g, 'Venerable'],
+    [/Прав\./g, 'Righteous'],
     [/прав\./g, 'Righteous'],
+    [/Ап\./g, 'Apostle'],
     [/ап\./g, 'Apostle'],
+    [/Прор\./g, 'Prophet'],
     [/прор\./g, 'Prophet'],
+    [/Исп\./g, 'Confessor'],
     [/исп\./g, 'Confessor'],
+    [/Равноап\./g, 'Equal-to-the-Apostles'],
     [/равноап\./g, 'Equal-to-the-Apostles'],
+    [/Блгв\. вел\. кн\./g, 'Right-believing Grand Prince'],
+    [/блгв\. вел\. кн\./g, 'Right-believing Grand Prince'],
+    [/Блгв\. кн\./g, 'Right-believing Prince'],
+    [/блгв\. кн\./g, 'Right-believing Prince'],
+    [/Блгв\./g, 'Right-believing'],
     [/блгв\./g, 'Right-believing'],
+    [/св\./g, 'Saint'],
+    [/Св\./g, 'Saint'],
     [/иконы Божией Матери/g, 'Icon of the Mother of God'],
+    [/Обретение мощей/g, 'Finding of the relics of'],
+    [/Перенесение мощей/g, 'Translation of the relics of'],
+    [/патриархов Константинопольских/g, 'Patriarchs of Constantinople'],
+    [/патриархов/g, 'Patriarchs'],
+    [/архиепископов/g, 'Archbishops'],
+    [/митрополита/g, 'Metropolitan of'],
+    [/Молдавского/g, 'Moldavia'],
+    [/игумена/g, 'Abbot'],
+    [/иеромонаха/g, 'Hieromonk'],
+    [/монахини/g, 'Nun'],
+    [/пресвитеров/g, 'Priests'],
+    [/пресвитера/g, 'Priest'],
+    [/епископа/g, 'Bishop'],
+    [/чудотворца/g, 'Wonderworker'],
+    [/в схиме/g, 'in schema'],
+    [/в Солуни/g, 'in Thessalonica'],
+    [/Святителей Сербских/g, 'Serbian Hierarchs'],
+    [/\(Румын\.\)/g, '(Romanian)'],
     [/Неделя/g, 'Sunday'],
     [/Седмица/g, 'Week'],
     [/по Пятидесятнице/g, 'after Pentecost'],
     [/Поста нет/g, 'No fast'],
     [/Постный день/g, 'Fast day'],
+    [/Глас/g, 'Tone'],
   ];
-  let value = ruTitle;
+  let value = ruTitle.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
   for (const [from, to] of replacements) value = value.replace(from, to);
-  return transliterateRu(value).replace(/\s+/g, ' ').trim();
+  return normalizeText(transliterateRu(value))
+    .replace(/Obretenie moshche[yi]/g, 'Finding of the relics of')
+    .replace(/Obretenie chestnykh moshche[yi]/g, 'Finding of the precious relics of')
+    .replace(/Perenesenie moshche[yi]/g, 'Translation of the relics of')
+    .replace(/Perenesenie iz Ierusalima v Konstantinopol moshche[yi]/g, 'Translation from Jerusalem to Constantinople of the relics of')
+    .replace(/Perenesenie iz Edessy v Konstantinopol/g, 'Translation from Edessa to Constantinople')
+    .replace(/Svyatitele[yi] Serbskikh/g, 'Serbian Hierarchs')
+    .replace(/Poprazdnstvo/g, 'Afterfeast of')
+    .replace(/Presvyatoi Bogoroditsy/g, 'the Most Holy Theotokos')
+    .replace(/Rozhdestva the Most Holy Theotokos/g, 'the Nativity of the Most Holy Theotokos')
+    .replace(/Uspeniya the Most Holy Theotokos/g, 'the Dormition of the Most Holy Theotokos')
+    .replace(/Pravednykh Bogootets/g, 'Righteous Ancestors of God')
+    .replace(/Pamyat svyatykh ottsov VII Vselenskogo Sobora/g, 'Commemoration of the Holy Fathers of the Seventh Ecumenical Council')
+    .replace(/\bi\b/g, 'and')
+    .replace(/\bok\./g, 'ca.')
+    .replace(/\bTone ([0-9]+)-and\b/g, 'Tone $1')
+    .replace(/\bTone ([0-9]+)-y\b/g, 'Tone $1')
+    .replace(/\bskhiarkhimandrita\b/g, 'Schema-Archimandrite');
 }
 
 function extractMeta(html) {
