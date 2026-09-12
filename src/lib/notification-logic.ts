@@ -152,6 +152,7 @@ const SUPPORTED_CALENDARS: Record<string, readonly string[]> = {
   GR: ['gr-church-of-greece'],
   CY: ['cy-church-of-cyprus'],
   RS: ['rs-serbian-orthodox-church'],
+  RU: ['ru-russian-orthodox-church'],
 };
 
 /**
@@ -184,5 +185,6 @@ export function calendarCountryMismatch(
   if (countryCode === 'GR' && calendarCode !== 'gr-church-of-greece') return true;
   if (countryCode === 'CY' && calendarCode !== 'cy-church-of-cyprus') return true;
   if (countryCode === 'RS' && calendarCode !== 'rs-serbian-orthodox-church') return true;
+  if (countryCode === 'RU' && calendarCode !== 'ru-russian-orthodox-church') return true;
   return false;
 }

@@ -128,12 +128,7 @@ export default function CalendarScreen() {
         setErrorMessage(t('calendar.loadError'));
       } else {
         if (calendarRequestRef.current !== requestId) return;
-        const nextEntries = data ?? [];
-        setEntries(
-          nextEntries.length > 0
-            ? nextEntries
-            : getMoldovaCalendarFallbackRange(calendarCode, calendarView.monthStart, calendarView.monthEnd),
-        );
+        setEntries(data ?? []);
       }
     } catch {
       if (calendarRequestRef.current !== requestId) return;
