@@ -179,6 +179,20 @@ export const LIVE_SOURCES: readonly LiveSourceDef[] = [
     enabled: true,
     supportsDynamicLiveDetection: true,
   },
+  {
+    id: 'md-basarabia',
+    countryCode: 'MD',
+    officialChannelId: 'UCfi1ESYseN2DOHSWhdgK-7g',
+    enabled: true,
+    supportsDynamicLiveDetection: true,
+  },
+  {
+    id: 'md-mitropolia-moldovei',
+    countryCode: 'MD',
+    officialChannelId: 'UCTevYHEce1AlwkI5YS746Tg',
+    enabled: true,
+    supportsDynamicLiveDetection: true,
+  },
 ];
 
 /** Enabled sources eligible for dynamic YouTube discovery. */
