@@ -214,6 +214,20 @@ export const LIVE_SOURCES: readonly LiveSourceDef[] = [
     enabled: true,
     supportsDynamicLiveDetection: true,
   },
+  {
+    id: 'ge-patriarchate',
+    countryCode: 'GE',
+    officialChannelId: 'UCMvmmjwDGh8W3t_b8MPcHZw',
+    enabled: true,
+    supportsDynamicLiveDetection: true,
+  },
+  {
+    id: 'ge-sstv',
+    countryCode: 'GE',
+    officialChannelId: 'UCVb1R12ix7LfQEZu5lVW3oQ',
+    enabled: true,
+    supportsDynamicLiveDetection: true,
+  },
 ];
 
 /** Enabled sources eligible for dynamic YouTube discovery. */
