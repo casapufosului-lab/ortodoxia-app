@@ -235,6 +235,13 @@ export const LIVE_SOURCES: readonly LiveSourceDef[] = [
     enabled: true,
     supportsDynamicLiveDetection: true,
   },
+  {
+    id: 'by-church',
+    countryCode: 'BY',
+    officialChannelId: 'UCYFr-IXbe8u8yhoM_QHw_LQ',
+    enabled: true,
+    supportsDynamicLiveDetection: true,
+  },
 ];
 
 /** Enabled sources eligible for dynamic YouTube discovery. */

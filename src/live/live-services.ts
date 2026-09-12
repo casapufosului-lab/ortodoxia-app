@@ -82,6 +82,8 @@ export const ALLOWED_DOMAINS = [
   'stream.sstv.ge',
   'orthodoxalbania.org',
   'www.orthodoxalbania.org',
+  'church.by',
+  'www.church.by',
 ] as const;
 
 /** A stable handle on an allowed domain (used for quick lookups). */
@@ -537,6 +539,20 @@ export const LIVE_SOURCES: readonly PermanentLiveSource[] = [
     officialWebsiteUrl: 'https://orthodoxalbania.org/',
     officialChannelUrl: 'https://www.youtube.com/channel/UCbkqRu9kElIV3gxhycCHKxQ',
     officialChannelId: 'UCbkqRu9kElIV3gxhycCHKxQ',
+    streamType: 'youtube',
+    priority: 1,
+    enabled: true,
+    supportsDynamicLiveDetection: true,
+  },
+  {
+    id: 'by-church',
+    countryCode: 'BY',
+    name: 'Белорусская Православная Церковь',
+    location: 'Minsk',
+    provider: 'Belarusian Orthodox Church',
+    officialWebsiteUrl: 'https://church.by/',
+    officialChannelUrl: 'https://www.youtube.com/channel/UCYFr-IXbe8u8yhoM_QHw_LQ',
+    officialChannelId: 'UCYFr-IXbe8u8yhoM_QHw_LQ',
     streamType: 'youtube',
     priority: 1,
     enabled: true,
