@@ -389,6 +389,13 @@ test('Edge Function reads editorial notification messages with safe fallback', (
   assert.ok(fn.includes('buildNotificationTitle'));
 });
 
+test('Edge Function has fallback Bible thought for every complete app language', () => {
+  const fn = readFileSync(join(root, 'supabase/functions/send-daily-notifications/index.ts'), 'utf8');
+  for (const language of ['ro', 'en', 'el', 'sr', 'bg', 'mk', 'uk', 'ka', 'ru', 'sq']) {
+    assert.ok(fn.includes(`${language}: {`), `missing fallback content for ${language}`);
+  }
+});
+
 // Migration structural checks
 test('migration adds notification_type and reservation functions', () => {
   const m = readFileSync(join(root, 'supabase/migrations/20260902000200_add_notification_idempotency.sql'), 'utf8');
@@ -425,6 +432,15 @@ test('migration creates editorial notification messages and seeds RO/EN fallback
   assert.ok(m.includes("('ro', null, null, 'daily'"));
   assert.ok(m.includes("('en', null, null, 'daily'"));
   assert.ok(m.includes('notification_messages_read_active'));
+});
+
+test('migration seeds multilingual editorial notification messages', () => {
+  const m = readFileSync(join(root, 'supabase/migrations/20260912191000_seed_multilingual_notification_messages.sql'), 'utf8');
+  for (const language of ['el', 'sr', 'bg', 'mk', 'uk', 'ka', 'ru', 'sq']) {
+    for (const dayType of ['daily', 'sunday', 'fasting', 'red_cross']) {
+      assert.ok(m.includes(`('${language}', null, null, '${dayType}'`), `missing ${language}/${dayType}`);
+    }
+  }
 });
 
 // notification-logic.ts structural checks

@@ -62,10 +62,50 @@ const FALLBACK_DAILY_CONTENT: Record<string, DailyContent> = {
     verse_source: 'John 14:27',
     verse_text: 'Peace I leave with you',
   },
+  bg: {
+    parable_title: 'Мисъл за деня',
+    verse_source: 'Йоан 14:27',
+    verse_text: 'Мир ви оставям',
+  },
+  el: {
+    parable_title: 'Σκέψη της ημέρας',
+    verse_source: 'Ιωάννης 14:27',
+    verse_text: 'Ειρήνη αφήνω σε σας',
+  },
+  ka: {
+    parable_title: 'დღის ფიქრი',
+    verse_source: 'იოანე 14:27',
+    verse_text: 'მშვიდობას გიტოვებთ თქვენ',
+  },
+  mk: {
+    parable_title: 'Мисла на денот',
+    verse_source: 'Јован 14:27',
+    verse_text: 'Мир ви оставам',
+  },
   ro: {
     parable_title: 'Gândul zilei',
     verse_source: 'Ioan 14, 27',
     verse_text: 'Pacea Mea o dau vouă',
+  },
+  ru: {
+    parable_title: 'Мысль дня',
+    verse_source: 'Иоанн 14:27',
+    verse_text: 'Мир оставляю вам',
+  },
+  sq: {
+    parable_title: 'Mendimi i ditës',
+    verse_source: 'Gjoni 14:27',
+    verse_text: 'Paqen po ju lë',
+  },
+  sr: {
+    parable_title: 'Мисао дана',
+    verse_source: 'Јован 14:27',
+    verse_text: 'Мир вам остављам',
+  },
+  uk: {
+    parable_title: 'Думка дня',
+    verse_source: 'Іван 14:27',
+    verse_text: 'Мир залишаю вам',
   },
 };
 
