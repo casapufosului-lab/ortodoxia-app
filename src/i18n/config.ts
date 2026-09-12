@@ -11,7 +11,7 @@ export function isSupportedLanguage(code: string): code is LanguageCode {
 export function resolveLanguageCode(code: string | null | undefined): LanguageCode {
   return code && isSupportedLanguage(code) ? code : 'ro';
 }
-export type CalendarCode = 'ro-bor' | 'md-basarabia' | 'md-chisinau' | 'gr-church-of-greece' | 'cy-church-of-cyprus' | 'rs-serbian-orthodox-church' | 'ua-orthodox-church-of-ukraine' | 'bg-bulgarian-patriarchate' | 'mk-macedonian-orthodox-church' | 'ge-georgian-orthodox-church' | 'ru-russian-orthodox-church' | 'by-belarusian-orthodox-church' | 'al-orthodox-autocephalous-church';
+export type CalendarCode = 'ro-bor' | 'md-basarabia' | 'md-chisinau' | 'gr-church-of-greece' | 'cy-church-of-cyprus' | 'rs-serbian-orthodox-church' | 'me-metropolitanate-montenegro-littoral' | 'ua-orthodox-church-of-ukraine' | 'bg-bulgarian-patriarchate' | 'mk-macedonian-orthodox-church' | 'ge-georgian-orthodox-church' | 'ru-russian-orthodox-church' | 'by-belarusian-orthodox-church' | 'al-orthodox-autocephalous-church';
 
 export type RegionConfig = {
   countryCode: CountryCode;
@@ -202,6 +202,14 @@ export const CALENDAR_OPTIONS: readonly CalendarConfig[] = [
   jurisdictionLabel: 'Biserica Ortodoxă Sârbă',
   label: 'Calendar ortodox sârb 2026',
   officialUrl: 'https://spc.rs/',
+},
+{
+  calendarCode: 'me-metropolitanate-montenegro-littoral',
+  countryCode: 'ME',
+  description: 'Calendarul bisericesc 2026 al Mitropoliei Muntenegrului și Litoralului.',
+  jurisdictionLabel: 'Mitropolia Muntenegrului și Litoralului',
+  label: 'Calendar ortodox muntenegrean 2026',
+  officialUrl: 'https://mitropolija.com/',
 },
 {
   calendarCode: 'bg-bulgarian-patriarchate',
