@@ -26,38 +26,37 @@ export function AuthProvider({ children }: PropsWithChildren) {
     let isMounted = true;
 
     const loadInitialSession = async () => {
-      const recoverySession = await getInitialNativePasswordRecoverySession();
-      if (!isMounted) return;
+      try {
+        const recoverySession = await getInitialNativePasswordRecoverySession();
+        if (!isMounted) return;
 
-      startupResolvedRef.current = true;
+        startupResolvedRef.current = true;
 
-      if (recoverySession) {
+        if (recoverySession) {
+          pendingAuthEventRef.current = null;
+          setSession(recoverySession);
+          setIsPasswordRecovery(true);
+          return;
+        }
+
+        const pendingAuthEvent = pendingAuthEventRef.current;
         pendingAuthEventRef.current = null;
-        setSession(recoverySession);
-        setIsPasswordRecovery(true);
-        setIsLoading(false);
-        return;
-      }
+        if (pendingAuthEvent) {
+          setSession(pendingAuthEvent.session);
+          setIsPasswordRecovery((current) => (
+            pendingAuthEvent.event === 'PASSWORD_RECOVERY'
+              ? true
+              : pendingAuthEvent.event === 'SIGNED_OUT'
+                ? false
+                : current
+          ));
+          return;
+        }
 
-      const pendingAuthEvent = pendingAuthEventRef.current;
-      pendingAuthEventRef.current = null;
-      if (pendingAuthEvent) {
-        setSession(pendingAuthEvent.session);
-        setIsPasswordRecovery((current) => (
-          pendingAuthEvent.event === 'PASSWORD_RECOVERY'
-            ? true
-            : pendingAuthEvent.event === 'SIGNED_OUT'
-              ? false
-              : current
-        ));
-        setIsLoading(false);
-        return;
-      }
-
-      const { data } = await supabase.auth.getSession();
-      if (isMounted) {
-        setSession(data.session);
-        setIsLoading(false);
+        const { data } = await supabase.auth.getSession();
+        if (isMounted) setSession(data.session);
+      } finally {
+        if (isMounted) setIsLoading(false);
       }
     };
 
