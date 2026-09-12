@@ -242,6 +242,13 @@ export const LIVE_SOURCES: readonly LiveSourceDef[] = [
     enabled: true,
     supportsDynamicLiveDetection: true,
   },
+  {
+    id: 'me-mitropolija',
+    countryCode: 'ME',
+    officialChannelId: 'UC2MtGr5f4o5bC1Un7XKoZuw',
+    enabled: true,
+    supportsDynamicLiveDetection: true,
+  },
 ];
 
 /** Enabled sources eligible for dynamic YouTube discovery. */

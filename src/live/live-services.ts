@@ -84,6 +84,8 @@ export const ALLOWED_DOMAINS = [
   'www.orthodoxalbania.org',
   'church.by',
   'www.church.by',
+  'mitropolija.com',
+  'www.mitropolija.com',
 ] as const;
 
 /** A stable handle on an allowed domain (used for quick lookups). */
@@ -553,6 +555,20 @@ export const LIVE_SOURCES: readonly PermanentLiveSource[] = [
     officialWebsiteUrl: 'https://church.by/',
     officialChannelUrl: 'https://www.youtube.com/channel/UCYFr-IXbe8u8yhoM_QHw_LQ',
     officialChannelId: 'UCYFr-IXbe8u8yhoM_QHw_LQ',
+    streamType: 'youtube',
+    priority: 1,
+    enabled: true,
+    supportsDynamicLiveDetection: true,
+  },
+  {
+    id: 'me-mitropolija',
+    countryCode: 'ME',
+    name: 'Митрополија црногорско-приморска',
+    location: 'Cetinje',
+    provider: 'Metropolitanate of Montenegro and the Littoral',
+    officialWebsiteUrl: 'https://mitropolija.com/uzivo/',
+    officialChannelUrl: 'https://www.youtube.com/channel/UC2MtGr5f4o5bC1Un7XKoZuw',
+    officialChannelId: 'UC2MtGr5f4o5bC1Un7XKoZuw',
     streamType: 'youtube',
     priority: 1,
     enabled: true,
