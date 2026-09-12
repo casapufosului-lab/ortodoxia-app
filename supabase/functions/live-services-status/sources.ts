@@ -228,6 +228,13 @@ export const LIVE_SOURCES: readonly LiveSourceDef[] = [
     enabled: true,
     supportsDynamicLiveDetection: true,
   },
+  {
+    id: 'al-orthodoxalbania',
+    countryCode: 'AL',
+    officialChannelId: 'UCbkqRu9kElIV3gxhycCHKxQ',
+    enabled: true,
+    supportsDynamicLiveDetection: true,
+  },
 ];
 
 /** Enabled sources eligible for dynamic YouTube discovery. */

@@ -80,6 +80,8 @@ export const ALLOWED_DOMAINS = [
   'sstv.ge',
   'www.sstv.ge',
   'stream.sstv.ge',
+  'orthodoxalbania.org',
+  'www.orthodoxalbania.org',
 ] as const;
 
 /** A stable handle on an allowed domain (used for quick lookups). */
@@ -523,6 +525,20 @@ export const LIVE_SOURCES: readonly PermanentLiveSource[] = [
     officialChannelId: 'UCVb1R12ix7LfQEZu5lVW3oQ',
     streamType: 'youtube',
     priority: 2,
+    enabled: true,
+    supportsDynamicLiveDetection: true,
+  },
+  {
+    id: 'al-orthodoxalbania',
+    countryCode: 'AL',
+    name: 'Kisha Orthodhokse Autoqefale e Shqipërisë',
+    location: 'Tirana',
+    provider: 'Orthodox Autocephalous Church of Albania',
+    officialWebsiteUrl: 'https://orthodoxalbania.org/',
+    officialChannelUrl: 'https://www.youtube.com/channel/UCbkqRu9kElIV3gxhycCHKxQ',
+    officialChannelId: 'UCbkqRu9kElIV3gxhycCHKxQ',
+    streamType: 'youtube',
+    priority: 1,
     enabled: true,
     supportsDynamicLiveDetection: true,
   },
