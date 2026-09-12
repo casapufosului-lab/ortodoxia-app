@@ -193,6 +193,27 @@ export const LIVE_SOURCES: readonly LiveSourceDef[] = [
     enabled: true,
     supportsDynamicLiveDetection: true,
   },
+  {
+    id: 'ru-russianchurch',
+    countryCode: 'RU',
+    officialChannelId: 'UCABKpHlJJ7qnw_qg2_v95eA',
+    enabled: true,
+    supportsDynamicLiveDetection: true,
+  },
+  {
+    id: 'ru-tv-soyuz',
+    countryCode: 'RU',
+    officialChannelId: 'UCmT_7bJwaBtmKqhBpwV6hmA',
+    enabled: true,
+    supportsDynamicLiveDetection: true,
+  },
+  {
+    id: 'ru-stslavra',
+    countryCode: 'RU',
+    officialChannelId: 'UCNBz0LB0EWm1Z5_WuRHvwWg',
+    enabled: true,
+    supportsDynamicLiveDetection: true,
+  },
 ];
 
 /** Enabled sources eligible for dynamic YouTube discovery. */
