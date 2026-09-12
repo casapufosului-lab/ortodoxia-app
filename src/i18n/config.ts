@@ -11,7 +11,7 @@ export function isSupportedLanguage(code: string): code is LanguageCode {
 export function resolveLanguageCode(code: string | null | undefined): LanguageCode {
   return code && isSupportedLanguage(code) ? code : 'ro';
 }
-export type CalendarCode = 'ro-bor' | 'md-basarabia' | 'md-chisinau' | 'gr-church-of-greece' | 'cy-church-of-cyprus' | 'rs-serbian-orthodox-church' | 'ua-orthodox-church-of-ukraine';
+export type CalendarCode = 'ro-bor' | 'md-basarabia' | 'md-chisinau' | 'gr-church-of-greece' | 'cy-church-of-cyprus' | 'rs-serbian-orthodox-church' | 'ua-orthodox-church-of-ukraine' | 'bg-bulgarian-patriarchate';
 
 export type RegionConfig = {
   countryCode: CountryCode;
@@ -202,6 +202,14 @@ export const CALENDAR_OPTIONS: readonly CalendarConfig[] = [
   jurisdictionLabel: 'Biserica Ortodoxă Sârbă',
   label: 'Calendar ortodox sârb 2026',
   officialUrl: 'https://spc.rs/',
+},
+{
+  calendarCode: 'bg-bulgarian-patriarchate',
+  countryCode: 'BG',
+  description: 'Calendarul bisericesc 2026 al Bisericii Ortodoxe Bulgare.',
+  jurisdictionLabel: 'Biserica Ortodoxă Bulgară',
+  label: 'Calendar ortodox bulgar 2026',
+  officialUrl: 'https://bg-patriarshia.bg/calendar',
 },
 {
   calendarCode: 'ua-orthodox-church-of-ukraine',
