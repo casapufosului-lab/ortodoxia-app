@@ -63,6 +63,8 @@ export const ALLOWED_DOMAINS = [
   'www.bg-patriarshia.bg',
   'plovdivskamitropolia.bg',
   'www.plovdivskamitropolia.bg',
+  'mpc.org.mk',
+  'www.mpc.org.mk',
 ] as const;
 
 /** A stable handle on an allowed domain (used for quick lookups). */
@@ -394,6 +396,20 @@ export const LIVE_SOURCES: readonly PermanentLiveSource[] = [
     officialChannelId: 'UC9AoegqiRGrm1IQie6YDCcg',
     streamType: 'youtube',
     priority: 2,
+    enabled: true,
+    supportsDynamicLiveDetection: true,
+  },
+  {
+    id: 'mk-mpc-oa',
+    countryCode: 'MK',
+    name: 'MPC-OA',
+    location: 'Skopje',
+    provider: 'Macedonian Orthodox Church - Ohrid Archbishopric',
+    officialWebsiteUrl: 'https://www.mpc.org.mk/',
+    officialChannelUrl: 'https://www.youtube.com/channel/UCzdcG77BgO89YYprha7P1jA',
+    officialChannelId: 'UCzdcG77BgO89YYprha7P1jA',
+    streamType: 'youtube',
+    priority: 1,
     enabled: true,
     supportsDynamicLiveDetection: true,
   },

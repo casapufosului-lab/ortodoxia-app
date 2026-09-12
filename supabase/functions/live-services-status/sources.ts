@@ -172,6 +172,13 @@ export const LIVE_SOURCES: readonly LiveSourceDef[] = [
     enabled: true,
     supportsDynamicLiveDetection: true,
   },
+  {
+    id: 'mk-mpc-oa',
+    countryCode: 'MK',
+    officialChannelId: 'UCzdcG77BgO89YYprha7P1jA',
+    enabled: true,
+    supportsDynamicLiveDetection: true,
+  },
 ];
 
 /** Enabled sources eligible for dynamic YouTube discovery. */
