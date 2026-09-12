@@ -5,7 +5,7 @@ import { ActivityIndicator, Alert, Platform, Pressable, StyleSheet, Text, TextIn
 import { Card, PageHeader, PrimaryButton, Screen, SecondaryButton, SectionTitle } from '@/components/mvp-ui';
 import { palette } from '@/constants/palette';
 import { useSubscription } from '@/hooks/use-subscription';
-import { COMPLETE_LANGUAGES, SUPPORTED_REGIONS } from '@/i18n/config';
+import { COMPLETE_LANGUAGES, SUPPORTED_REGIONS, getCountryLabel } from '@/i18n/config';
 import type { CompleteLanguageCode, TranslationKey } from '@/i18n/config';
 import { AccountDeletionError, requestAccountDeletion } from '@/lib/account-deletion';
 import { registerForPushNotificationsAsync } from '@/lib/notifications';
@@ -325,7 +325,7 @@ export default function AccountScreen() {
                 key={option.countryCode}
                 onPress={() => void setCountryCode(option.countryCode)}
                 style={[styles.regionOption, isSelected && styles.regionOptionSelected]}>
-                <Text style={[styles.regionOptionTitle, isSelected && styles.regionOptionTitleSelected]}>{option.countryLabel}</Text>
+                <Text style={[styles.regionOptionTitle, isSelected && styles.regionOptionTitleSelected]}>{getCountryLabel(option.countryCode, languageCode)}</Text>
                 <Text style={[styles.regionOptionMeta, isSelected && styles.regionOptionMetaSelected]}>{option.locale}</Text>
               </Pressable>
             );

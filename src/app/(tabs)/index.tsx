@@ -4,8 +4,9 @@ import { ActivityIndicator, AppState, Platform, Pressable, StyleSheet, Text, Vie
 
 import { Card, PageHeader, PrimaryButton, Screen, SectionTitle } from '@/components/mvp-ui';
 import { palette } from '@/constants/palette';
-import { dateKeyInTimeZone } from '@/i18n/config';
+import { dateKeyInTimeZone, getCountryLabel } from '@/i18n/config';
 import { getEnabledLiveSources } from '@/live/live-services';
+import { getMoldovaCalendarFallbackDay, hasMoldovaCalendarFallback } from '@/lib/moldova-calendar-fallback';
 import { supabase } from '@/lib/supabase';
 import { useLocalization } from '@/providers/localization-provider';
 
@@ -71,6 +72,10 @@ export default function HomeScreen() {
         return;
       }
 
+      if (hasMoldovaCalendarFallback(calendarCode)) {
+        setCalendarDay(getMoldovaCalendarFallbackDay(calendarCode, dateKey));
+      }
+
       let [dailyResult, calendarResult] = await Promise.all([
         supabase
           .from('daily_content')
@@ -133,7 +138,11 @@ export default function HomeScreen() {
       }
 
       setDailyContent(dailyResult.data as DailyContent);
-      setCalendarDay(calendarResult.data as CalendarDay);
+      setCalendarDay(
+        hasMoldovaCalendarFallback(calendarCode)
+          ? getMoldovaCalendarFallbackDay(calendarCode, dateKey)
+          : (calendarResult.data as CalendarDay | null),
+      );
     } catch {
       if (homeRequestRef.current !== requestId) return;
       setErrorMessage(t('home.unexpectedError'));
@@ -154,12 +163,11 @@ export default function HomeScreen() {
 
   return (
     <Screen>
-      <PageHeader eyebrow={dateLabel} title={t('home.pageTitle')} subtitle={`${region.countryLabel} · ${t('home.pageSubtitle')}`} />
+      <PageHeader eyebrow={dateLabel} title={t('home.pageTitle')} subtitle={`${getCountryLabel(countryCode, languageCode)} · ${t('home.pageSubtitle')}`} />
       {countryCode === 'MD' ? (
         <Card style={styles.noticeCard}>
           <Text style={styles.noticeTitle}>{calendar?.label ?? t('account.calendarRequired')}</Text>
-          <Text style={styles.noticeText}>{calendar ? t('region.moldovaCalendarPending') : t('region.moldovaChooseCalendar')}</Text>
-          {!calendar ? <PrimaryButton label={t('common.chooseCalendar')} onPress={() => router.push('/account')} /> : null}
+          <Text style={styles.noticeText}>{calendar ? calendar.description : t('region.moldovaChooseCalendar')}</Text>
         </Card>
       ) : null}
       {errorMessage ? (
@@ -188,20 +196,16 @@ export default function HomeScreen() {
             <Text style={styles.body}>{dailyContent?.parable_text ?? t('home.parableBodyFallback')}</Text>
             {dailyContent?.editorial_source ? <Text style={styles.editorialSource}>{dailyContent.editorial_source}</Text> : null}
           </Card>
-          {countryCode !== 'MD' ? (
-            <>
-              <SectionTitle>{t('home.calendarSectionTitle')}</SectionTitle>
-              <Card>
-                <View style={styles.calendarRow}>
-                  <View style={styles.dateBox}><Text style={styles.dateNumber}>{dayNumber}</Text></View>
-                  <View style={styles.flex}>
-                    <Text style={styles.calendarTitle}>{calendarDay?.title ?? t('home.calendarDayFallback')}</Text>
-                    {calendarDay?.fasting_note ? <Text style={styles.fasting}>{calendarDay.fasting_note}</Text> : null}
-                  </View>
-                </View>
-              </Card>
-            </>
-          ) : null}
+          <SectionTitle>{t('home.calendarSectionTitle')}</SectionTitle>
+          <Card>
+            <View style={styles.calendarRow}>
+              <View style={styles.dateBox}><Text style={styles.dateNumber}>{dayNumber}</Text></View>
+              <View style={styles.flex}>
+                <Text style={styles.calendarTitle}>{calendarDay?.title ?? t('home.calendarDayFallback')}</Text>
+                {calendarDay?.fasting_note ? <Text style={styles.fasting}>{calendarDay.fasting_note}</Text> : null}
+              </View>
+            </View>
+          </Card>
         </>
       )}
       <SectionTitle>{t('home.liveSectionTitle')}</SectionTitle>

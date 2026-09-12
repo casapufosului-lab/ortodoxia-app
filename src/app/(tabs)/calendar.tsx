@@ -5,6 +5,7 @@ import { ActivityIndicator, AppState, Platform, Pressable, StyleSheet, Text, Vie
 import { Card, PageHeader, PrimaryButton, Screen, SectionTitle } from '@/components/mvp-ui';
 import { palette } from '@/constants/palette';
 import { dateKeyInTimeZone } from '@/i18n/config';
+import { getMoldovaCalendarFallbackRange, hasMoldovaCalendarFallback } from '@/lib/moldova-calendar-fallback';
 import { supabase } from '@/lib/supabase';
 import { useLocalization } from '@/providers/localization-provider';
 
@@ -23,7 +24,7 @@ function toDateKey(year: number, monthIndex: number, day: number) {
 }
 
 export default function CalendarScreen() {
-  const { calendar, calendarCode, countryCode, languageCode, region, t } = useLocalization();
+  const { availableCalendars, calendar, calendarCode, countryCode, languageCode, region, setCalendarCode, t } = useLocalization();
   const calendarLanguageCode = languageCode === region.languageCode ? region.languageCode : 'en';
   const weekdays = [t('calendar.weekdayLu'), t('calendar.weekdayMa'), t('calendar.weekdayMi'), t('calendar.weekdayJo'), t('calendar.weekdayVi'), t('calendar.weekdaySa'), t('calendar.weekdayDu')];
   const [today, setToday] = useState(() => new Date());
@@ -82,12 +83,6 @@ export default function CalendarScreen() {
     setIsLoading(true);
     setErrorMessage('');
 
-    if (countryCode === 'MD') {
-      setEntries([]);
-      setIsLoading(false);
-      return;
-    }
-
     if (!calendarCode) {
       setEntries([]);
       setIsLoading(false);
@@ -95,6 +90,11 @@ export default function CalendarScreen() {
     }
 
     try {
+      if (hasMoldovaCalendarFallback(calendarCode)) {
+        setEntries(getMoldovaCalendarFallbackRange(calendarCode, calendarView.monthStart, calendarView.monthEnd));
+        return;
+      }
+
       let { data, error } = await supabase.rpc('get_calendar_days_localized', {
         p_country_code: countryCode,
         p_calendar_code: calendarCode,
@@ -128,7 +128,12 @@ export default function CalendarScreen() {
         setErrorMessage(t('calendar.loadError'));
       } else {
         if (calendarRequestRef.current !== requestId) return;
-        setEntries(data ?? []);
+        const nextEntries = data ?? [];
+        setEntries(
+          nextEntries.length > 0
+            ? nextEntries
+            : getMoldovaCalendarFallbackRange(calendarCode, calendarView.monthStart, calendarView.monthEnd),
+        );
       }
     } catch {
       if (calendarRequestRef.current !== requestId) return;
@@ -162,8 +167,25 @@ export default function CalendarScreen() {
       />
       {countryCode === 'MD' ? (
         <Card style={styles.chooseCalendarCard}>
-          <Text style={styles.chooseCalendarTitle}>{t('calendar.unavailableTitle')}</Text>
-          <Text style={styles.note}>{t('calendar.moldovaUnavailable')}</Text>
+          <Text style={styles.chooseCalendarTitle}>{t('account.calendar')}</Text>
+          <Text style={styles.note}>{t('account.calendarDescription')}</Text>
+          <View style={styles.calendarOptions}>
+            {availableCalendars.map((option) => {
+              const isSelected = option.calendarCode === calendarCode;
+              return (
+                <Pressable
+                  accessibilityLabel={`${t('account.chooseCalendarAccessibility')} ${option.label}`}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: isSelected }}
+                  key={option.calendarCode}
+                  onPress={() => void setCalendarCode(option.calendarCode)}
+                  style={[styles.calendarOption, isSelected && styles.calendarOptionSelected]}>
+                  <Text style={[styles.calendarOptionTitle, isSelected && styles.calendarOptionTitleSelected]}>{option.label}</Text>
+                  <Text style={[styles.calendarOptionMeta, isSelected && styles.calendarOptionMetaSelected]}>{option.jurisdictionLabel}</Text>
+                </Pressable>
+              );
+            })}
+          </View>
         </Card>
       ) : !calendarCode ? (
         <Card style={styles.chooseCalendarCard}>
@@ -172,8 +194,6 @@ export default function CalendarScreen() {
           <PrimaryButton label={t('common.chooseCalendar')} onPress={() => router.push('/account')} />
         </Card>
       ) : null}
-      {countryCode !== 'MD' ? (
-        <>
       {errorMessage ? (
         <Card style={styles.errorCard}>
           <Text style={styles.errorText}>{errorMessage}</Text>
@@ -214,20 +234,34 @@ export default function CalendarScreen() {
                 key={day}
                 onPress={() => setSelection({ key: viewSelectionKey, day })}
                 style={[styles.day, selectedDay === day && styles.selectedDay]}>
-                <Text style={[styles.dayText, index % 7 === 6 && styles.sundayText, selectedDay === day && styles.selectedDayText]}>{day}</Text>
                 {(() => {
                   const dateKey = toDateKey(calendarView.year, calendarView.monthIndex, day);
                   const entry = entriesByDate.get(dateKey);
-                  if (!entry) return null;
-                  const normalizedRank = entry.feast_rank?.toLowerCase() ?? '';
-                  const isHighlightedFeast = (countryCode === 'GR' || countryCode === 'CY')
-                    ? ['δεσποτική εορτή', 'θεομητορική εορτή', 'μεγάλη εορτή'].some((marker) => normalizedRank.includes(marker))
-                    : ['red-cross', 'red_cross', 'cruce roșie', 'cruce rosie'].some((marker) => normalizedRank.includes(marker));
+                  const normalizedRank = entry?.feast_rank?.toLowerCase() ?? '';
+                  const normalizedRankAscii = normalizedRank.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+                  const isHighlightedFeast = countryCode === 'RS'
+                    ? normalizedRankAscii.includes('cruce rosie')
+                    : [
+                      'red-cross',
+                      'red_cross',
+                      'cruce rosie',
+                      'great feast',
+                      'major feast',
+                      'veliki praznik',
+                    ].some((marker) => normalizedRankAscii.includes(marker))
+                      || ['δεσποτική εορτή', 'θεομητορική εορτή', 'μεγάλη εορτή'].some((marker) => normalizedRank.includes(marker));
+                  const hasRedCalendarMark = isHighlightedFeast || index % 7 === 6;
+                  if (!entry) {
+                    return <Text style={[styles.dayText, hasRedCalendarMark && styles.sundayText, selectedDay === day && !hasRedCalendarMark && styles.selectedDayText]}>{day}</Text>;
+                  }
                   const primaryFeast = entry.title.split(';')[0].trim();
-                  return <View style={styles.dayDetails}>
-                    <Text style={[styles.crossMarker, isHighlightedFeast ? styles.redCross : styles.blackCross, selectedDay === day && styles.markerSelected]}>✝</Text>
-                    <Text numberOfLines={2} ellipsizeMode="tail" style={[styles.dayCaption, selectedDay === day && styles.captionSelected]}>{primaryFeast}</Text>
-                  </View>;
+                  return <>
+                    <Text style={[styles.dayText, hasRedCalendarMark && styles.sundayText, selectedDay === day && !hasRedCalendarMark && styles.selectedDayText]}>{day}</Text>
+                    <View style={styles.dayDetails}>
+                      <Text style={[styles.crossMarker, hasRedCalendarMark ? styles.redCross : styles.blackCross, selectedDay === day && !hasRedCalendarMark && styles.markerSelected]}>✝</Text>
+                      <Text numberOfLines={2} ellipsizeMode="tail" style={[styles.dayCaption, selectedDay === day && styles.captionSelected]}>{primaryFeast}</Text>
+                    </View>
+                  </>;
                 })()}
               </Pressable>
             ))}
@@ -251,8 +285,6 @@ export default function CalendarScreen() {
           <Text style={styles.note}>{t('calendar.emptyDay')}</Text>
         )}
       </Card>
-        </>
-      ) : null}
     </Screen>
   );
 }
@@ -290,6 +322,13 @@ const styles = StyleSheet.create({
   loading: { alignItems: 'center', gap: 8, paddingVertical: 32 },
   chooseCalendarCard: { backgroundColor: palette.blueSoft, borderColor: palette.blueSoft },
   chooseCalendarTitle: { color: palette.blue, fontSize: 15, fontWeight: '800' },
+  calendarOptions: { gap: 10 },
+  calendarOption: { backgroundColor: palette.paper, borderColor: palette.line, borderWidth: 1, borderRadius: 14, padding: 12, gap: 3 },
+  calendarOptionSelected: { backgroundColor: palette.blue, borderColor: palette.blue },
+  calendarOptionTitle: { color: palette.ink, fontSize: 14, fontWeight: '800' },
+  calendarOptionMeta: { color: palette.muted, fontSize: 12, fontWeight: '700' },
+  calendarOptionTitleSelected: { color: '#FFFFFF' },
+  calendarOptionMetaSelected: { color: '#D7E0EA' },
   errorCard: { borderColor: palette.danger },
   errorText: { color: palette.danger, fontSize: 14, lineHeight: 20 },
   retry: { color: palette.blue, fontWeight: '800' },
