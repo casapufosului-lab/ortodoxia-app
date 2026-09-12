@@ -11,7 +11,7 @@ export function isSupportedLanguage(code: string): code is LanguageCode {
 export function resolveLanguageCode(code: string | null | undefined): LanguageCode {
   return code && isSupportedLanguage(code) ? code : 'ro';
 }
-export type CalendarCode = 'ro-bor' | 'md-basarabia' | 'md-chisinau' | 'gr-church-of-greece' | 'cy-church-of-cyprus' | 'rs-serbian-orthodox-church' | 'ua-orthodox-church-of-ukraine' | 'bg-bulgarian-patriarchate' | 'mk-macedonian-orthodox-church' | 'ge-georgian-orthodox-church' | 'ru-russian-orthodox-church' | 'al-orthodox-autocephalous-church';
+export type CalendarCode = 'ro-bor' | 'md-basarabia' | 'md-chisinau' | 'gr-church-of-greece' | 'cy-church-of-cyprus' | 'rs-serbian-orthodox-church' | 'ua-orthodox-church-of-ukraine' | 'bg-bulgarian-patriarchate' | 'mk-macedonian-orthodox-church' | 'ge-georgian-orthodox-church' | 'ru-russian-orthodox-church' | 'by-belarusian-orthodox-church' | 'al-orthodox-autocephalous-church';
 
 export type RegionConfig = {
   countryCode: CountryCode;
@@ -242,6 +242,14 @@ export const CALENDAR_OPTIONS: readonly CalendarConfig[] = [
   jurisdictionLabel: 'Biserica Ortodoxă Rusă',
   label: 'Calendar ortodox rus 2026',
   officialUrl: 'https://azbyka.ru/days/',
+},
+{
+  calendarCode: 'by-belarusian-orthodox-church',
+  countryCode: 'BY',
+  description: 'Calendarul bisericesc 2026 al Bisericii Ortodoxe din Belarus.',
+  jurisdictionLabel: 'Biserica Ortodoxă din Belarus',
+  label: 'Calendar ortodox belarus 2026',
+  officialUrl: 'https://church.by/',
 },
 {
   calendarCode: 'al-orthodox-autocephalous-church',
