@@ -19,7 +19,7 @@ type Preference = {
   calendar_code: string | null;
 };
 
-type NotificationType = 'daily' | 'sunday' | 'red_cross';
+type NotificationType = 'daily' | 'sunday' | 'fasting' | 'red_cross';
 
 type DailyContent = {
   verse_text: string;
@@ -34,6 +34,16 @@ type CalendarDay = {
   fasting_note: string | null;
 };
 
+type NotificationMessage = {
+  language_code: string;
+  country_code: string | null;
+  calendar_code: string | null;
+  day_type: NotificationType;
+  theme: string;
+  title_template: string;
+  body_template: string;
+};
+
 type Device = {
   id: string;
   expo_push_token: string;
@@ -42,6 +52,22 @@ type Device = {
 // ─── Pure helpers ───────────────────────────────────────────────────────────
 
 const DEFAULT_TIMEZONE = 'Europe/Bucharest';
+const LANGUAGE_CODE_PATTERN = /^[a-z]{2}$/;
+const COUNTRY_CODE_PATTERN = /^[A-Z]{2}$/;
+const CALENDAR_CODE_PATTERN = /^[a-z0-9-]+$/;
+
+const FALLBACK_DAILY_CONTENT: Record<string, DailyContent> = {
+  en: {
+    parable_title: 'Thought of the Day',
+    verse_source: 'John 14:27',
+    verse_text: 'Peace I leave with you',
+  },
+  ro: {
+    parable_title: 'Gândul zilei',
+    verse_source: 'Ioan 14, 27',
+    verse_text: 'Pacea Mea o dau vouă',
+  },
+};
 
 /** Compute local date and time in the user's timezone. */
 export function isValidTimezone(timezone: string): boolean {
@@ -84,25 +110,94 @@ export function isSunday(timezone: string, now: Date = new Date()): boolean {
 /** Priority: red_cross > sunday > daily. ONE notification per user per day. */
 export function determineNotificationType(
   feastRank: string | null | undefined,
+  fastingNote: string | null | undefined,
   sunday: boolean,
 ): NotificationType {
   if (feastRank === 'cruce roșie') return 'red_cross';
   if (sunday) return 'sunday';
+  if (fastingNote && fastingNote.trim().length > 0) return 'fasting';
   return 'daily';
 }
 
-/** Check if configured HH:MM matches current local HH:MM. */
+function renderTemplate(template: string, values: Record<string, string>) {
+  return template.replace(/\{([a-z_]+)\}/g, (match, key) => values[key] ?? match);
+}
+
+function pickEditorialMessage(
+  messages: NotificationMessage[],
+  languageCode: string,
+  countryCode: string,
+  calendarCode: string | null,
+  type: NotificationType,
+  localDate: string,
+): NotificationMessage | null {
+  const languagePriority = [languageCode, 'en', 'ro'].filter((value, index, all) => all.indexOf(value) === index);
+  const dayPriority: NotificationType[] = type === 'daily' ? ['daily'] : [type, 'daily'];
+  const countryPriority = [countryCode, null];
+  const calendarPriority = [calendarCode, null];
+
+  for (const language of languagePriority) {
+    for (const dayType of dayPriority) {
+      for (const candidateCountry of countryPriority) {
+        for (const candidateCalendar of calendarPriority) {
+          const matches = messages.filter((message) => (
+            message.language_code === language
+            && message.day_type === dayType
+            && message.country_code === candidateCountry
+            && message.calendar_code === candidateCalendar
+          ));
+          if (matches.length > 0) {
+            const index = Math.abs([...localDate].reduce((sum, char) => sum + char.charCodeAt(0), 0)) % matches.length;
+            return matches[index];
+          }
+        }
+      }
+    }
+  }
+
+  return null;
+}
+
 /** Build notification body from verified content only. Never fabricates. */
 export function buildNotificationBody(
   type: NotificationType,
   content: DailyContent,
   calendar: CalendarDay | null,
+  message: NotificationMessage | null = null,
 ): string {
+  if (message) {
+    return renderTemplate(message.body_template, {
+      feast_title: calendar?.title ?? '',
+      verse_source: content.verse_source,
+      verse_text: content.verse_text,
+    }).replace(/\s+/g, ' ').trim();
+  }
+
   const parts = [`${content.verse_text} (${content.verse_source})`];
   if (calendar?.title) parts.push(calendar.title);
   if (type === 'red_cross') parts.push('Astăzi este zi cu cruce roșie.');
   parts.push('Deschide aplicația pentru mesajul zilei.');
   return parts.join(' ');
+}
+
+function buildNotificationTitle(message: NotificationMessage | null) {
+  return message?.title_template ?? 'Mesajul zilei';
+}
+
+function safeLanguageCode(value: string) {
+  return LANGUAGE_CODE_PATTERN.test(value) ? value : 'en';
+}
+
+function getFallbackDailyContent(languageCode: string): DailyContent {
+  return FALLBACK_DAILY_CONTENT[languageCode] ?? FALLBACK_DAILY_CONTENT.en;
+}
+
+function isSafeCountryCode(value: string) {
+  return COUNTRY_CODE_PATTERN.test(value);
+}
+
+function isSafeCalendarCode(value: string | null) {
+  return value === null || CALENDAR_CODE_PATTERN.test(value);
 }
 
 // ─── Response helper ────────────────────────────────────────────────────────
@@ -146,6 +241,12 @@ Deno.serve(async (req: Request) => {
   let skipped = 0;
 
   for (const preference of (preferences ?? []) as Preference[]) {
+    if (!isSafeCountryCode(preference.country_code) || !isSafeCalendarCode(preference.calendar_code)) {
+      skipped += 1;
+      continue;
+    }
+
+    const languageCode = safeLanguageCode(preference.language_code);
     const timezone = preference.timezone || DEFAULT_TIMEZONE;
     if (!isValidTimezone(timezone)) {
       skipped += 1;
@@ -164,7 +265,7 @@ Deno.serve(async (req: Request) => {
         .from('daily_content')
         .select('verse_text, verse_source, parable_title')
         .eq('country_code', preference.country_code)
-        .eq('language_code', preference.language_code)
+        .eq('language_code', languageCode)
         .eq('content_date', now.date)
         .eq('is_published', true)
         .maybeSingle(),
@@ -173,7 +274,7 @@ Deno.serve(async (req: Request) => {
             .from('calendar_days')
             .select('title, saints, feast_rank, fasting_note')
             .eq('country_code', preference.country_code)
-            .eq('language_code', preference.language_code)
+            .eq('language_code', languageCode)
             .eq('calendar_code', preference.calendar_code)
             .eq('calendar_date', now.date)
             .eq('is_published', true)
@@ -186,8 +287,8 @@ Deno.serve(async (req: Request) => {
         .eq('is_active', true),
     ]);
 
-    // ── Skip if no published content — never fabricate ──
-    if (contentResult.error || !contentResult.data) {
+    // ── Use published daily content when present; otherwise use a fixed editorial fallback. ──
+    if (contentResult.error) {
       skipped += 1;
       continue;
     }
@@ -203,12 +304,34 @@ Deno.serve(async (req: Request) => {
     }
 
     const calendar = calendarResult.data as CalendarDay | null;
+    const dailyContent = (contentResult.data as DailyContent | null) ?? getFallbackDailyContent(languageCode);
 
     // ── Notification type: exactly one per user per day ──
-    const notificationType = determineNotificationType(calendar?.feast_rank, sunday);
+    const notificationType = determineNotificationType(calendar?.feast_rank, calendar?.fasting_note, sunday);
+
+    const { data: messageRows } = await admin
+      .from('notification_messages')
+      .select('language_code, country_code, calendar_code, day_type, theme, title_template, body_template')
+      .eq('is_active', true)
+      .in('language_code', Array.from(new Set([languageCode, 'en', 'ro'])))
+      .in('day_type', Array.from(new Set([notificationType, 'daily'])))
+      .or(`country_code.is.null,country_code.eq.${preference.country_code}`)
+      .or(preference.calendar_code
+        ? `calendar_code.is.null,calendar_code.eq.${preference.calendar_code}`
+        : 'calendar_code.is.null');
+
+    const editorialMessage = pickEditorialMessage(
+      (messageRows ?? []) as NotificationMessage[],
+      languageCode,
+      preference.country_code,
+      preference.calendar_code,
+      notificationType,
+      now.date,
+    );
 
     // ── Build notification body from verified content ──
-    const body = buildNotificationBody(notificationType, contentResult.data as DailyContent, calendar);
+    const body = buildNotificationBody(notificationType, dailyContent, calendar, editorialMessage);
+    const title = buildNotificationTitle(editorialMessage);
 
     // ── Atomic reservation: prevents duplicate sends across concurrent workers ──
     const deviceIds = devices.map((d) => d.id);
@@ -240,7 +363,7 @@ Deno.serve(async (req: Request) => {
     // ── Push messages via Expo Push API ──
     const messages = pendingDevices.map((device) => ({
       to: device.expo_push_token,
-      title: 'Mesajul zilei',
+      title,
       body,
       data: { url: '/', contentDate: now.date, notificationType },
       channelId: 'daily-content',

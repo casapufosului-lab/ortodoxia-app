@@ -28,9 +28,10 @@ function isSunday(timezone, fixedDate) {
   return new Intl.DateTimeFormat('en-US', { timeZone: tz, weekday: 'long' }).format(dateToUse) === 'Sunday';
 }
 
-function determineNotificationType(feastRank, sunday) {
+function determineNotificationType(feastRank, fastingNote, sunday) {
   if (feastRank === 'cruce roșie') return 'red_cross';
   if (sunday) return 'sunday';
+  if (fastingNote && fastingNote.trim().length > 0) return 'fasting';
   return 'daily';
 }
 
@@ -38,7 +39,18 @@ function isNotificationDue(configuredTime, currentLocalTime) {
   return configuredTime.slice(0, 5) === currentLocalTime;
 }
 
-function buildNotificationBody(type, content, calendar) {
+function buildNotificationBody(type, content, calendar, editorialBodyTemplate = null) {
+  if (editorialBodyTemplate) {
+    return editorialBodyTemplate.replace(/\{([a-z_]+)\}/g, (match, key) => {
+      const values = {
+        feast_title: calendar?.title ?? '',
+        verse_source: content.verse_source,
+        verse_text: content.verse_text,
+      };
+      return values[key] ?? match;
+    }).replace(/\s+/g, ' ').trim();
+  }
+
   const parts = [`${content.verse_text} (${content.verse_source})`];
   if (calendar?.title) parts.push(calendar.title);
   if (type === 'red_cross') parts.push('Astăzi este zi cu cruce roșie.');
@@ -120,20 +132,25 @@ test('6. non-Sunday is correctly identified', () => {
 
 // 7. explicit feast_rank 'cruce rosie'
 test('7. red-cross feast rank produces red_cross notification type', () => {
-  assert.equal(determineNotificationType('cruce roșie', false), 'red_cross');
-  assert.equal(determineNotificationType('cruce roșie', true), 'red_cross');
+  assert.equal(determineNotificationType('cruce roșie', null, false), 'red_cross');
+  assert.equal(determineNotificationType('cruce roșie', 'Post', true), 'red_cross');
 });
 
 // 8. non-red-cross rank
 test('8. non-red-cross ranks produce correct notification type', () => {
-  assert.equal(determineNotificationType('cruce neagră', false), 'daily');
-  assert.equal(determineNotificationType('cruce neagră', true), 'sunday');
-  assert.equal(determineNotificationType('duminică', false), 'daily');
-  assert.equal(determineNotificationType('duminică', true), 'sunday');
-  assert.equal(determineNotificationType(null, false), 'daily');
-  assert.equal(determineNotificationType(null, true), 'sunday');
-  assert.equal(determineNotificationType(undefined, false), 'daily');
-  assert.equal(determineNotificationType(undefined, true), 'sunday');
+  assert.equal(determineNotificationType('cruce neagră', null, false), 'daily');
+  assert.equal(determineNotificationType('cruce neagră', 'Post', true), 'sunday');
+  assert.equal(determineNotificationType('duminică', null, false), 'daily');
+  assert.equal(determineNotificationType('duminică', null, true), 'sunday');
+  assert.equal(determineNotificationType(null, null, false), 'daily');
+  assert.equal(determineNotificationType(null, null, true), 'sunday');
+  assert.equal(determineNotificationType(undefined, null, false), 'daily');
+  assert.equal(determineNotificationType(undefined, null, true), 'sunday');
+});
+
+test('8b. fasting note produces fasting notification type on ordinary weekdays', () => {
+  assert.equal(determineNotificationType(null, 'Post', false), 'fasting');
+  assert.equal(determineNotificationType('cruce neagră', 'Wine and oil allowed', false), 'fasting');
 });
 
 // 9. notifications disabled
@@ -236,12 +253,11 @@ test('15. country and calendar codes are correctly mapped', () => {
   assert.equal(calendarCountryMismatch('MD', 'md-basarabia'), false);
 });
 
-// 16. missing content produces safe no-send
-test('16. missing daily_content produces skip', () => {
-  assert.equal(null !== null, false);
-  const err = { data: null, error: new Error('not found') };
-  assert.ok(err.error);
-  assert.equal(err.data, null);
+// 16. missing content uses trusted fallback
+test('16. missing daily_content can use trusted editorial fallback', () => {
+  const fallback = { verse_text: 'Pacea Mea o dau vouă', verse_source: 'Ioan 14, 27' };
+  const body = buildNotificationBody('daily', fallback, null, '{verse_text} ({verse_source})');
+  assert.equal(body, 'Pacea Mea o dau vouă (Ioan 14, 27)');
 });
 
 test('16b. missing calendar data still allows notification', () => {
@@ -276,7 +292,7 @@ test('19. no real network calls in test suite', () => {
 
 // 20. Sunday + red-cross overlap priority
 test('20. Sunday + cruce roșie → red_cross takes priority', () => {
-  assert.equal(determineNotificationType('cruce roșie', true), 'red_cross');
+  assert.equal(determineNotificationType('cruce roșie', 'Post', true), 'red_cross');
   const body = buildNotificationBody('red_cross', { verse_text: 'Is 40, 31', verse_source: 'Isaia 40, 31' }, { title: 'Schimbarea la Față', feast_rank: 'cruce roșie' });
   assert.ok(body.includes('Isaia 40, 31'));
   assert.ok(body.includes('Schimbarea la Față'));
@@ -299,6 +315,16 @@ test('sunday body: includes calendar title', () => {
 test('red_cross body: always includes cruce roșie', () => {
   const body = buildNotificationBody('red_cross', { verse_text: 'V', verse_source: 'S' }, { title: 'Tăierea capului', feast_rank: 'cruce roșie' });
   assert.ok(body.includes('Astăzi este zi cu cruce roșie.'));
+});
+
+test('editorial body template renders verified verse and feast placeholders', () => {
+  const body = buildNotificationBody(
+    'red_cross',
+    { verse_text: 'Pacea Mea o dau vouă', verse_source: 'Ioan 14, 27' },
+    { title: 'Schimbarea la Față', feast_rank: 'cruce roșie' },
+    'Astăzi este {feast_title}. {verse_text} ({verse_source})',
+  );
+  assert.equal(body, 'Astăzi este Schimbarea la Față. Pacea Mea o dau vouă (Ioan 14, 27)');
 });
 
 // Idempotency key
@@ -348,9 +374,19 @@ test('Edge Function does not log secrets', () => {
   assert.ok(!fn.includes('console.log(token)'));
 });
 
-test('Edge Function skips when content missing', () => {
+test('Edge Function skips only on daily_content error, not missing row', () => {
   const fn = readFileSync(join(root, 'supabase/functions/send-daily-notifications/index.ts'), 'utf8');
-  assert.ok(fn.includes('!contentResult.data'));
+  assert.ok(fn.includes('getFallbackDailyContent'));
+  assert.ok(fn.includes('if (contentResult.error)'));
+  assert.ok(!fn.includes('contentResult.error || !contentResult.data'));
+});
+
+test('Edge Function reads editorial notification messages with safe fallback', () => {
+  const fn = readFileSync(join(root, 'supabase/functions/send-daily-notifications/index.ts'), 'utf8');
+  assert.ok(fn.includes(".from('notification_messages')"));
+  assert.ok(fn.includes('pickEditorialMessage'));
+  assert.ok(fn.includes('buildNotificationBody(notificationType'));
+  assert.ok(fn.includes('buildNotificationTitle'));
 });
 
 // Migration structural checks
@@ -380,6 +416,15 @@ test('notification reservation RPCs are service-role only', () => {
     assert.ok(m.includes('GRANT EXECUTE ON FUNCTION ' + signature));
     assert.ok(m.includes('TO service_role;'));
   }
+});
+
+test('migration creates editorial notification messages and seeds RO/EN fallbacks', () => {
+  const m = readFileSync(join(root, 'supabase/migrations/20260912190000_add_editorial_notification_messages.sql'), 'utf8');
+  assert.ok(m.includes('create table if not exists public.notification_messages'));
+  assert.ok(m.includes("day_type in ('daily', 'sunday', 'fasting', 'red_cross')"));
+  assert.ok(m.includes("('ro', null, null, 'daily'"));
+  assert.ok(m.includes("('en', null, null, 'daily'"));
+  assert.ok(m.includes('notification_messages_read_active'));
 });
 
 // notification-logic.ts structural checks
@@ -489,3 +534,4 @@ test('HIGH #8 invalid non-empty timezone is not silently replaced with Bucharest
   assert.ok(loop.includes('if (!isValidTimezone(timezone))'));
   assert.ok(loop.includes('continue'));
 });
+

@@ -14,7 +14,7 @@ const DEFAULT_TIMEZONE = 'Europe/Bucharest';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
-export type NotificationType = 'daily' | 'sunday' | 'red_cross';
+export type NotificationType = 'daily' | 'sunday' | 'fasting' | 'red_cross';
 
 // ─── Timezone / Date helpers ────────────────────────────────────────────────
 
@@ -78,10 +78,12 @@ export function isSunday(timezone: string, now: Date = new Date()): boolean {
  */
 export function determineNotificationType(
   feastRank: string | null | undefined,
+  fastingNote: string | null | undefined,
   isSundayToday: boolean,
 ): NotificationType {
   if (feastRank === 'cruce roșie') return 'red_cross';
   if (isSundayToday) return 'sunday';
+  if (fastingNote && fastingNote.trim().length > 0) return 'fasting';
   return 'daily';
 }
 
@@ -114,7 +116,19 @@ export function buildNotificationBody(
   type: NotificationType,
   content: { verse_text: string; verse_source: string },
   calendar: { title?: string | null; feast_rank?: string | null } | null,
+  editorialBodyTemplate?: string | null,
 ): string {
+  if (editorialBodyTemplate) {
+    return editorialBodyTemplate.replace(/\{([a-z_]+)\}/g, (match, key) => {
+      const values: Record<string, string> = {
+        feast_title: calendar?.title ?? '',
+        verse_source: content.verse_source,
+        verse_text: content.verse_text,
+      };
+      return values[key] ?? match;
+    }).replace(/\s+/g, ' ').trim();
+  }
+
   const parts = [`${content.verse_text} (${content.verse_source})`];
   if (calendar?.title) parts.push(calendar.title);
   if (type === 'red_cross') parts.push('Astăzi este zi cu cruce roșie.');
