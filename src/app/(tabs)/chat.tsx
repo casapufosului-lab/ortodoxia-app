@@ -54,6 +54,10 @@ function appendDictationText(current: string, transcript: string) {
   return cleanCurrent ? `${cleanCurrent} ${cleanTranscript}` : cleanTranscript;
 }
 
+function getDictationLocale(languageCode: string, regionLocale: string) {
+  return languageCode === 'en' ? 'en-US' : regionLocale;
+}
+
 export default function ChatScreen() {
   const { user } = useAuth();
   return <ChatConversation key={user?.id ?? 'guest'} />;
@@ -61,7 +65,7 @@ export default function ChatScreen() {
 
 function ChatConversation() {
   const { user } = useAuth();
-  const { region, t } = useLocalization();
+  const { languageCode, region, t } = useLocalization();
   const [input, setInput] = useState('');
   const [messages, setMessages] = useState<Message[]>([welcomeMessage(t)]);
   const [threadId, setThreadId] = useState<string | null>(null);
@@ -260,7 +264,7 @@ function ChatConversation() {
 
       setDictationMessage('Pornește microfonul...');
       ExpoSpeechRecognitionModule.start({
-        lang: region.locale,
+        lang: getDictationLocale(languageCode, region.locale),
         interimResults: false,
         maxAlternatives: 1,
         continuous: false,
