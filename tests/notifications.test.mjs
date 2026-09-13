@@ -31,6 +31,7 @@ function isSunday(timezone, fixedDate) {
 function determineNotificationType(feastRank, fastingNote, sunday) {
   if (feastRank === 'cruce roșie') return 'red_cross';
   if (sunday) return 'sunday';
+  if (feastRank === 'cruce neagră') return 'black_cross';
   if (fastingNote && fastingNote.trim().length > 0) return 'fasting';
   return 'daily';
 }
@@ -44,6 +45,7 @@ function buildNotificationBody(type, content, calendar, editorialBodyTemplate = 
     return editorialBodyTemplate.replace(/\{([a-z_]+)\}/g, (match, key) => {
       const values = {
         feast_title: calendar?.title ?? '',
+        fasting_note: calendar?.fasting_note ?? '',
         verse_source: content.verse_source,
         verse_text: content.verse_text,
       };
@@ -54,6 +56,7 @@ function buildNotificationBody(type, content, calendar, editorialBodyTemplate = 
   const parts = [`${content.verse_text} (${content.verse_source})`];
   if (calendar?.title) parts.push(calendar.title);
   if (type === 'red_cross') parts.push('Astăzi este zi cu cruce roșie.');
+  if (type === 'black_cross') parts.push('Astăzi este zi cu cruce neagră.');
   parts.push('Deschide aplicația pentru mesajul zilei.');
   return parts.join(' ');
 }
@@ -138,7 +141,7 @@ test('7. red-cross feast rank produces red_cross notification type', () => {
 
 // 8. non-red-cross rank
 test('8. non-red-cross ranks produce correct notification type', () => {
-  assert.equal(determineNotificationType('cruce neagră', null, false), 'daily');
+  assert.equal(determineNotificationType('cruce neagră', null, false), 'black_cross');
   assert.equal(determineNotificationType('cruce neagră', 'Post', true), 'sunday');
   assert.equal(determineNotificationType('duminică', null, false), 'daily');
   assert.equal(determineNotificationType('duminică', null, true), 'sunday');
@@ -150,7 +153,7 @@ test('8. non-red-cross ranks produce correct notification type', () => {
 
 test('8b. fasting note produces fasting notification type on ordinary weekdays', () => {
   assert.equal(determineNotificationType(null, 'Post', false), 'fasting');
-  assert.equal(determineNotificationType('cruce neagră', 'Wine and oil allowed', false), 'fasting');
+  assert.equal(determineNotificationType('cruce neagră', 'Wine and oil allowed', false), 'black_cross');
 });
 
 // 9. notifications disabled
@@ -299,6 +302,12 @@ test('20. Sunday + cruce roșie → red_cross takes priority', () => {
   assert.ok(body.includes('Astăzi este zi cu cruce roșie.'));
 });
 
+test('20b. cruce neagră uses black_cross after Sunday and red-cross priority', () => {
+  assert.equal(determineNotificationType('cruce neagră', null, false), 'black_cross');
+  assert.equal(determineNotificationType('cruce neagră', 'Post', false), 'black_cross');
+  assert.equal(determineNotificationType('cruce neagră', 'Post', true), 'sunday');
+});
+
 // Content builder variants
 test('daily body: no cruce roșie text', () => {
   const body = buildNotificationBody('daily', { verse_text: 'Ps 118', verse_source: 'Psalmi' }, null);
@@ -315,6 +324,11 @@ test('sunday body: includes calendar title', () => {
 test('red_cross body: always includes cruce roșie', () => {
   const body = buildNotificationBody('red_cross', { verse_text: 'V', verse_source: 'S' }, { title: 'Tăierea capului', feast_rank: 'cruce roșie' });
   assert.ok(body.includes('Astăzi este zi cu cruce roșie.'));
+});
+
+test('black_cross body: fallback includes cruce neagră', () => {
+  const body = buildNotificationBody('black_cross', { verse_text: 'V', verse_source: 'S' }, { title: 'Sfântul zilei', feast_rank: 'cruce neagră' });
+  assert.ok(body.includes('Astăzi este zi cu cruce neagră.'));
 });
 
 test('editorial body template renders verified verse and feast placeholders', () => {
@@ -432,6 +446,17 @@ test('migration creates editorial notification messages and seeds RO/EN fallback
   assert.ok(m.includes("('ro', null, null, 'daily'"));
   assert.ok(m.includes("('en', null, null, 'daily'"));
   assert.ok(m.includes('notification_messages_read_active'));
+});
+
+test('migration seeds Romanian daily notification message bank', () => {
+  const m = readFileSync(join(root, 'supabase/migrations/20260913120000_seed_ro_daily_notification_message_bank.sql'), 'utf8');
+  assert.ok(m.includes("day_type in ('daily', 'sunday', 'fasting', 'red_cross', 'black_cross')"));
+  assert.ok(m.includes("('ro', null, null, 'black_cross'"));
+  assert.ok(m.includes("('ro', null, null, 'red_cross'"));
+  assert.ok(m.includes("('ro', null, null, 'sunday'"));
+  assert.ok(m.includes("('ro', null, null, 'fasting'"));
+  assert.ok(m.includes("('ro', null, null, 'daily'"));
+  assert.equal((m.match(/\('ro', null, null,/g) ?? []).length, 370);
 });
 
 test('migration seeds multilingual editorial notification messages', () => {

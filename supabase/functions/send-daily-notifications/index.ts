@@ -19,7 +19,7 @@ type Preference = {
   calendar_code: string | null;
 };
 
-type NotificationType = 'daily' | 'sunday' | 'fasting' | 'red_cross';
+type NotificationType = 'daily' | 'sunday' | 'fasting' | 'red_cross' | 'black_cross';
 
 type DailyContent = {
   verse_text: string;
@@ -147,7 +147,7 @@ export function isSunday(timezone: string, now: Date = new Date()): boolean {
   return weekday === 'Sunday';
 }
 
-/** Priority: red_cross > sunday > daily. ONE notification per user per day. */
+/** Priority: red_cross > sunday > black_cross > fasting > daily. ONE notification per user per day. */
 export function determineNotificationType(
   feastRank: string | null | undefined,
   fastingNote: string | null | undefined,
@@ -155,6 +155,7 @@ export function determineNotificationType(
 ): NotificationType {
   if (feastRank === 'cruce roșie') return 'red_cross';
   if (sunday) return 'sunday';
+  if (feastRank === 'cruce neagră') return 'black_cross';
   if (fastingNote && fastingNote.trim().length > 0) return 'fasting';
   return 'daily';
 }
@@ -208,6 +209,7 @@ export function buildNotificationBody(
   if (message) {
     return renderTemplate(message.body_template, {
       feast_title: calendar?.title ?? '',
+      fasting_note: calendar?.fasting_note ?? '',
       verse_source: content.verse_source,
       verse_text: content.verse_text,
     }).replace(/\s+/g, ' ').trim();
@@ -216,6 +218,7 @@ export function buildNotificationBody(
   const parts = [`${content.verse_text} (${content.verse_source})`];
   if (calendar?.title) parts.push(calendar.title);
   if (type === 'red_cross') parts.push('Astăzi este zi cu cruce roșie.');
+  if (type === 'black_cross') parts.push('Astăzi este zi cu cruce neagră.');
   parts.push('Deschide aplicația pentru mesajul zilei.');
   return parts.join(' ');
 }
