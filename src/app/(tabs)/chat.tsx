@@ -1,5 +1,4 @@
 import { FunctionsHttpError } from '@supabase/supabase-js';
-import { ExpoSpeechRecognitionModule, useSpeechRecognitionEvent } from 'expo-speech-recognition';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { router, useFocusEffect } from 'expo-router';
 import { SymbolView } from 'expo-symbols';
@@ -15,6 +14,29 @@ import { useLocalization } from '@/providers/localization-provider';
 
 type Message = { id: string; role: 'user' | 'assistant'; text: string };
 type DictationStatus = 'idle' | 'listening' | 'processing' | 'error';
+type SpeechRecognitionModule = {
+  abort: () => void;
+  addListener: (eventName: string, listener: (event?: SpeechRecognitionEvent) => void) => { remove: () => void };
+  isRecognitionAvailable: () => boolean;
+  requestPermissionsAsync: () => Promise<{ granted: boolean }>;
+  start: (options: {
+    continuous: boolean;
+    interimResults: boolean;
+    iosTaskHint: 'dictation';
+    lang: string;
+    maxAlternatives: number;
+  }) => void;
+  stop: () => void;
+};
+type SpeechRecognitionEvent = {
+  error?: string;
+  isFinal?: boolean;
+  results?: { transcript?: string }[];
+};
+
+declare const require: (moduleName: string) => unknown;
+
+let speechRecognitionModule: SpeechRecognitionModule | null | undefined;
 
 type ChatResponse = {
   reply: string;
@@ -58,6 +80,21 @@ function getDictationLocale(languageCode: string, regionLocale: string) {
   return languageCode === 'en' ? 'en-US' : regionLocale;
 }
 
+function getSpeechRecognitionModule() {
+  if (speechRecognitionModule !== undefined) return speechRecognitionModule;
+
+  try {
+    const speechRecognition = require('expo-speech-recognition') as {
+      ExpoSpeechRecognitionModule?: SpeechRecognitionModule;
+    };
+    speechRecognitionModule = speechRecognition.ExpoSpeechRecognitionModule ?? null;
+  } catch {
+    speechRecognitionModule = null;
+  }
+
+  return speechRecognitionModule;
+}
+
 export default function ChatScreen() {
   const { user } = useAuth();
   return <ChatConversation key={user?.id ?? 'guest'} />;
@@ -82,36 +119,44 @@ function ChatConversation() {
   const [dictationStatus, setDictationStatus] = useState<DictationStatus>('idle');
   const [dictationMessage, setDictationMessage] = useState('');
 
-  useSpeechRecognitionEvent('start', () => {
-    setDictationStatus('listening');
-    setDictationMessage('Microfon activ. Vorbește acum.');
-  });
+  useEffect(() => {
+    const speechRecognition = getSpeechRecognitionModule();
+    if (!speechRecognition) return undefined;
 
-  useSpeechRecognitionEvent('result', (event) => {
-    const transcript = event.results[0]?.transcript ?? '';
-    if (!event.isFinal || !transcript.trim()) return;
+    const subscriptions = [
+      speechRecognition.addListener('start', () => {
+        setDictationStatus('listening');
+        setDictationMessage('Microfon activ. Vorbește acum.');
+      }),
+      speechRecognition.addListener('result', (event) => {
+        const transcript = event?.results?.[0]?.transcript ?? '';
+        if (!event?.isFinal || !transcript.trim()) return;
 
-    setInput((current) => appendDictationText(current, transcript));
-    setDictationStatus('processing');
-    setDictationMessage('Textul dictat a fost adăugat. Îl poți edita înainte de trimitere.');
-  });
+        setInput((current) => appendDictationText(current, transcript));
+        setDictationStatus('processing');
+        setDictationMessage('Textul dictat a fost adăugat. Îl poți edita înainte de trimitere.');
+      }),
+      speechRecognition.addListener('end', () => {
+        setDictationStatus('idle');
+      }),
+      speechRecognition.addListener('error', (event) => {
+        if (event?.error === 'aborted' || event?.error === 'no-speech' || event?.error === 'speech-timeout') {
+          setDictationStatus('idle');
+          setDictationMessage(event.error === 'aborted' ? '' : 'Dictarea s-a oprit fără text nou.');
+          return;
+        }
 
-  useSpeechRecognitionEvent('end', () => {
-    setDictationStatus('idle');
-  });
+        setDictationStatus('error');
+        setDictationMessage(event?.error === 'not-allowed'
+          ? 'Activează microfonul din setări pentru a folosi dictarea.'
+          : 'Dictarea nu a putut porni. Încearcă din nou.');
+      }),
+    ];
 
-  useSpeechRecognitionEvent('error', (event) => {
-    if (event.error === 'aborted' || event.error === 'no-speech' || event.error === 'speech-timeout') {
-      setDictationStatus('idle');
-      setDictationMessage(event.error === 'aborted' ? '' : 'Dictarea s-a oprit fără text nou.');
-      return;
-    }
-
-    setDictationStatus('error');
-    setDictationMessage(event.error === 'not-allowed'
-      ? 'Activează microfonul din setări pentru a folosi dictarea.'
-      : 'Dictarea nu a putut porni. Încearcă din nou.');
-  });
+    return () => {
+      subscriptions.forEach((subscription) => subscription.remove());
+    };
+  }, []);
 
   const loadConversation = useCallback(async () => {
     if (isSendingRef.current) {
@@ -232,14 +277,21 @@ function ChatConversation() {
 
   useEffect(() => () => {
     sendRequestRef.current += 1;
-    ExpoSpeechRecognitionModule.abort();
+    getSpeechRecognitionModule()?.abort();
   }, []);
 
   const toggleDictation = async () => {
+    const speechRecognition = getSpeechRecognitionModule();
+    if (!speechRecognition) {
+      setDictationStatus('error');
+      setDictationMessage('Repornește build-ul Android pentru a activa dictarea.');
+      return;
+    }
+
     if (dictationStatus === 'listening') {
       setDictationStatus('processing');
       setDictationMessage('Procesez dictarea...');
-      ExpoSpeechRecognitionModule.stop();
+      speechRecognition.stop();
       return;
     }
 
@@ -249,13 +301,13 @@ function ChatConversation() {
       setDictationStatus('processing');
       setDictationMessage('Pregătesc microfonul...');
 
-      if (!ExpoSpeechRecognitionModule.isRecognitionAvailable()) {
+      if (!speechRecognition.isRecognitionAvailable()) {
         setDictationStatus('error');
         setDictationMessage('Dictarea nu este disponibilă pe acest dispozitiv.');
         return;
       }
 
-      const permission = await ExpoSpeechRecognitionModule.requestPermissionsAsync();
+      const permission = await speechRecognition.requestPermissionsAsync();
       if (!permission.granted) {
         setDictationStatus('error');
         setDictationMessage('Activează microfonul din setări pentru a folosi dictarea.');
@@ -263,7 +315,7 @@ function ChatConversation() {
       }
 
       setDictationMessage('Pornește microfonul...');
-      ExpoSpeechRecognitionModule.start({
+      speechRecognition.start({
         lang: getDictationLocale(languageCode, region.locale),
         interimResults: false,
         maxAlternatives: 1,
