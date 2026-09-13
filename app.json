@@ -45,7 +45,9 @@
           "microphonePermission": "Permite aplicației Ortodoxia să folosească microfonul pentru dictarea întrebărilor.",
           "speechRecognitionPermission": "Permite aplicației Ortodoxia să transforme vocea dictată în text.",
           "androidSpeechServicePackages": [
-            "com.google.android.googlequicksearchbox"
+            "com.google.android.googlequicksearchbox",
+            "com.google.android.tts",
+            "com.google.android.as"
           ]
         }
       ]
