@@ -459,6 +459,16 @@ test('migration seeds Romanian daily notification message bank', () => {
   assert.equal((m.match(/\('ro', null, null,/g) ?? []).length, 370);
 });
 
+test('migration seeds complete multilingual daily notification message bank', () => {
+  const m = readFileSync(join(root, 'supabase/migrations/20260913121000_seed_multilingual_daily_notification_message_bank.sql'), 'utf8');
+  for (const language of ['en', 'el', 'sr', 'bg', 'mk', 'uk', 'ka', 'ru', 'sq']) {
+    assert.equal(m.split(`('${language}', null, null,`).length - 1, 370);
+  }
+  assert.equal((m.match(/\('(?:en|el|sr|bg|mk|uk|ka|ru|sq)', null, null,/g) ?? []).length, 3330);
+  assert.ok(m.includes('{feast_title}'));
+  assert.ok(m.includes('{fasting_note}'));
+});
+
 test('migration seeds multilingual editorial notification messages', () => {
   const m = readFileSync(join(root, 'supabase/migrations/20260912191000_seed_multilingual_notification_messages.sql'), 'utf8');
   for (const language of ['el', 'sr', 'bg', 'mk', 'uk', 'ka', 'ru', 'sq']) {
