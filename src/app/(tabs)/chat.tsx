@@ -1,6 +1,8 @@
 import { FunctionsHttpError } from '@supabase/supabase-js';
+import { ExpoSpeechRecognitionModule, useSpeechRecognitionEvent } from 'expo-speech-recognition';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { router, useFocusEffect } from 'expo-router';
+import { SymbolView } from 'expo-symbols';
 import { ActivityIndicator, AppState, KeyboardAvoidingView, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { Card, PageHeader, PrimaryButton, Screen } from '@/components/mvp-ui';
@@ -12,6 +14,7 @@ import { useAuth } from '@/providers/auth-provider';
 import { useLocalization } from '@/providers/localization-provider';
 
 type Message = { id: string; role: 'user' | 'assistant'; text: string };
+type DictationStatus = 'idle' | 'listening' | 'processing' | 'error';
 
 type ChatResponse = {
   reply: string;
@@ -44,6 +47,13 @@ function localDateKey() {
   return `${year}-${month}-${day}`;
 }
 
+function appendDictationText(current: string, transcript: string) {
+  const cleanTranscript = transcript.trim();
+  if (!cleanTranscript) return current;
+  const cleanCurrent = current.trimEnd();
+  return cleanCurrent ? `${cleanCurrent} ${cleanTranscript}` : cleanTranscript;
+}
+
 export default function ChatScreen() {
   const { user } = useAuth();
   return <ChatConversation key={user?.id ?? 'guest'} />;
@@ -51,7 +61,7 @@ export default function ChatScreen() {
 
 function ChatConversation() {
   const { user } = useAuth();
-  const { t } = useLocalization();
+  const { region, t } = useLocalization();
   const [input, setInput] = useState('');
   const [messages, setMessages] = useState<Message[]>([welcomeMessage(t)]);
   const [threadId, setThreadId] = useState<string | null>(null);
@@ -65,6 +75,39 @@ function ChatConversation() {
   const pendingLoadRef = useRef(false);
   const quotaDateRef = useRef(localDateKey());
   const [errorMessage, setErrorMessage] = useState('');
+  const [dictationStatus, setDictationStatus] = useState<DictationStatus>('idle');
+  const [dictationMessage, setDictationMessage] = useState('');
+
+  useSpeechRecognitionEvent('start', () => {
+    setDictationStatus('listening');
+    setDictationMessage('Microfon activ. Vorbește acum.');
+  });
+
+  useSpeechRecognitionEvent('result', (event) => {
+    const transcript = event.results[0]?.transcript ?? '';
+    if (!event.isFinal || !transcript.trim()) return;
+
+    setInput((current) => appendDictationText(current, transcript));
+    setDictationStatus('processing');
+    setDictationMessage('Textul dictat a fost adăugat. Îl poți edita înainte de trimitere.');
+  });
+
+  useSpeechRecognitionEvent('end', () => {
+    setDictationStatus('idle');
+  });
+
+  useSpeechRecognitionEvent('error', (event) => {
+    if (event.error === 'aborted' || event.error === 'no-speech' || event.error === 'speech-timeout') {
+      setDictationStatus('idle');
+      setDictationMessage(event.error === 'aborted' ? '' : 'Dictarea s-a oprit fără text nou.');
+      return;
+    }
+
+    setDictationStatus('error');
+    setDictationMessage(event.error === 'not-allowed'
+      ? 'Activează microfonul din setări pentru a folosi dictarea.'
+      : 'Dictarea nu a putut porni. Încearcă din nou.');
+  });
 
   const loadConversation = useCallback(async () => {
     if (isSendingRef.current) {
@@ -185,7 +228,49 @@ function ChatConversation() {
 
   useEffect(() => () => {
     sendRequestRef.current += 1;
+    ExpoSpeechRecognitionModule.abort();
   }, []);
+
+  const toggleDictation = async () => {
+    if (dictationStatus === 'listening') {
+      setDictationStatus('processing');
+      setDictationMessage('Procesez dictarea...');
+      ExpoSpeechRecognitionModule.stop();
+      return;
+    }
+
+    if (dictationStatus === 'processing') return;
+
+    try {
+      setDictationStatus('processing');
+      setDictationMessage('Pregătesc microfonul...');
+
+      if (!ExpoSpeechRecognitionModule.isRecognitionAvailable()) {
+        setDictationStatus('error');
+        setDictationMessage('Dictarea nu este disponibilă pe acest dispozitiv.');
+        return;
+      }
+
+      const permission = await ExpoSpeechRecognitionModule.requestPermissionsAsync();
+      if (!permission.granted) {
+        setDictationStatus('error');
+        setDictationMessage('Activează microfonul din setări pentru a folosi dictarea.');
+        return;
+      }
+
+      setDictationMessage('Pornește microfonul...');
+      ExpoSpeechRecognitionModule.start({
+        lang: region.locale,
+        interimResults: false,
+        maxAlternatives: 1,
+        continuous: false,
+        iosTaskHint: 'dictation',
+      });
+    } catch {
+      setDictationStatus('error');
+      setDictationMessage('Dictarea nu a putut porni. Încearcă din nou.');
+    }
+  };
 
   useEffect(() => {
     if (isSending || !pendingLoadRef.current) return;
@@ -341,10 +426,41 @@ function ChatConversation() {
             maxLength={1200}
             style={styles.input}
           />
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={dictationStatus === 'listening' ? 'Oprește dictarea' : 'Pornește dictarea'}
+            disabled={isSending || isLoading || dictationStatus === 'processing'}
+            onPress={() => void toggleDictation()}
+            style={[
+              styles.mic,
+              dictationStatus === 'listening' && styles.micListening,
+              dictationStatus === 'error' && styles.micError,
+              (isSending || isLoading || dictationStatus === 'processing') && styles.disabled,
+            ]}
+          >
+            <SymbolView
+              name={{ ios: dictationStatus === 'listening' ? 'mic.fill' : 'mic', android: 'mic', web: 'mic' }}
+              size={22}
+              tintColor={dictationStatus === 'listening' ? palette.blue : palette.ink}
+              fallback={<Text style={styles.micFallback}>Mic</Text>}
+            />
+          </Pressable>
           <Pressable accessibilityRole="button" disabled={isSending || isLoading} onPress={() => void send()} style={[styles.send, (isSending || isLoading) && styles.disabled]}>
             <Text style={styles.sendText}>{t('chat.sendButton')}</Text>
           </Pressable>
         </View>
+        {dictationMessage ? (
+          <Text
+            accessibilityLiveRegion="polite"
+            style={[
+              styles.dictationMessage,
+              dictationStatus === 'listening' && styles.dictationListeningText,
+              dictationStatus === 'error' && styles.dictationErrorText,
+            ]}
+          >
+            {dictationMessage}
+          </Text>
+        ) : null}
       </Screen>
     </KeyboardAvoidingView>
   );
@@ -363,8 +479,15 @@ const styles = StyleSheet.create({
   assistantText: { color: palette.ink, fontSize: 15, lineHeight: 21 },
   composer: { flexDirection: 'row', gap: 8, alignItems: 'flex-end' },
   input: { flex: 1, minHeight: 48, maxHeight: 120, backgroundColor: palette.paper, borderWidth: 1, borderColor: palette.line, borderRadius: 14, color: palette.ink, paddingHorizontal: 14, paddingVertical: 12 },
+  mic: { width: 48, height: 48, borderRadius: 14, backgroundColor: palette.paper, borderColor: palette.line, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
+  micListening: { backgroundColor: palette.blueSoft, borderColor: palette.blue },
+  micError: { borderColor: palette.danger },
+  micFallback: { color: palette.ink, fontSize: 11, fontWeight: '800' },
   send: { minHeight: 48, paddingHorizontal: 16, borderRadius: 14, backgroundColor: palette.goldDark, alignItems: 'center', justifyContent: 'center' },
   sendText: { color: '#FFFFFF', fontWeight: '800' },
+  dictationMessage: { color: palette.muted, fontSize: 12, lineHeight: 17, marginTop: -2 },
+  dictationListeningText: { color: palette.blue, fontWeight: '700' },
+  dictationErrorText: { color: palette.danger },
   disabled: { opacity: 0.55 },
   loading: { alignItems: 'center', gap: 8, paddingVertical: 30 },
   loadingText: { color: palette.muted, fontSize: 14 },

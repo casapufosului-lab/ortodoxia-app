@@ -38,6 +38,16 @@
           "image": "./assets/images/splash-icon.png",
           "imageWidth": 76
         }
+      ],
+      [
+        "expo-speech-recognition",
+        {
+          "microphonePermission": "Permite aplicației Ortodoxia să folosească microfonul pentru dictarea întrebărilor.",
+          "speechRecognitionPermission": "Permite aplicației Ortodoxia să transforme vocea dictată în text.",
+          "androidSpeechServicePackages": [
+            "com.google.android.googlequicksearchbox"
+          ]
+        }
       ]
     ],
     "experiments": {
