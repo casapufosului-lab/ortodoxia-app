@@ -2,7 +2,7 @@ import { FunctionsHttpError } from '@supabase/supabase-js';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { router, useFocusEffect } from 'expo-router';
 import { SymbolView } from 'expo-symbols';
-import { ActivityIndicator, AppState, Keyboard, KeyboardAvoidingView, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, AppState, KeyboardAvoidingView, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { Card, PageHeader, PrimaryButton, Screen } from '@/components/mvp-ui';
 import { palette } from '@/constants/palette';
@@ -113,7 +113,6 @@ function ChatConversation() {
   const isSendingRef = useRef(false);
   const loadRequestRef = useRef(0);
   const sendRequestRef = useRef(0);
-  const inputRef = useRef<TextInput | null>(null);
   const pendingLoadRef = useRef(false);
   const quotaDateRef = useRef(localDateKey());
   const [errorMessage, setErrorMessage] = useState('');
@@ -282,9 +281,6 @@ function ChatConversation() {
   }, []);
 
   const toggleDictation = async () => {
-    inputRef.current?.blur();
-    Keyboard.dismiss();
-
     const speechRecognition = getSpeechRecognitionModule();
     if (!speechRecognition) {
       setDictationStatus('error');
@@ -476,7 +472,6 @@ function ChatConversation() {
         )}
         <View style={styles.composer}>
           <TextInput
-            ref={inputRef}
             accessibilityLabel={t('chat.inputPlaceholder')}
             value={input}
             onChangeText={setInput}
@@ -510,18 +505,16 @@ function ChatConversation() {
             <Text style={styles.sendText}>{t('chat.sendButton')}</Text>
           </Pressable>
         </View>
-        {dictationMessage ? (
-          <Text
-            accessibilityLiveRegion="polite"
-            style={[
-              styles.dictationMessage,
-              dictationStatus === 'listening' && styles.dictationListeningText,
-              dictationStatus === 'error' && styles.dictationErrorText,
-            ]}
-          >
-            {dictationMessage}
-          </Text>
-        ) : null}
+        <Text
+          accessibilityLiveRegion="polite"
+          style={[
+            styles.dictationMessage,
+            dictationStatus === 'listening' && styles.dictationListeningText,
+            dictationStatus === 'error' && styles.dictationErrorText,
+          ]}
+        >
+          {dictationMessage || ' '}
+        </Text>
       </Screen>
     </KeyboardAvoidingView>
   );
