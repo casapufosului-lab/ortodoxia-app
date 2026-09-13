@@ -111,6 +111,8 @@ function ChatConversation() {
   const [isLoading, setIsLoading] = useState(true);
   const [isSending, setIsSending] = useState(false);
   const isSendingRef = useRef(false);
+  const dictationActiveRef = useRef(false);
+  const dictationReloadPauseUntilRef = useRef(0);
   const loadRequestRef = useRef(0);
   const sendRequestRef = useRef(0);
   const pendingLoadRef = useRef(false);
@@ -119,12 +121,18 @@ function ChatConversation() {
   const [dictationStatus, setDictationStatus] = useState<DictationStatus>('idle');
   const [dictationMessage, setDictationMessage] = useState('');
 
+  const pauseDictationReloads = () => {
+    dictationReloadPauseUntilRef.current = Date.now() + 3000;
+  };
+
   useEffect(() => {
     const speechRecognition = getSpeechRecognitionModule();
     if (!speechRecognition) return undefined;
 
     const subscriptions = [
       speechRecognition.addListener('start', () => {
+        dictationActiveRef.current = true;
+        pauseDictationReloads();
         setDictationStatus('listening');
         setDictationMessage('Microfon activ. Vorbește acum.');
       }),
@@ -137,9 +145,13 @@ function ChatConversation() {
         setDictationMessage('Textul dictat a fost adăugat. Îl poți edita înainte de trimitere.');
       }),
       speechRecognition.addListener('end', () => {
+        dictationActiveRef.current = false;
+        pauseDictationReloads();
         setDictationStatus('idle');
       }),
       speechRecognition.addListener('error', (event) => {
+        dictationActiveRef.current = false;
+        pauseDictationReloads();
         if (event?.error === 'aborted' || event?.error === 'no-speech' || event?.error === 'speech-timeout') {
           setDictationStatus('idle');
           setDictationMessage(event.error === 'aborted' ? '' : 'Dictarea s-a oprit fără text nou.');
@@ -159,6 +171,9 @@ function ChatConversation() {
   }, []);
 
   const loadConversation = useCallback(async () => {
+    if (Date.now() < dictationReloadPauseUntilRef.current) return;
+    if (dictationActiveRef.current) return;
+
     if (isSendingRef.current) {
       pendingLoadRef.current = true;
       return;
@@ -259,7 +274,11 @@ function ChatConversation() {
     if (Platform.OS === 'web') return undefined;
 
     const subscription = AppState.addEventListener('change', (state) => {
-      if (state === 'active') void loadConversation();
+      if (
+        state === 'active'
+        && !dictationActiveRef.current
+        && Date.now() >= dictationReloadPauseUntilRef.current
+      ) void loadConversation();
     });
 
     return () => subscription.remove();
@@ -269,6 +288,7 @@ function ChatConversation() {
     const intervalId = setInterval(() => {
       const currentQuotaDate = localDateKey();
       if (currentQuotaDate === quotaDateRef.current) return;
+      if (dictationActiveRef.current) return;
       void loadConversation();
     }, 60_000);
 
@@ -283,6 +303,7 @@ function ChatConversation() {
   const toggleDictation = async () => {
     const speechRecognition = getSpeechRecognitionModule();
     if (!speechRecognition) {
+      dictationActiveRef.current = false;
       setDictationStatus('error');
       setDictationMessage('Repornește build-ul Android pentru a activa dictarea.');
       return;
@@ -291,6 +312,7 @@ function ChatConversation() {
     if (dictationStatus === 'listening') {
       setDictationStatus('processing');
       setDictationMessage('Procesez dictarea...');
+      pauseDictationReloads();
       speechRecognition.stop();
       return;
     }
@@ -298,10 +320,13 @@ function ChatConversation() {
     if (dictationStatus === 'processing') return;
 
     try {
+      dictationActiveRef.current = true;
+      pauseDictationReloads();
       setDictationStatus('processing');
       setDictationMessage('Pregătesc microfonul...');
 
       if (!speechRecognition.isRecognitionAvailable()) {
+        dictationActiveRef.current = false;
         setDictationStatus('error');
         setDictationMessage('Dictarea nu este disponibilă pe acest dispozitiv.');
         return;
@@ -309,6 +334,7 @@ function ChatConversation() {
 
       const permission = await speechRecognition.requestPermissionsAsync();
       if (!permission.granted) {
+        dictationActiveRef.current = false;
         setDictationStatus('error');
         setDictationMessage('Activează microfonul din setări pentru a folosi dictarea.');
         return;
@@ -323,6 +349,7 @@ function ChatConversation() {
         iosTaskHint: 'dictation',
       });
     } catch {
+      dictationActiveRef.current = false;
       setDictationStatus('error');
       setDictationMessage('Dictarea nu a putut porni. Încearcă din nou.');
     }
