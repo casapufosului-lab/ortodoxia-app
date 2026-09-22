@@ -69,7 +69,7 @@ const styles = StyleSheet.create({
     backgroundColor: palette.blueSoft,
     borderRadius: 10,
     paddingHorizontal: 14,
-    minHeight: 40,
+    minHeight: 44,
     alignItems: 'center',
     justifyContent: 'center',
   },

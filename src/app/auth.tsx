@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Alert, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import * as Linking from 'expo-linking';
 import { router, useLocalSearchParams } from 'expo-router';
@@ -61,6 +61,26 @@ ${message}`);
   Alert.alert(title, message);
 }
 
+/**
+ * B-08: ceiling for the OAuth start request.
+ *
+ * `signInWithOAuth` had no timeout, so a stalled connection left `loading` true
+ * forever: the provider buttons stayed disabled with no spinner explanation and no
+ * retry. The message contains "network" so `friendlyAuthError` maps it to the
+ * existing connection-error string instead of the generic one.
+ */
+const OAUTH_REQUEST_TIMEOUT_MS = 30_000;
+
+function withTimeout<T>(promise: PromiseLike<T>, ms: number, message: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(message)), ms);
+    promise.then(
+      (value) => { clearTimeout(timer); resolve(value); },
+      (error) => { clearTimeout(timer); reject(error); },
+    );
+  });
+}
+
 function clearRecoveryRedirect() {
   if (Platform.OS === 'web' && typeof window !== 'undefined') {
     window.history.replaceState({}, document.title, window.location.pathname);
@@ -114,7 +134,7 @@ async function completeNativeOAuthSession(url: string) {
 }
 
 export default function AuthScreen() {
-  const { isPasswordRecovery, signOut, user } = useAuth();
+  const { isPasswordRecovery, recoveryLinkError, clearRecoveryLinkError, signOut, user } = useAuth();
   const { t } = useLocalization();
   const { returnTo } = useLocalSearchParams<{ returnTo?: string }>();
   const [email, setEmail] = useState('');
@@ -124,10 +144,27 @@ export default function AuthScreen() {
   const [confirmResetPassword, setConfirmResetPassword] = useState('');
   const [mode, setMode] = useState<'sign-in' | 'sign-up'>('sign-in');
   const [loading, setLoading] = useState(false);
+  // Synchronous in-flight guard shared by submit() and sendResetEmail(). React state
+  // cannot prevent a second dispatch that arrives before the re-render.
+  const submitInFlightRef = useRef(false);
   const [resetMessage, setResetMessage] = useState<{ type: 'error' | 'success'; text: string } | null>(null);
   const recoveryRedirect = hasRecoveryRedirect();
   const activeMode = isPasswordRecovery || recoveryRedirect ? 'reset-password' : mode;
   const destination = returnTo === '/chat' ? '/chat' : returnTo === '/premium' ? '/premium' : '/account';
+
+  // A recovery deep link that could not be consumed (expired, already used or
+  // malformed) used to fail completely silently: the user was shown the ordinary
+  // sign-in form with no explanation and no way to request a new link.
+  useEffect(() => {
+    if (!recoveryLinkError) return;
+    setResetMessage({
+      type: 'error',
+      text: recoveryLinkError === 'malformed_link'
+        ? t('auth.errorResetInvalid')
+        : t('auth.errorResetExpired'),
+    });
+    clearRecoveryLinkError();
+  }, [clearRecoveryLinkError, recoveryLinkError, t]);
 
   useEffect(() => {
     if (!user || isPasswordRecovery || recoveryRedirect) return;
@@ -162,7 +199,11 @@ export default function AuthScreen() {
   };
 
   const submit = async () => {
-    if (!validate() || loading) return;
+    // A synchronous guard, not just the `loading` state: React state cannot stop a
+    // second tap that arrives in the same tick, which produced duplicate signUp and
+    // resetPasswordForEmail calls.
+    if (submitInFlightRef.current || !validate() || loading) return;
+    submitInFlightRef.current = true;
     setLoading(true);
 
     try {
@@ -237,26 +278,38 @@ export default function AuthScreen() {
       const redirectTo = getAuthRedirectUrl();
 
       if (Platform.OS === 'web') {
-        const { error } = await supabase.auth.signInWithOAuth({
-          provider,
-          options: { redirectTo },
-        });
+        const { error } = await withTimeout(
+          supabase.auth.signInWithOAuth({ provider, options: { redirectTo } }),
+          OAUTH_REQUEST_TIMEOUT_MS,
+          'network timeout',
+        );
         if (error) throw error;
         return;
       }
 
-      const { data, error } = await supabase.auth.signInWithOAuth({
-        provider,
-        options: {
-          redirectTo,
-          skipBrowserRedirect: true,
-        },
-      });
+      const { data, error } = await withTimeout(
+        supabase.auth.signInWithOAuth({
+          provider,
+          options: {
+            redirectTo,
+            skipBrowserRedirect: true,
+          },
+        }),
+        OAUTH_REQUEST_TIMEOUT_MS,
+        'network timeout',
+      );
       if (error) throw error;
       if (!data.url) throw new Error('OAuth URL missing.');
 
       const result = await WebBrowser.openAuthSessionAsync(data.url, redirectTo);
-      if (result.type !== 'success') return;
+
+      // B-08: every non-success outcome used to `return` silently. Cancelling the
+      // sheet, dismissing it or hitting a locked device left the user staring at the
+      // sign-in form with no explanation at all, which reads as a broken button.
+      if (result.type !== 'success') {
+        showAuthAlert(t('auth.oauthCancelledTitle'), t('auth.oauthCancelledMessage'));
+        return;
+      }
 
       await completeNativeOAuthSession(result.url);
       router.replace(destination);
@@ -268,7 +321,10 @@ export default function AuthScreen() {
   };
 
   const sendResetEmail = async () => {
-    if (loading) return; // FIX: Prevent duplicate submit
+    // Same synchronous guard as submit(): two taps in one tick previously produced two
+    // resetPasswordForEmail calls, which counts against Supabase's email rate limit.
+    if (submitInFlightRef.current || loading) return;
+    submitInFlightRef.current = true;
     setResetMessage(null);
     if (!email.trim() || !email.includes('@')) {
       setResetMessage({ type: 'error', text: t('auth.emailRequiredMessage') });
@@ -287,13 +343,17 @@ export default function AuthScreen() {
         showAuthAlert(t('auth.sendEmailErrorTitle'), friendlyAuthError(error, t));
       } else {
         setResetMessage({ type: 'success', text: t('auth.sendEmailSuccess') });
-        router.replace('/reset-confirmation' as never);
+        // K-01: '/reset-confirmation' is a generated typed route (see
+        // .expo/types/router.d.ts), so the 'as never' cast is no longer needed
+        // and its removal restores compile-time checking of the destination.
+        router.replace('/reset-confirmation');
       }
     } catch (error) {
       const message = friendlyAuthError(error, t);
       setResetMessage({ type: 'error', text: t('auth.sendEmailErrorPrefix') + message });
       showAuthAlert(t('auth.sendEmailErrorTitle'), message);
     } finally {
+      submitInFlightRef.current = false;
       setLoading(false);
     }
   };
@@ -308,33 +368,36 @@ export default function AuthScreen() {
         {activeMode === 'sign-up' ? (
           <>
             <Text style={styles.label}>{t('auth.displayNameLabel')}</Text>
-            <TextInput autoCapitalize="words" value={displayName} onChangeText={setDisplayName} placeholder={t('auth.displayNamePlaceholder')} placeholderTextColor={palette.muted} style={styles.input} />
+            <TextInput accessibilityLabel={t('auth.displayNameLabel')} autoCapitalize="words" value={displayName} onChangeText={setDisplayName} placeholder={t('auth.displayNamePlaceholder')} placeholderTextColor={palette.muted} style={styles.input} />
           </>
         ) : null}
         {activeMode !== 'reset-password' ? (
           <>
             <Text style={styles.label}>{t('auth.emailLabel')}</Text>
-            <TextInput autoCapitalize="none" autoComplete="email" keyboardType="email-address" value={email} onChangeText={setEmail} placeholder={t('auth.emailPlaceholder')} placeholderTextColor={palette.muted} style={styles.input} />
+            <TextInput accessibilityLabel={t('auth.emailLabel')} autoCapitalize="none" autoComplete="email" keyboardType="email-address" value={email} onChangeText={setEmail} placeholder={t('auth.emailPlaceholder')} placeholderTextColor={palette.muted} style={styles.input} />
             <Text style={styles.label}>{t('auth.passwordLabel')}</Text>
-            <TextInput autoCapitalize="none" autoComplete="password" secureTextEntry value={password} onChangeText={setPassword} placeholder={t('auth.passwordPlaceholder')} placeholderTextColor={palette.muted} style={styles.input} />
+            <TextInput accessibilityLabel={t('auth.passwordLabel')} autoCapitalize="none" autoComplete="password" secureTextEntry value={password} onChangeText={setPassword} placeholder={t('auth.passwordPlaceholder')} placeholderTextColor={palette.muted} style={styles.input} />
           </>
         ) : (
           <>
             <Text style={styles.label}>{t('auth.newPasswordLabel')}</Text>
-            <TextInput autoCapitalize="none" autoComplete="new-password" secureTextEntry value={resetPassword} onChangeText={setResetPassword} placeholder={t('auth.newPasswordPlaceholder')} placeholderTextColor={palette.muted} style={styles.input} />
+            <TextInput accessibilityLabel={t('auth.newPasswordLabel')} autoCapitalize="none" autoComplete="new-password" secureTextEntry value={resetPassword} onChangeText={setResetPassword} placeholder={t('auth.newPasswordPlaceholder')} placeholderTextColor={palette.muted} style={styles.input} />
             <Text style={styles.label}>{t('auth.confirmPasswordLabel')}</Text>
-            <TextInput autoCapitalize="none" autoComplete="new-password" secureTextEntry value={confirmResetPassword} onChangeText={setConfirmResetPassword} placeholder={t('auth.confirmPasswordPlaceholder')} placeholderTextColor={palette.muted} style={styles.input} />
+            <TextInput accessibilityLabel={t('auth.confirmPasswordLabel')} autoCapitalize="none" autoComplete="new-password" secureTextEntry value={confirmResetPassword} onChangeText={setConfirmResetPassword} placeholder={t('auth.confirmPasswordPlaceholder')} placeholderTextColor={palette.muted} style={styles.input} />
           </>
         )}
-        <PrimaryButton label={loading ? t('auth.processing') : activeMode === 'reset-password' ? t('auth.saveNewPassword') : activeMode === 'sign-in' ? t('auth.signInButton') : t('auth.signUpButton')} onPress={submit} />
+        <PrimaryButton disabled={loading} label={loading ? t('auth.processing') : activeMode === 'reset-password' ? t('auth.saveNewPassword') : activeMode === 'sign-in' ? t('auth.signInButton') : t('auth.signUpButton')} onPress={submit} />
         {resetMessage ? <Text accessibilityLiveRegion="polite" style={[styles.message, resetMessage.type === 'success' ? styles.success : styles.error]}>{resetMessage.text}</Text> : null}
-        {activeMode === 'sign-in' ? <Pressable accessibilityRole="button" accessibilityLabel={t('auth.forgotPassword')} onPress={sendResetEmail}><Text style={styles.link}>{t('auth.forgotPassword')}</Text></Pressable> : null}
+        {activeMode === 'sign-in' ? <Pressable accessibilityRole="button" accessibilityState={{ disabled: loading }} disabled={loading} accessibilityLabel={t('auth.forgotPassword')} onPress={sendResetEmail}><Text style={styles.link}>{t('auth.forgotPassword')}</Text></Pressable> : null}
         {activeMode === 'reset-password' ? (
-          <Pressable onPress={backToSignIn}><Text style={styles.link}>{t('auth.backToSignIn')}</Text></Pressable>
+          <Pressable accessibilityLabel={t('auth.backToSignIn')} accessibilityRole="button" onPress={backToSignIn}><Text style={styles.link}>{t('auth.backToSignIn')}</Text></Pressable>
         ) : (
           <View style={styles.switchRow}>
             <Text style={styles.note}>{activeMode === 'sign-in' ? t('auth.noAccount') : t('auth.hasAccount')}</Text>
-            <Pressable onPress={() => setMode((current) => current === 'sign-in' ? 'sign-up' : 'sign-in')}>
+            <Pressable
+              accessibilityLabel={activeMode === 'sign-in' ? t('auth.signUpButton') : t('auth.signInButton')}
+              accessibilityRole="button"
+              onPress={() => setMode((current) => current === 'sign-in' ? 'sign-up' : 'sign-in')}>
               <Text style={styles.link}>{activeMode === 'sign-in' ? t('auth.signUpButton') : t('auth.signInButton')}</Text>
             </Pressable>
           </View>

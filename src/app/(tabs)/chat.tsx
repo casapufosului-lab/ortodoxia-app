@@ -6,9 +6,10 @@ import { ActivityIndicator, AppState, KeyboardAvoidingView, Platform, Pressable,
 
 import { Card, PageHeader, PrimaryButton, Screen } from '@/components/mvp-ui';
 import { palette } from '@/constants/palette';
-import { type TranslationKey } from '@/i18n/config';
+import { type TranslationKey, translatePlural } from '@/i18n/config';
 import { chatGuestSupabase, ensureGuestChatSession, supabase } from '@/lib/supabase';
 import { FREE_DAILY_AI_LIMIT, hasPremiumAccess, PREMIUM_DAILY_AI_LIMIT, type SubscriptionRow } from '@/lib/subscription';
+import { useRevenueCat } from '@/hooks/use-revenuecat';
 import { useAuth } from '@/providers/auth-provider';
 import { useLocalization } from '@/providers/localization-provider';
 
@@ -44,6 +45,30 @@ type ChatResponse = {
   remaining: number;
   dailyLimit: number;
 };
+
+/**
+ * Client-side ceiling for a chat request.
+ *
+ * `supabase.functions.invoke` applies a timeout only when one is passed, and the
+ * Edge Function's own 30s guard covers the upstream AI call rather than the whole
+ * request. Without this the send button could stay disabled forever on a stalled
+ * connection.
+ */
+const CHAT_REQUEST_TIMEOUT_MS = 45_000;
+
+/**
+ * L-06: a foreground reload only happens when the app was actually backgrounded
+ * for at least this long. Short app switches (checking a notification, sharing
+ * a screenshot) keep the conversation already on screen.
+ */
+const CHAT_FOREGROUND_RELOAD_MIN_ABSENCE_MS = 60_000;
+
+/**
+ * L-06: and only when the conversation currently rendered was fetched longer
+ * ago than this. Together the two guards turn "reload on every foreground" into
+ * "reload when the data could plausibly be stale".
+ */
+const CHAT_FOREGROUND_RELOAD_MIN_STALENESS_MS = 60_000;
 
 function welcomeMessage(t: (key: TranslationKey) => string): Message {
   return {
@@ -96,13 +121,33 @@ function getSpeechRecognitionModule() {
 }
 
 export default function ChatScreen() {
-  const { user } = useAuth();
+  const { user, isLoading: isAuthLoading } = useAuth();
+  const { t } = useLocalization();
+
+  // B-07: `user` is null until the persisted session has been restored, so mounting
+  // the conversation right away rendered the guest thread and then threw it away when
+  // `key={user.id}` changed — a visible flash of the signed-out state, a wasted
+  // quota/history fetch and a lost draft. Wait for the restore to settle first.
+  if (isAuthLoading) {
+    return (
+      <Screen style={styles.chatScreen}>
+        <View style={styles.loading}>
+          <ActivityIndicator color={palette.blue} />
+          <Text style={styles.loadingText}>{t('chat.loading')}</Text>
+        </View>
+      </Screen>
+    );
+  }
+
   return <ChatConversation key={user?.id ?? 'guest'} />;
 }
 
 function ChatConversation() {
   const { user } = useAuth();
   const { languageCode, region, t } = useLocalization();
+  const { priceFor } = useRevenueCat();
+  // Localized store price for the monthly plan; null until offerings load.
+  const monthlyPrice = priceFor('monthly');
   const [input, setInput] = useState('');
   const [messages, setMessages] = useState<Message[]>([welcomeMessage(t)]);
   const [threadId, setThreadId] = useState<string | null>(null);
@@ -116,10 +161,25 @@ function ChatConversation() {
   const loadRequestRef = useRef(0);
   const sendRequestRef = useRef(0);
   const pendingLoadRef = useRef(false);
+  // L-06: foreground-reload bookkeeping.
+  const backgroundedAtRef = useRef<number | null>(null);
+  const lastLoadCompletedAtRef = useRef(0);
   const quotaDateRef = useRef(localDateKey());
   const [errorMessage, setErrorMessage] = useState('');
   const [dictationStatus, setDictationStatus] = useState<DictationStatus>('idle');
   const [dictationMessage, setDictationMessage] = useState('');
+
+  /**
+   * The dictation listener is installed exactly once (empty dependency list below),
+   * so it must not close over the current `t`. Without this ref the error copy added
+   * by the accessibility pass would be frozen in the language that was active at
+   * mount, and the strings were previously Romanian literals — which is exactly the
+   * defect being fixed.
+   */
+  const translateRef = useRef(t);
+  useEffect(() => {
+    translateRef.current = t;
+  }, [t]);
 
   const pauseDictationReloads = () => {
     dictationReloadPauseUntilRef.current = Date.now() + 3000;
@@ -134,7 +194,7 @@ function ChatConversation() {
         dictationActiveRef.current = true;
         pauseDictationReloads();
         setDictationStatus('listening');
-        setDictationMessage('Microfon activ. Vorbește acum.');
+        setDictationMessage(t('chat.dictationListening'));
       }),
       speechRecognition.addListener('result', (event) => {
         const transcript = event?.results?.[0]?.transcript ?? '';
@@ -142,7 +202,7 @@ function ChatConversation() {
 
         setInput((current) => appendDictationText(current, transcript));
         setDictationStatus('processing');
-        setDictationMessage('Textul dictat a fost adăugat. Îl poți edita înainte de trimitere.');
+        setDictationMessage(t('chat.dictationAdded'));
       }),
       speechRecognition.addListener('end', () => {
         dictationActiveRef.current = false;
@@ -154,14 +214,17 @@ function ChatConversation() {
         pauseDictationReloads();
         if (event?.error === 'aborted' || event?.error === 'no-speech' || event?.error === 'speech-timeout') {
           setDictationStatus('idle');
-          setDictationMessage(event.error === 'aborted' ? '' : 'Dictarea s-a oprit fără text nou.');
+          // Read through a ref: this effect installs the listener once, so calling
+          // `t` directly would capture the first render's language and keep
+          // announcing the old locale after the user switches language.
+          setDictationMessage(event.error === 'aborted' ? '' : translateRef.current('chat.dictationStoppedNoText'));
           return;
         }
 
         setDictationStatus('error');
         setDictationMessage(event?.error === 'not-allowed'
-          ? 'Activează microfonul din setări pentru a folosi dictarea.'
-          : 'Dictarea nu a putut porni. Încearcă din nou.');
+          ? translateRef.current('chat.dictationMicrophoneBlocked')
+          : translateRef.current('chat.dictationStartFailed'));
       }),
     ];
 
@@ -191,6 +254,7 @@ function ChatConversation() {
       setDailyLimit(FREE_DAILY_AI_LIMIT);
       setRemaining(FREE_DAILY_AI_LIMIT);
       setIsLoading(false);
+      lastLoadCompletedAtRef.current = Date.now();
       return;
     }
 
@@ -258,6 +322,7 @@ function ChatConversation() {
     }
 
     setIsLoading(false);
+    lastLoadCompletedAtRef.current = Date.now();
   }, [t, user]);
 
   useFocusEffect(
@@ -270,15 +335,27 @@ function ChatConversation() {
     }, [loadConversation]),
   );
 
+  // L-06: reloading on every foreground transition burned a chat_threads,
+  // usage_daily, subscriptions and chat_messages round-trip each time the user
+  // merely glanced at a notification and came back. Reload only when the app
+  // was genuinely away for a while AND the rendered conversation is stale;
+  // every other foreground transition keeps the data already on screen.
   useEffect(() => {
     if (Platform.OS === 'web') return undefined;
 
     const subscription = AppState.addEventListener('change', (state) => {
-      if (
-        state === 'active'
-        && !dictationActiveRef.current
-        && Date.now() >= dictationReloadPauseUntilRef.current
-      ) void loadConversation();
+      if (state !== 'active') {
+        backgroundedAtRef.current = Date.now();
+        return;
+      }
+      const backgroundedAt = backgroundedAtRef.current;
+      backgroundedAtRef.current = null;
+      if (dictationActiveRef.current) return;
+      if (Date.now() < dictationReloadPauseUntilRef.current) return;
+      if (backgroundedAt === null) return;
+      if (Date.now() - backgroundedAt < CHAT_FOREGROUND_RELOAD_MIN_ABSENCE_MS) return;
+      if (Date.now() - lastLoadCompletedAtRef.current < CHAT_FOREGROUND_RELOAD_MIN_STALENESS_MS) return;
+      void loadConversation();
     });
 
     return () => subscription.remove();
@@ -305,13 +382,13 @@ function ChatConversation() {
     if (!speechRecognition) {
       dictationActiveRef.current = false;
       setDictationStatus('error');
-      setDictationMessage('Repornește build-ul Android pentru a activa dictarea.');
+      setDictationMessage(t('chat.dictationRebuildRequired'));
       return;
     }
 
     if (dictationStatus === 'listening') {
       setDictationStatus('processing');
-      setDictationMessage('Procesez dictarea...');
+      setDictationMessage(t('chat.dictationProcessing'));
       pauseDictationReloads();
       speechRecognition.stop();
       return;
@@ -323,12 +400,12 @@ function ChatConversation() {
       dictationActiveRef.current = true;
       pauseDictationReloads();
       setDictationStatus('processing');
-      setDictationMessage('Pregătesc microfonul...');
+      setDictationMessage(t('chat.dictationPreparing'));
 
       if (!speechRecognition.isRecognitionAvailable()) {
         dictationActiveRef.current = false;
         setDictationStatus('error');
-        setDictationMessage('Dictarea nu este disponibilă pe acest dispozitiv.');
+        setDictationMessage(t('chat.dictationUnavailable'));
         return;
       }
 
@@ -336,11 +413,11 @@ function ChatConversation() {
       if (!permission.granted) {
         dictationActiveRef.current = false;
         setDictationStatus('error');
-        setDictationMessage('Activează microfonul din setări pentru a folosi dictarea.');
+        setDictationMessage(t('chat.dictationPermissionRequired'));
         return;
       }
 
-      setDictationMessage('Pornește microfonul...');
+      setDictationMessage(t('chat.dictationStartPrompt'));
       speechRecognition.start({
         lang: getDictationLocale(languageCode, region.locale),
         interimResults: false,
@@ -351,7 +428,7 @@ function ChatConversation() {
     } catch {
       dictationActiveRef.current = false;
       setDictationStatus('error');
-      setDictationMessage('Dictarea nu a putut porni. Încearcă din nou.');
+      setDictationMessage(t('chat.dictationFailed'));
     }
   };
 
@@ -398,6 +475,11 @@ function ChatConversation() {
 
       const { data, error } = await chatClient.functions.invoke<ChatResponse>('orthodox-chat', {
         body: { message: clean, threadId },
+        // Without an explicit timeout the request can hang indefinitely while the
+        // composer stays disabled, leaving the user with no way to recover except
+        // restarting the app. The Edge Function bounds its own upstream AI call to
+        // 30s, so 45s covers a cold start plus the AI round trip.
+        timeout: CHAT_REQUEST_TIMEOUT_MS,
       });
 
       if (!isCurrentRequest()) return;
@@ -449,21 +531,31 @@ function ChatConversation() {
 
   return (
     <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-      <Screen>
+      <Screen style={styles.chatScreen}>
         <PageHeader eyebrow={t('chat.eyebrow')} title={t('chat.title')} subtitle={t('chat.subtitle')} />
         <Card style={styles.limitCard}>
-          <Text style={styles.limit}>{user ? t('chat.premiumLimitLabel')
-            .replace('{plan}', dailyLimit === PREMIUM_DAILY_AI_LIMIT ? t('chat.planPremium') : t('chat.planFree'))
-            .replace('{count}', String(remaining))
-            .replace('{limit}', String(dailyLimit))
-            : t('chat.freeLimitLabel')
-              .replace('{count}', String(remaining))
-              .replace('{limit}', String(dailyLimit))}</Text>
+          {/* Plural-aware: a remaining count of 1 needs the singular noun/verb in
+              ro/ru/sr/uk ("un mesaj rămas", not "1 de mesaje rămase"). */}
+          <Text style={styles.limit}>{user
+            ? translatePlural(languageCode, 'chat.premiumLimitLabel', remaining, {
+              plan: dailyLimit === PREMIUM_DAILY_AI_LIMIT ? t('chat.planPremium') : t('chat.planFree'),
+              count: remaining,
+              limit: dailyLimit,
+            })
+            : translatePlural(languageCode, 'chat.freeLimitLabel', remaining, {
+              count: remaining,
+              limit: dailyLimit,
+            })}</Text>
         </Card>
         {remaining <= 0 ? (
           <Card style={styles.errorCard}>
             <Text style={styles.errorText}>{t('chat.noMessagesLeft').replace('{limit}', String(dailyLimit))}</Text>
-            <Text style={styles.premiumOffer}>{t('chat.premiumOffer')}</Text>
+            {/* The price comes from the store (RevenueCat priceString) in the user's
+                own currency. It used to be hardcoded as "9,99 lei", which was wrong
+                for every locale whose store currency is not RON. */}
+            <Text style={styles.premiumOffer}>
+              {t('chat.premiumOffer').replace('{price}', monthlyPrice ?? t('premium.priceInStore'))}
+            </Text>
             <PrimaryButton label={t('chat.choosePremiumButton')} onPress={() => router.push('/premium')} />
             <Pressable accessibilityRole="button" disabled={isLoading} onPress={() => void loadConversation()}>
               <Text style={styles.retry}>{t('chat.retry')}</Text>
@@ -511,7 +603,7 @@ function ChatConversation() {
           />
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel={dictationStatus === 'listening' ? 'Oprește dictarea' : 'Pornește dictarea'}
+            accessibilityLabel={dictationStatus === 'listening' ? t('chat.dictationStopAccessibility') : t('chat.dictationStartAccessibility')}
             disabled={isSending || isLoading || dictationStatus === 'processing'}
             onPress={() => void toggleDictation()}
             style={[
@@ -552,9 +644,10 @@ const styles = StyleSheet.create({
   limitCard: { backgroundColor: palette.blueSoft, paddingVertical: 12 },
   limit: { color: palette.blue, fontSize: 13, fontWeight: '700', textAlign: 'center' },
   messages: { gap: 10 },
+  chatScreen: { backgroundColor: palette.skyLight },
   message: { maxWidth: '88%', paddingHorizontal: 15, paddingVertical: 12, borderRadius: 16 },
   userMessage: { backgroundColor: palette.blue, alignSelf: 'flex-end', borderBottomRightRadius: 4 },
-  assistantMessage: { backgroundColor: palette.paper, borderColor: palette.line, borderWidth: 1, alignSelf: 'flex-start', borderBottomLeftRadius: 4 },
+  assistantMessage: { backgroundColor: palette.skyLight, borderColor: palette.border, borderWidth: 1, alignSelf: 'flex-start', borderBottomLeftRadius: 4 },
   thinking: { flexDirection: 'row', gap: 8, alignItems: 'center' },
   userText: { color: '#FFFFFF', fontSize: 15, lineHeight: 21 },
   assistantText: { color: palette.ink, fontSize: 15, lineHeight: 21 },
@@ -564,8 +657,8 @@ const styles = StyleSheet.create({
   micListening: { backgroundColor: palette.blueSoft, borderColor: palette.blue },
   micError: { borderColor: palette.danger },
   micFallback: { color: palette.ink, fontSize: 11, fontWeight: '800' },
-  send: { minHeight: 48, paddingHorizontal: 16, borderRadius: 14, backgroundColor: palette.goldDark, alignItems: 'center', justifyContent: 'center' },
-  sendText: { color: '#FFFFFF', fontWeight: '800' },
+  send: { minHeight: 48, paddingHorizontal: 16, borderRadius: 14, backgroundColor: palette.gold, alignItems: 'center', justifyContent: 'center' },
+  sendText: { color: palette.ink, fontWeight: '800' },
   dictationMessage: { color: palette.muted, fontSize: 12, lineHeight: 17, marginTop: -2 },
   dictationListeningText: { color: palette.blue, fontWeight: '700' },
   dictationErrorText: { color: palette.danger },

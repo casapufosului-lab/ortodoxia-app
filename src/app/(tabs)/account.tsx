@@ -1,6 +1,6 @@
 import { router } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Alert, Linking, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { Card, PageHeader, PrimaryButton, Screen, SecondaryButton, SectionTitle } from '@/components/mvp-ui';
 import { palette } from '@/constants/palette';
@@ -8,6 +8,8 @@ import { useSubscription } from '@/hooks/use-subscription';
 import { COMPLETE_LANGUAGES, SUPPORTED_REGIONS, getCountryLabel } from '@/i18n/config';
 import type { CompleteLanguageCode, TranslationKey } from '@/i18n/config';
 import { AccountDeletionError, requestAccountDeletion } from '@/lib/account-deletion';
+import { calendarDisplayDescription, calendarDisplayName } from '@/lib/calendar-labels';
+import { supportMailtoUrl } from '@/lib/legal-fields';
 import { registerForPushNotificationsAsync } from '@/lib/notifications';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/providers/auth-provider';
@@ -81,6 +83,14 @@ export default function AccountScreen() {
   const [deleteBusy, setDeleteBusy] = useState(false);
   const [deleteError, setDeleteError] = useState('');
 
+  // L-05: every mutation handler below awaits a network round-trip and then writes
+  // state. `executeDeleteAccount` in particular navigates away while its `finally`
+  // block still runs, so the last writes landed on an unmounted tree. React 18 no
+  // longer warns about that, which is exactly why the guard has to be explicit
+  // rather than relying on a console warning to surface it.
+  const mountedRef = useRef(true);
+  useEffect(() => () => { mountedRef.current = false; }, []);
+
   useEffect(() => {
     const userId = user?.id ?? null;
 
@@ -110,23 +120,42 @@ export default function AccountScreen() {
   useEffect(() => {
     if (!user) return;
     let active = true;
-    supabase
-      .from('notification_preferences')
-      .select('enabled')
-      .eq('user_id', user.id)
-      .maybeSingle()
-      .then(({ data, error }) => {
-        if (!active) return;
-        if (error) {
-          showAccountAlert(t('account.notificationsUnavailableTitle'), friendlyDbError(error, t));
-        } else {
-          setNotificationsEnabled(Boolean(data?.enabled));
-        }
-      });
+    // Status is derived from BOTH the preference flag and a live device row. The
+    // screen previously trusted `enabled` alone, so after Expo reported
+    // DeviceNotRegistered (or another account claimed the token) the user still
+    // read "Notifications are active" while the server was skipping them for
+    // having no active device.
+    Promise.all([
+      supabase
+        .from('notification_preferences')
+        .select('enabled')
+        .eq('user_id', user.id)
+        .maybeSingle(),
+      supabase
+        .from('notification_devices')
+        .select('id')
+        .eq('user_id', user.id)
+        .eq('is_active', true),
+    ]).then(([preferenceResult, deviceResult]) => {
+      if (!active) return;
+      if (preferenceResult.error) {
+        showAccountAlert(t('account.notificationsUnavailableTitle'), friendlyDbError(preferenceResult.error, t));
+        return;
+      }
+      const preferenceEnabled = Boolean(preferenceResult.data?.enabled);
+      const hasActiveDevice = (deviceResult.data ?? []).length > 0;
+      // Active only when the server would actually deliver: preference on AND a
+      // live device registered.
+      setNotificationsEnabled(preferenceEnabled && hasActiveDevice);
+    });
     return () => { active = false; };
   }, [user, t]);
 
   const hasCurrentProfile = Boolean(user && profileOwnerId === user.id);
+
+  // Support contact is configuration, not prose: a mailto link only exists once the
+  // operator supplies an address, so the app never fabricates one.
+  const supportMailto = supportMailtoUrl();
 
   const saveProfile = async () => {
     if (!user || !hasCurrentProfile || saving || isSavingRef.current) return;
@@ -147,7 +176,7 @@ export default function AccountScreen() {
       showAccountAlert(t('account.errorTitle'), t('account.unexpectedError'));
     } finally {
       isSavingRef.current = false;
-      setSaving(false);
+      if (mountedRef.current) setSaving(false);
     }
   };
 
@@ -212,8 +241,21 @@ export default function AccountScreen() {
     setDeleteError('');
     try {
       await requestAccountDeletion();
-      // Account deleted — sign out locally and navigate away.
-      await signOut();
+      // The account and all its rows are gone server-side at this point. Local
+      // teardown is therefore BEST EFFORT: if signOut() fails (network loss, or a
+      // token whose user no longer exists) the user must still be navigated away,
+      // otherwise they stay on an authenticated screen holding a session for a
+      // deleted account and every later query fails.
+      try {
+        await signOut();
+      } catch (signOutError) {
+        console.warn('Local sign-out failed after account deletion:', signOutError);
+        try {
+          await supabase.auth.signOut({ scope: 'local' });
+        } catch (localSignOutError) {
+          console.warn('Local session cleanup failed after account deletion:', localSignOutError);
+        }
+      }
       router.replace('/');
     } catch (error) {
       let message: string;
@@ -221,6 +263,7 @@ export default function AccountScreen() {
         const codeToKey: Record<string, TranslationKey> = {
           AUTH_REQUIRED: 'account.deleteAuthRequired',
           SERVICE_UNAVAILABLE: 'account.deleteServiceUnavailable',
+          TIMEOUT: 'account.deleteTimeout',
           DELETE_FAILED: 'account.deleteFailedFallback',
         };
         message = t(codeToKey[error.code] ?? 'account.deleteFailedFallback');
@@ -232,7 +275,7 @@ export default function AccountScreen() {
     } finally {
       // Only reset busy state if we didn't sign out (signOut triggers re-render).
       isDeleteRef.current = false;
-      setDeleteBusy(false);
+      if (mountedRef.current) setDeleteBusy(false);
     }
   };
 
@@ -241,6 +284,7 @@ export default function AccountScreen() {
     isNotificationRef.current = true;
     setNotificationMessage('');
     setNotificationBusy(true);
+    let preferenceWasWritten = false;
     try {
       const registration = await registerForPushNotificationsAsync(t('account.notificationChannelName'));
       const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || region.timeZone;
@@ -250,10 +294,11 @@ export default function AccountScreen() {
         daily_time: '10:00',
         timezone,
         country_code: countryCode,
-        language_code: region.languageCode,
+        language_code: languageCode,
         calendar_code: calendarCode,
       });
       if (preferenceResult.error) throw preferenceResult.error;
+      preferenceWasWritten = true;
       const deviceResult = await supabase.rpc('claim_notification_device', {
         p_expo_push_token: registration.token,
         p_platform: registration.platform,
@@ -263,10 +308,60 @@ export default function AccountScreen() {
       setNotificationsEnabled(true);
       setNotificationMessage(t('account.notificationsActiveMessage'));
     } catch (error) {
+      // Roll back a half-enabled state. Previously the preference row kept
+      // enabled=true with no device registered, so the cron iterated that user on
+      // every run and counted them as skipped, while the UI showed inactive.
+      if (preferenceWasWritten) {
+        try {
+          await supabase
+            .from('notification_preferences')
+            .update({ enabled: false })
+            .eq('user_id', user.id);
+        } catch (rollbackError) {
+          console.warn('Failed to roll back the notification preference:', rollbackError);
+        }
+      }
+      setNotificationsEnabled(false);
       setNotificationMessage(t('account.notificationsActivateFailedPrefix') + friendlyDbError(error, t));
     } finally {
       isNotificationRef.current = false;
-      setNotificationBusy(false);
+      if (mountedRef.current) setNotificationBusy(false);
+    }
+  };
+
+  /**
+   * Turn the daily notification off.
+   *
+   * The app previously had no way to stop it: the only write to
+   * `notification_preferences` set `enabled: true`, so a user who wanted the
+   * notifications to stop kept receiving them. The device rows are deactivated too
+   * so the server stops selecting them.
+   */
+  const disableNotifications = async () => {
+    if (!user || notificationBusy || isNotificationRef.current) return;
+    isNotificationRef.current = true;
+    setNotificationMessage('');
+    setNotificationBusy(true);
+    try {
+      const preferenceResult = await supabase
+        .from('notification_preferences')
+        .update({ enabled: false })
+        .eq('user_id', user.id);
+      if (preferenceResult.error) throw preferenceResult.error;
+
+      const deviceResult = await supabase
+        .from('notification_devices')
+        .update({ is_active: false })
+        .eq('user_id', user.id);
+      if (deviceResult.error) throw deviceResult.error;
+
+      setNotificationsEnabled(false);
+      setNotificationMessage(t('account.notificationsDisabledMessage'));
+    } catch (error) {
+      setNotificationMessage(t('account.notificationsDisableFailedPrefix') + friendlyDbError(error, t));
+    } finally {
+      isNotificationRef.current = false;
+      if (mountedRef.current) setNotificationBusy(false);
     }
   };
 
@@ -284,6 +379,7 @@ export default function AccountScreen() {
           <Text style={styles.email}>{user.email}</Text>
           <Text style={styles.label}>{t('account.displayNameLabel')}</Text>
           <TextInput
+            accessibilityLabel={t('account.displayNameLabel')}
             value={hasCurrentProfile ? displayName : ''}
           editable={hasCurrentProfile && !saving}
             onChangeText={(value) => {
@@ -350,7 +446,7 @@ export default function AccountScreen() {
         </View>
         <View style={styles.calendarDivider} />
         <Text style={styles.regionLabel}>{t('account.calendar')}</Text>
-        <Text style={styles.bodyLeft}>{countryCode === 'MD' ? t('account.calendarDescription') : calendar?.description}</Text>
+        <Text style={styles.bodyLeft}>{countryCode === 'MD' || !calendar ? t('account.calendarDescription') : calendarDisplayDescription(calendar.calendarCode, calendar.description, t)}</Text>
         {countryCode === 'MD' ? (
           <>
             {!calendarCode ? <Text style={styles.calendarRequired}>{t('account.calendarRequired')}</Text> : null}
@@ -359,23 +455,23 @@ export default function AccountScreen() {
                 const isSelected = option.calendarCode === calendarCode;
                 return (
                   <Pressable
-                    accessibilityLabel={`${t('account.chooseCalendarAccessibility')} ${option.label}`}
+                    accessibilityLabel={`${t('account.chooseCalendarAccessibility')} ${calendarDisplayName(option.calendarCode, option.label, t)}`}
                     accessibilityRole="button"
                     accessibilityState={{ selected: isSelected }}
                     disabled={isRegionLoading}
                     key={option.calendarCode}
                     onPress={() => void setCalendarCode(option.calendarCode)}
                     style={[styles.calendarOption, isSelected && styles.calendarOptionSelected]}>
-                    <Text style={[styles.calendarOptionTitle, isSelected && styles.calendarOptionTitleSelected]}>{option.label}</Text>
-                    <Text style={[styles.calendarOptionMeta, isSelected && styles.calendarOptionMetaSelected]}>{option.jurisdictionLabel}</Text>
-                    <Text style={[styles.calendarOptionDescription, isSelected && styles.calendarOptionMetaSelected]}>{option.description}</Text>
+                    <Text style={[styles.calendarOptionTitle, isSelected && styles.calendarOptionTitleSelected]}>{calendarDisplayName(option.calendarCode, option.label, t)}</Text>
+                    <Text style={[styles.calendarOptionMeta, isSelected && styles.calendarOptionMetaSelected]}>{calendarDisplayName(option.calendarCode, option.jurisdictionLabel, t)}</Text>
+                    <Text style={[styles.calendarOptionDescription, isSelected && styles.calendarOptionMetaSelected]}>{calendarDisplayDescription(option.calendarCode, option.description, t)}</Text>
                   </Pressable>
                 );
               })}
             </View>
           </>
         ) : (
-          <Text style={styles.regionSummary}>{calendar?.label}</Text>
+          <Text style={styles.regionSummary}>{calendar ? calendarDisplayName(calendar.calendarCode, calendar.label, t) : ''}</Text>
         )}
       </Card>
       <SectionTitle>{t('account.notificationsSectionTitle')}</SectionTitle>
@@ -385,7 +481,15 @@ export default function AccountScreen() {
           {notificationsEnabled ? t('account.notificationsStatusActive') : t('account.notificationsStatusInactive')}
         </Text>
         {user ? (
-          <PrimaryButton label={notificationBusy ? t('account.notificationsConfiguring') : t('account.enableNotificationsButton')} onPress={() => void enableNotifications()} />
+          notificationsEnabled ? (
+            <SecondaryButton
+              disabled={notificationBusy}
+              label={notificationBusy ? t('account.notificationsConfiguring') : t('account.disableNotificationsButton')}
+              onPress={() => void disableNotifications()}
+            />
+          ) : (
+            <PrimaryButton disabled={notificationBusy} label={notificationBusy ? t('account.notificationsConfiguring') : t('account.enableNotificationsButton')} onPress={() => void enableNotifications()} />
+          )
         ) : (
           <SecondaryButton label={t('account.loginForNotificationsButton')} onPress={() => router.push('/auth')} />
         )}
@@ -408,7 +512,16 @@ export default function AccountScreen() {
           <Text style={styles.rowLink}>{t('account.termsLink')}</Text>
         </Pressable>
         <Text style={styles.row}>{t('account.sourcesRow')}</Text>
-        <Text style={styles.row}>{t('account.helpRow')}</Text>
+        {supportMailto ? (
+          <Pressable accessibilityRole="link" onPress={() => void Linking.openURL(supportMailto)}>
+            <Text style={styles.rowLink}>{t('account.helpRow')}</Text>
+          </Pressable>
+        ) : (
+          // No support address configured yet. Say so explicitly rather than
+          // rendering a row that looks actionable but does nothing — and rather
+          // than inventing an address. The release gate fails until it is set.
+          <Text style={styles.row}>{t('account.helpUnavailable')}</Text>
+        )}
       </Card>
       {user ? (
         <>
@@ -462,7 +575,7 @@ const styles = StyleSheet.create({
   regionOptionTitle: { color: palette.ink, fontSize: 14, fontWeight: '800' },
   regionOptionTitleSelected: { color: '#FFFFFF' },
   regionOptionMeta: { color: palette.muted, fontSize: 11, marginTop: 3 },
-  regionOptionMetaSelected: { color: '#D7E0EA' },
+  regionOptionMetaSelected: { color: palette.sky },
   regionSummary: { color: palette.goldDark, fontSize: 13, fontWeight: '800' },
   calendarDivider: { backgroundColor: palette.line, height: 1, marginVertical: 4 },
   calendarRequired: { color: palette.danger, fontSize: 13, fontWeight: '700' },
@@ -472,7 +585,7 @@ const styles = StyleSheet.create({
   calendarOptionTitle: { color: palette.ink, fontSize: 14, fontWeight: '800' },
   calendarOptionTitleSelected: { color: '#FFFFFF' },
   calendarOptionMeta: { color: palette.goldDark, fontSize: 12, fontWeight: '700', marginTop: 3 },
-  calendarOptionMetaSelected: { color: '#D7E0EA' },
+  calendarOptionMetaSelected: { color: palette.sky },
   calendarOptionDescription: { color: palette.muted, fontSize: 12, lineHeight: 17, marginTop: 4 },
   row: { color: palette.ink, fontSize: 15, paddingVertical: 6 },
   rowLink: { color: palette.blue, fontSize: 15, paddingVertical: 6 },

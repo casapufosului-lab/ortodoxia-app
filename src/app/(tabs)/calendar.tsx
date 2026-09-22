@@ -5,6 +5,15 @@ import { ActivityIndicator, AppState, Platform, Pressable, StyleSheet, Text, Vie
 import { Card, PageHeader, PrimaryButton, Screen, SectionTitle } from '@/components/mvp-ui';
 import { palette } from '@/constants/palette';
 import { dateKeyInTimeZone } from '@/i18n/config';
+import {
+  feastRankLabelKey,
+  isCalendarRpcUnavailable,
+  isMajorFeast,
+  isMonthInSeededRange,
+  isSundayDateKey,
+  resolveFeastRankCode,
+} from '@/lib/feast-rank';
+import { calendarDisplayName } from '@/lib/calendar-labels';
 import { getMoldovaCalendarFallbackRange, hasMoldovaCalendarFallback } from '@/lib/moldova-calendar-fallback';
 import { supabase } from '@/lib/supabase';
 import { useLocalization } from '@/providers/localization-provider';
@@ -12,6 +21,7 @@ import { useLocalization } from '@/providers/localization-provider';
 type CalendarEntry = {
   calendar_date: string;
   feast_rank: string | null;
+  feast_rank_code: string | null;
   saints: string[];
   title: string;
   details: string | null;
@@ -25,7 +35,10 @@ function toDateKey(year: number, monthIndex: number, day: number) {
 
 export default function CalendarScreen() {
   const { availableCalendars, calendar, calendarCode, countryCode, languageCode, region, setCalendarCode, t } = useLocalization();
-  const calendarLanguageCode = languageCode === region.languageCode ? region.languageCode : 'en';
+  // The user's chosen language drives the calendar query. get_calendar_days_localized
+  // returns the native row when no translation exists, so there is no need to
+  // downgrade to English (which previously discarded a valid selection).
+  const calendarLanguageCode = languageCode;
   const weekdays = [t('calendar.weekdayLu'), t('calendar.weekdayMa'), t('calendar.weekdayMi'), t('calendar.weekdayJo'), t('calendar.weekdayVi'), t('calendar.weekdaySa'), t('calendar.weekdayDu')];
   const [today, setToday] = useState(() => new Date());
   const currentDateKey = useMemo(() => dateKeyInTimeZone(today, region.timeZone), [region.timeZone, today]);
@@ -103,14 +116,12 @@ export default function CalendarScreen() {
         p_end_date: calendarView.monthEnd,
       });
 
-      const localizationRpcMissing = error?.code === 'PGRST202'
-        || error?.code === '42883'
-        || Boolean(error?.message.match(/get_calendar_days_localized/i));
+      const localizationRpcMissing = isCalendarRpcUnavailable(error);
 
       if (localizationRpcMissing) {
         const legacyResult = await supabase
           .from('calendar_days')
-          .select('calendar_date, feast_rank, saints, title, details, fasting_note, editorial_source')
+          .select('calendar_date, feast_rank, feast_rank_code, saints, title, details, fasting_note, editorial_source')
           .eq('country_code', countryCode)
           .eq('language_code', region.languageCode)
           .eq('calendar_code', calendarCode)
@@ -152,13 +163,30 @@ export default function CalendarScreen() {
   const selectedDateKey = toDateKey(calendarView.year, calendarView.monthIndex, selectedDay);
   const selectedEntry = entries.find((entry) => entry.calendar_date === selectedDateKey) ?? null;
   const entriesByDate = new Map(entries.map((entry) => [entry.calendar_date, entry]));
+  // Localized rank label for the selected day. The canonical code decides the
+  // wording; unknown ranks fall back to the neutral "commemoration" copy rather
+  // than echoing a foreign-language literal.
+  const selectedRankLabelKey = selectedEntry
+    ? feastRankLabelKey(resolveFeastRankCode(selectedEntry.feast_rank_code, selectedEntry.feast_rank))
+    : null;
+
+  // Month navigation is bounded by the seeded calendar range. Stepping past it
+  // cannot produce data, so the arrows are disabled rather than leading the user
+  // into an empty grid.
+  const monthKeyFor = (offset: number) => {
+    const [year, monthNumber] = currentDateKey.split('-').map(Number);
+    const shifted = new Date(year, monthNumber - 1 + offset, 1);
+    return `${shifted.getFullYear()}-${String(shifted.getMonth() + 1).padStart(2, '0')}`;
+  };
+  const canGoToPreviousMonth = isMonthInSeededRange(monthKeyFor(monthOffset - 1));
+  const canGoToNextMonth = isMonthInSeededRange(monthKeyFor(monthOffset + 1));
 
   return (
     <Screen>
       <PageHeader
         eyebrow={t('calendar.eyebrow')}
         title={t('calendar.title')}
-        subtitle={calendar ? calendar.label : t('calendar.subtitleFallback')}
+        subtitle={calendar ? calendarDisplayName(calendar.calendarCode, calendar.label, t) : t('calendar.subtitleFallback')}
       />
       {countryCode === 'MD' ? (
         <Card style={styles.chooseCalendarCard}>
@@ -169,14 +197,14 @@ export default function CalendarScreen() {
               const isSelected = option.calendarCode === calendarCode;
               return (
                 <Pressable
-                  accessibilityLabel={`${t('account.chooseCalendarAccessibility')} ${option.label}`}
+                  accessibilityLabel={`${t('account.chooseCalendarAccessibility')} ${calendarDisplayName(option.calendarCode, option.label, t)}`}
                   accessibilityRole="button"
                   accessibilityState={{ selected: isSelected }}
                   key={option.calendarCode}
                   onPress={() => void setCalendarCode(option.calendarCode)}
                   style={[styles.calendarOption, isSelected && styles.calendarOptionSelected]}>
-                  <Text style={[styles.calendarOptionTitle, isSelected && styles.calendarOptionTitleSelected]}>{option.label}</Text>
-                  <Text style={[styles.calendarOptionMeta, isSelected && styles.calendarOptionMetaSelected]}>{option.jurisdictionLabel}</Text>
+                  <Text style={[styles.calendarOptionTitle, isSelected && styles.calendarOptionTitleSelected]}>{calendarDisplayName(option.calendarCode, option.label, t)}</Text>
+                  <Text style={[styles.calendarOptionMeta, isSelected && styles.calendarOptionMetaSelected]}>{calendarDisplayName(option.calendarCode, option.jurisdictionLabel, t)}</Text>
                 </Pressable>
               );
             })}
@@ -199,15 +227,35 @@ export default function CalendarScreen() {
       ) : null}
       <Card>
         <View style={styles.monthHeader}>
-          <Pressable accessibilityRole="button" accessibilityLabel={t('calendar.previousMonth')} onPress={() => setMonthOffset((value) => value - 1)} style={styles.monthButton}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={t('calendar.previousMonth')}
+            accessibilityState={{ disabled: !canGoToPreviousMonth }}
+            disabled={!canGoToPreviousMonth}
+            onPress={() => setMonthOffset((value) => value - 1)}
+            style={[styles.monthButton, !canGoToPreviousMonth && styles.monthButtonDisabled]}
+          >
             <Text style={styles.monthButtonText}>‹</Text>
           </Pressable>
           <Text style={styles.month}>{calendarView.month}</Text>
-          <Pressable accessibilityRole="button" accessibilityLabel={t('calendar.nextMonth')} onPress={() => setMonthOffset((value) => value + 1)} style={styles.monthButton}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={t('calendar.nextMonth')}
+            accessibilityState={{ disabled: !canGoToNextMonth }}
+            disabled={!canGoToNextMonth}
+            onPress={() => setMonthOffset((value) => value + 1)}
+            style={[styles.monthButton, !canGoToNextMonth && styles.monthButtonDisabled]}
+          >
             <Text style={styles.monthButtonText}>›</Text>
           </Pressable>
         </View>
         {monthOffset !== 0 ? <Pressable accessibilityRole="button" onPress={() => setMonthOffset(0)}><Text style={styles.todayLink}>{t('calendar.backToCurrentMonth')}</Text></Pressable> : null}
+        {/* Outside the seeded range the backend has no rows by design (the next
+            year's liturgical calendar is not published yet), so say so instead of
+            rendering an unexplained empty grid. */}
+        {!isMonthInSeededRange(calendarView.monthStart.slice(0, 7)) ? (
+          <Text style={styles.note}>{t('calendar.monthOutsideCoverage')}</Text>
+        ) : null}
         <View style={styles.legend}>
           <Text style={styles.legendItem}><Text style={styles.redCross}>✝</Text> {t((countryCode === 'GR' || countryCode === 'CY') ? 'calendar.majorFeastLegend' : 'calendar.redCrossLegend')}</Text>
           <Text style={styles.legendItem}><Text style={styles.blackCross}>✝</Text> {t('calendar.documentedDayLegend')}</Text>
@@ -232,20 +280,14 @@ export default function CalendarScreen() {
                 {(() => {
                   const dateKey = toDateKey(calendarView.year, calendarView.monthIndex, day);
                   const entry = entriesByDate.get(dateKey);
-                  const normalizedRank = entry?.feast_rank?.toLowerCase() ?? '';
-                  const normalizedRankAscii = normalizedRank.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-                  const isHighlightedFeast = countryCode === 'RS'
-                    ? normalizedRankAscii.includes('cruce rosie')
-                    : [
-                      'red-cross',
-                      'red_cross',
-                      'cruce rosie',
-                      'great feast',
-                      'major feast',
-                      'veliki praznik',
-                    ].some((marker) => normalizedRankAscii.includes(marker))
-                      || ['δεσποτική εορτή', 'θεομητορική εορτή', 'μεγάλη εορτή'].some((marker) => normalizedRank.includes(marker));
-                  const hasRedCalendarMark = isHighlightedFeast || index % 7 === 6;
+                  // Canonical classification: prefer the backend code, fall back to
+                  // classifying the raw literal for offline/bundled calendars.
+                  const rankCode = entry
+                    ? resolveFeastRankCode(entry.feast_rank_code, entry.feast_rank)
+                    : null;
+                  // The red calendar mark belongs to major feasts and to Sundays,
+                  // computed from the real weekday rather than grid position.
+                  const hasRedCalendarMark = isMajorFeast(rankCode) || isSundayDateKey(dateKey);
                   if (!entry) {
                     return <Text style={[styles.dayText, hasRedCalendarMark && styles.sundayText, selectedDay === day && !hasRedCalendarMark && styles.selectedDayText]}>{day}</Text>;
                   }
@@ -269,7 +311,7 @@ export default function CalendarScreen() {
           <Text style={styles.note}>{t('calendar.loadingDay')}</Text>
         ) : selectedEntry ? (
           <>
-            <Text style={styles.rank}>{selectedEntry.feast_rank ?? t('calendar.feastRankFallback')}</Text>
+            <Text style={styles.rank}>{selectedRankLabelKey ? t(selectedRankLabelKey) : t('calendar.feastRankFallback')}</Text>
             <Text style={styles.feast}>{selectedEntry.title}</Text>
             {selectedEntry.saints.length > 0 ? <Text style={styles.saints}>{selectedEntry.saints.join('\n')}</Text> : null}
             {selectedEntry.details ? <Text style={styles.note}>{selectedEntry.details}</Text> : null}
@@ -287,7 +329,10 @@ export default function CalendarScreen() {
 const styles = StyleSheet.create({
   month: { color: palette.ink, fontSize: 19, fontWeight: '800', textTransform: 'capitalize', textAlign: 'center', marginBottom: 8 },
   monthHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  monthButton: { width: 36, height: 36, borderRadius: 18, backgroundColor: palette.blueSoft, alignItems: 'center', justifyContent: 'center' },
+  // 44pt is the iOS minimum touch target and the Android equivalent guidance; at
+  // 36pt the previous/next month arrows were a coin flip for a tremor or big thumb.
+  monthButton: { width: 44, height: 44, borderRadius: 22, backgroundColor: palette.blueSoft, alignItems: 'center', justifyContent: 'center' },
+  monthButtonDisabled: { opacity: 0.35 },
   monthButtonText: { color: palette.blue, fontSize: 26, lineHeight: 28 },
   todayLink: { color: palette.blue, textAlign: 'center', fontSize: 12, fontWeight: '700', marginBottom: 8 },
   legend: { gap: 4, marginBottom: 8 },
@@ -323,7 +368,7 @@ const styles = StyleSheet.create({
   calendarOptionTitle: { color: palette.ink, fontSize: 14, fontWeight: '800' },
   calendarOptionMeta: { color: palette.muted, fontSize: 12, fontWeight: '700' },
   calendarOptionTitleSelected: { color: '#FFFFFF' },
-  calendarOptionMetaSelected: { color: '#D7E0EA' },
+  calendarOptionMetaSelected: { color: palette.sky },
   errorCard: { borderColor: palette.danger },
   errorText: { color: palette.danger, fontSize: 14, lineHeight: 20 },
   retry: { color: palette.blue, fontWeight: '800' },

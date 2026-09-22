@@ -1,11 +1,19 @@
 import { router } from 'expo-router';
+import { Image } from 'expo-image';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, AppState, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 
-import { Card, PageHeader, PrimaryButton, Screen, SectionTitle } from '@/components/mvp-ui';
+import { Card, PrimaryButton, Screen, SectionTitle } from '@/components/mvp-ui';
 import { palette } from '@/constants/palette';
 import { dateKeyInTimeZone, getCountryLabel } from '@/i18n/config';
 import { getEnabledLiveSources } from '@/live/live-services';
+import {
+  feastRankLabelKey,
+  isCalendarRpcUnavailable,
+  resolveFeastRankCode,
+} from '@/lib/feast-rank';
+import { calendarDisplayDescription, calendarDisplayName } from '@/lib/calendar-labels';
+import { localizeLocation } from '@/lib/i18n-locations';
 import { getMoldovaCalendarFallbackDay, hasMoldovaCalendarFallback } from '@/lib/moldova-calendar-fallback';
 import { supabase } from '@/lib/supabase';
 import { useLocalization } from '@/providers/localization-provider';
@@ -22,12 +30,21 @@ type CalendarDay = {
   title: string;
   saints: string[];
   fasting_note: string | null;
+  feast_rank: string | null;
+  feast_rank_code: string | null;
 };
 
 export default function HomeScreen() {
   const { calendar, calendarCode, countryCode, languageCode, region, t } = useLocalization();
-  const calendarLanguageCode = languageCode === region.languageCode ? region.languageCode : 'en';
-  const liveLocations = getEnabledLiveSources(countryCode).map((source) => source.location).join(' • ');
+  // Query content in the language the user actually selected. The previous
+  // `language === region ? region : 'en'` mapping silently served English to a
+  // user who had chosen another supported language.
+  const calendarLanguageCode = languageCode;
+  // Localized place names for the enabled LIVE sources (falls back to the
+  // canonical registry value when a place has no translated name).
+  const liveLocations = getEnabledLiveSources(countryCode)
+    .map((source) => localizeLocation(source.location, t))
+    .join(' • ');
   const [today, setToday] = useState(() => new Date());
   const dateKey = useMemo(() => dateKeyInTimeZone(today, region.timeZone), [region.timeZone, today]);
   const dateLabel = useMemo(() => new Intl.DateTimeFormat(languageCode, {
@@ -41,6 +58,10 @@ export default function HomeScreen() {
   const [calendarDay, setCalendarDay] = useState<CalendarDay | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState('');
+  // Localized rank label for the day's commemoration (canonical code → i18n key).
+  const calendarDayRankLabelKey = calendarDay
+    ? feastRankLabelKey(resolveFeastRankCode(calendarDay.feast_rank_code, calendarDay.feast_rank))
+    : null;
 
   useEffect(() => {
     const refreshToday = () => setToday(new Date());
@@ -67,7 +88,21 @@ export default function HomeScreen() {
 
     try {
       if (!calendarCode) {
-        setDailyContent(null);
+        // No calendar selected (only possible for Moldova, whose calendar the
+        // user must choose explicitly). Still load the verse and parable: those
+        // come from `daily_content`, which is independent of the calendar.
+        const dailyOnly = await supabase
+          .from('daily_content')
+          .select('verse_text, verse_source, parable_title, parable_text, editorial_source')
+          .eq('country_code', countryCode)
+          .eq('language_code', languageCode)
+          .eq('content_date', dateKey)
+          .eq('is_published', true)
+          .maybeSingle();
+        if (homeRequestRef.current !== requestId) return;
+        if (!dailyOnly.error && dailyOnly.data) {
+          setDailyContent(dailyOnly.data as DailyContent);
+        }
         setCalendarDay(null);
         return;
       }
@@ -81,7 +116,7 @@ export default function HomeScreen() {
           .from('daily_content')
           .select('verse_text, verse_source, parable_title, parable_text, editorial_source')
           .eq('country_code', countryCode)
-          .eq('language_code', region.languageCode)
+          .eq('language_code', languageCode)
           .eq('content_date', dateKey)
           .eq('is_published', true)
           .maybeSingle(),
@@ -98,14 +133,12 @@ export default function HomeScreen() {
 
       if (homeRequestRef.current !== requestId) return;
 
-      const calendarRpcMissing = calendarResult.error?.code === 'PGRST202'
-        || calendarResult.error?.code === '42883'
-        || Boolean(calendarResult.error?.message.match(/get_calendar_days_localized/i));
+      const calendarRpcMissing = isCalendarRpcUnavailable(calendarResult.error);
 
       if (calendarRpcMissing) {
         calendarResult = await supabase
           .from('calendar_days')
-          .select('title, saints, fasting_note')
+          .select('title, saints, fasting_note, feast_rank, feast_rank_code')
           .eq('country_code', countryCode)
           .eq('language_code', region.languageCode)
           .eq('calendar_code', calendarCode)
@@ -162,12 +195,31 @@ export default function HomeScreen() {
   }, [loadHome]);
 
   return (
-    <Screen>
-      <PageHeader eyebrow={dateLabel} title={t('home.pageTitle')} subtitle={`${getCountryLabel(countryCode, languageCode)} · ${t('home.pageSubtitle')}`} />
+    <Screen contentStyle={styles.homeContent}>
+      <View style={styles.hero}>
+        <Image
+          accessible={false}
+          contentFit="cover"
+          source={require('@/assets/images/splash-icon.png')}
+          style={styles.heroImage}
+        />
+        <View style={styles.heroOverlay} />
+        <View style={styles.heroContent}>
+          <Image
+            accessible={false}
+            contentFit="contain"
+            source={require('@/assets/images/splash-icon.png')}
+            style={styles.heroMark}
+          />
+          <Text style={styles.heroEyebrow}>{dateLabel}</Text>
+          <Text style={styles.heroTitle}>{t('home.heroTitle')}</Text>
+          <Text style={styles.heroSubtitle}>{`${getCountryLabel(countryCode, languageCode)} · ${t('home.pageSubtitle')}`}</Text>
+        </View>
+      </View>
       {countryCode === 'MD' ? (
         <Card style={styles.noticeCard}>
-          <Text style={styles.noticeTitle}>{calendar?.label ?? t('account.calendarRequired')}</Text>
-          <Text style={styles.noticeText}>{calendar ? calendar.description : t('region.moldovaChooseCalendar')}</Text>
+          <Text style={styles.noticeTitle}>{calendar ? calendarDisplayName(calendar.calendarCode, calendar.label, t) : t('account.calendarRequired')}</Text>
+          <Text style={styles.noticeText}>{calendar ? calendarDisplayDescription(calendar.calendarCode, calendar.description, t) : t('region.moldovaChooseCalendar')}</Text>
         </Card>
       ) : null}
       {errorMessage ? (
@@ -185,23 +237,19 @@ export default function HomeScreen() {
         </View>
       ) : (
         <>
-          <Card style={styles.heroCard}>
-            <Text style={styles.cross}>☦</Text>
-            <Text style={styles.quote}>{dailyContent ? `„${dailyContent.verse_text}”` : t('home.verseFallback')}</Text>
-            <Text style={styles.source}>{dailyContent?.verse_source ?? t('home.verseSourceFallback')}</Text>
-          </Card>
           <SectionTitle>{t('home.parableSectionTitle')}</SectionTitle>
-          <Card>
+          <Card style={styles.compactCard}>
             <Text style={styles.cardTitle}>{dailyContent?.parable_title ?? t('home.parableTitleFallback')}</Text>
             <Text style={styles.body}>{dailyContent?.parable_text ?? t('home.parableBodyFallback')}</Text>
             {dailyContent?.editorial_source ? <Text style={styles.editorialSource}>{dailyContent.editorial_source}</Text> : null}
           </Card>
           <SectionTitle>{t('home.calendarSectionTitle')}</SectionTitle>
-          <Card>
+          <Card style={styles.compactCard}>
             <View style={styles.calendarRow}>
               <View style={styles.dateBox}><Text style={styles.dateNumber}>{dayNumber}</Text></View>
               <View style={styles.flex}>
                 <Text style={styles.calendarTitle}>{calendarDay?.title ?? t('home.calendarDayFallback')}</Text>
+                {calendarDayRankLabelKey ? <Text style={styles.calendarRank}>{t(calendarDayRankLabelKey)}</Text> : null}
                 {calendarDay?.fasting_note ? <Text style={styles.fasting}>{calendarDay.fasting_note}</Text> : null}
               </View>
             </View>
@@ -231,10 +279,19 @@ export default function HomeScreen() {
 }
 
 const styles = StyleSheet.create({
-  heroCard: { backgroundColor: palette.blue, borderColor: palette.blue, alignItems: 'center', paddingVertical: 26 },
+  homeContent: { gap: 12, paddingTop: 12, paddingBottom: 18 },
+  hero: { borderRadius: 22, overflow: 'hidden', backgroundColor: palette.primaryDeep, minHeight: 176, justifyContent: 'flex-end' },
+  heroImage: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, opacity: 0.35 },
+  heroOverlay: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: palette.overlay },
+  heroContent: { padding: 14, gap: 3 },
+  heroMark: { width: 46, height: 46, borderRadius: 12, marginBottom: 2 },
+  heroEyebrow: { color: palette.goldLight, fontSize: 12, fontWeight: '800', letterSpacing: 1.2, textTransform: 'uppercase' },
+  heroTitle: { color: '#FFFFFF', fontSize: 30, lineHeight: 34, fontWeight: '800' },
+  heroSubtitle: { color: palette.sky, fontSize: 14, lineHeight: 19 },
+  compactCard: { padding: 13, gap: 6 },
   cross: { color: palette.gold, fontSize: 28 },
-  quote: { color: '#FFFFFF', fontSize: 20, lineHeight: 30, fontFamily: 'serif', textAlign: 'center' },
-  source: { color: '#D7E0EA', fontSize: 13, fontWeight: '700' },
+  quote: { color: palette.ink, fontSize: 20, lineHeight: 30, fontFamily: 'serif', textAlign: 'center' },
+  source: { color: palette.goldDark, fontSize: 13, fontWeight: '700' },
   cardTitle: { color: palette.ink, fontSize: 17, fontWeight: '800' },
   body: { color: palette.muted, fontSize: 15, lineHeight: 22 },
   calendarRow: { flexDirection: 'row', gap: 14, alignItems: 'center' },
@@ -242,11 +299,12 @@ const styles = StyleSheet.create({
   dateNumber: { color: palette.blue, fontSize: 22, fontWeight: '800' },
   flex: { flex: 1, gap: 5 },
   calendarTitle: { color: palette.ink, fontSize: 15, lineHeight: 21, fontWeight: '800' },
+  calendarRank: { color: palette.blue, fontSize: 12, fontWeight: '700', marginTop: 2 },
   fasting: { color: palette.goldDark, fontSize: 12, fontWeight: '800' },
   editorialSource: { color: palette.muted, fontSize: 11, fontStyle: 'italic', lineHeight: 16 },
   loading: { alignItems: 'center', gap: 8, paddingVertical: 38 },
   loadingText: { color: palette.muted, fontSize: 14 },
-  noticeCard: { backgroundColor: palette.blueSoft, borderColor: palette.blueSoft },
+  noticeCard: { backgroundColor: palette.blueSoft, borderColor: palette.blueSoft, padding: 13, gap: 6 },
   noticeTitle: { color: palette.blue, fontSize: 14, fontWeight: '800' },
   noticeText: { color: palette.blue, fontSize: 13, lineHeight: 19 },
   errorCard: { borderColor: palette.danger },
@@ -257,13 +315,13 @@ const styles = StyleSheet.create({
     borderColor: palette.line,
     borderWidth: 1,
     borderRadius: 18,
-    padding: 16,
+    padding: 12,
   },
-  liveHeader: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  liveHeader: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   liveCross: { color: palette.goldDark, fontSize: 22, fontWeight: '800' },
   liveFlex: { flex: 1, gap: 3 },
   liveTitle: { color: palette.ink, fontSize: 17, fontWeight: '800' },
-  liveSubtitle: { color: palette.muted, fontSize: 14, lineHeight: 20, flexShrink: 1 },
+  liveSubtitle: { color: palette.muted, fontSize: 14, lineHeight: 18, flexShrink: 1 },
   liveLocation: { color: palette.goldDark, fontSize: 12, lineHeight: 17 },
   liveArrow: { color: palette.muted, fontSize: 22, fontWeight: '700' },
   pressed: { opacity: 0.75 },

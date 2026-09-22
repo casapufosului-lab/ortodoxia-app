@@ -13,9 +13,9 @@ export default function TabsLayout() {
     <Tabs
       screenOptions={{
         headerShown: false,
-        tabBarActiveTintColor: palette.goldDark,
+        tabBarActiveTintColor: palette.primaryInk,
         tabBarInactiveTintColor: palette.muted,
-        tabBarStyle: { backgroundColor: palette.paper, borderTopColor: palette.line, height: 66, paddingBottom: 8, paddingTop: 6 },
+        tabBarStyle: { backgroundColor: palette.card, borderTopColor: palette.divider, height: 66, paddingBottom: 8, paddingTop: 6 },
         tabBarLabelStyle: { fontSize: 11, fontWeight: '600' },
       }}>
       <Tabs.Screen name="index" options={{ title: t('nav.home'), tabBarIcon: ({ color }) => <TabIcon symbol="⌂" color={color} /> }} />
