@@ -1,0 +1,88 @@
+# Continuous integration gate for the Ortodoxia app.
+#
+# WHY THIS EXISTS
+# ---------------
+# The audit found no CI configuration at all: 42 test files with only five wired to
+# npm scripts, no aggregate `test` script, no static check for the Edge Functions
+# (they are excluded from the app tsconfig), and therefore no automatic gate before
+# a release. Several stale assertions and two false tests had survived in the tree
+# precisely because nothing ran them.
+#
+# This workflow runs the checks that must hold for every commit:
+#   - typecheck       : the React Native app (strict)
+#   - typecheck:edge  : the Supabase Edge Functions (previously unchecked)
+#   - test:i18n       : locale corpus integrity and script contamination
+#   - test:a11y       : the accessibility gate (roles, labels, 44pt targets, WCAG AA contrast)
+#   - test:safety     : the gate parsers' own self-tests (a blind gate is worse than none)
+#   - test:startup    : the startup budget (what is evaluated before the first screen)
+#   - test            : every discovered suite, in one process
+#   - test:release    : current-code release invariants (ignores paid-launch inputs)
+#
+# `test:a11y`, `test:safety` and `test:startup` were added later and are listed here on purpose: a gate
+# that CI never runs is a gate that silently stops existing. They need no bundler, no device and no key
+# except `test:startup`, which runs one Metro export (~1-2 min) and was therefore given its own step so a
+# failure is attributable.
+#
+# It deliberately does NOT run `release-readiness --release`, because that mode
+# fails until the paid store accounts and the real content corpus exist. That gate
+# is run by hand immediately before a production build.
+#
+# It does not build, deploy or publish anything.
+
+name: CI
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: typecheck + tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22.x'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck app
+        run: npm run typecheck
+
+      - name: Typecheck Edge Functions
+        run: npm run typecheck:edge
+
+      - name: Validate i18n corpus (key parity + script contamination)
+        run: npm run test:i18n
+
+      - name: Accessibility gate
+        run: npm run test:a11y
+
+      - name: Gate self-tests (the parsers behind test:a11y and test:startup)
+        run: npm run test:safety
+
+      - name: Run test suite
+        run: npm test
+
+      - name: Startup budget (one Metro export)
+        run: npm run test:startup
+
+      - name: Release readiness (current-code invariants)
+        run: npm run test:release
