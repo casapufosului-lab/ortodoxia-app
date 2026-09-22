@@ -63,13 +63,14 @@
     "test:a11y": "node scripts/accessibility-audit.mjs",
     "test:startup": "node scripts/startup-budget.mjs",
     "test:release": "node scripts/release-readiness.mjs",
-    "verify": "npm run typecheck:all && npm run test:i18n && npm run test:a11y && npm run test:startup && npm test && npm run test:release",
+    "verify": "npm run typecheck:all && npm run test:i18n && npm run test:a11y && npm run test:safety && npm run test:startup && npm test && npm run test:release",
     "test:live": "node --test tests/live-services.test.mjs",
     "test:live-backend": "node --experimental-strip-types --test supabase/functions/live-services-status/tests/live-status.test.mjs supabase/functions/live-services-status/tests/drift.test.mjs supabase/functions/live-services-status/tests/aud2-live-validation.test.mjs",
     "test:notifications": "node --test tests/notifications.test.mjs",
     "test:account-deletion": "node --test tests/account-deletion.test.mjs",
     "test:chat-backend": "node --test tests/chat-backend.test.mjs",
-    "lint:chat-backend": "node scripts/lint-chat-backend.cjs"
+    "lint:chat-backend": "node scripts/lint-chat-backend.cjs",
+    "test:safety": "node scripts/safety-gate.mjs"
   },
   "private": true
 }

@@ -492,10 +492,19 @@ function looksLikeCopy(literal) {
   const wordy = words.filter((word) => (word.match(/\p{L}/gu) ?? []).length >= 2);
   if (wordy.length < 2) return false;
   if (/^[\p{Lu}\p{N}\s.·/&+-]+$/u.test(literal)) return false;
-  // Sentence copy usually ends in terminal punctuation, a closing mark, or an
-  // ellipsis. A fragment without any of those is far more likely to be code or
-  // prose from a comment, so it is left alone rather than reported as a defect.
-  return /[.!?…:;»)"'’]$/.test(literal);
+  // Sentence copy usually ends in terminal punctuation, a closing mark, or an ellipsis.
+  if (/[.!?…:;»)"'’]$/.test(literal)) return true;
+  // A title or heading carries no terminal punctuation — `Doamne, luminează-mi calea` is
+  // how the real hardcoded string in Home was missed by the first strict version.
+  //
+  // The signal is a leading capital plus several words whose letters run longer than a
+  // two-word code fragment (`string, unknown`, `no data`, `typeof Link`). A first attempt
+  // required title case on nearly every word, which no real sentence in these locales
+  // satisfies; this rule is checked against both the copy it must catch and the code
+  // fragments it must not, in `--self-test`.
+  const firstWord = words[0] ?? '';
+  const letterCount = literal.replace(/[^\p{L}\p{N}]/gu, '').length;
+  return /^\p{Lu}/u.test(firstWord) && words.length >= 3 && letterCount / words.length >= 4;
 }
 
 
@@ -588,7 +597,123 @@ const RULE_TITLES = {
   A7: 'hardcoded user-visible copy',
 };
 
+/**
+ * Self-test for the scanners, run with `--self-test`.
+ *
+ * The text scanner is the part of this script that failed in practice: its first two
+ * versions reported TypeScript generics (`Promise<void>`), `try`, `catch` and every
+ * StyleSheet key as hardcoded UI copy. A checker nobody trusts is worse than no check,
+ * so the exact inputs that fooled it are pinned here — and `npm run safety` runs this.
+ */
+function runSelfTest() {
+  const failures = [];
+  let checks = 0;
+
+  const expect = (label, actual, wanted) => {
+    checks += 1;
+    const a = JSON.stringify(actual);
+    const w = JSON.stringify(wanted);
+    if (a === w) {
+      console.log(`PASS  ${label}`);
+    } else {
+      console.log(`FAIL  ${label}: got ${a}, wanted ${w}`);
+      failures.push(label);
+    }
+  };
+
+  const copyIn = (source) => scanTextNodes(source)
+    .map((node) => node.text.replace(/\s+/g, ' ').trim())
+    .filter((literal) => looksLikeCopy(literal));
+
+  expect(
+    'real screen copy is found',
+    copyIn('<Text style={styles.t}>Doamne, lumineaza-mi calea</Text>'),
+    ['Doamne, lumineaza-mi calea'],
+  );
+
+  expect(
+    'copy with a nested element is still found',
+    copyIn('<Text style={styles.t}>Bine ai venit in aplicatie <Text style={styles.b}>astazi</Text></Text>'),
+    ['Bine ai venit in aplicatie'],
+  );
+
+  expect(
+    'a TypeScript generic is not copy',
+    copyIn('const [session, setSession] = useState<Session | null>(null);\nfunction f(): Promise<void> {}\n'),
+    [],
+  );
+
+  expect(
+    'bare keywords in code are not copy',
+    copyIn('try {\n  await supabase.auth.getSession();\n} catch (error) {\n  console.error(error);\n}\n'),
+    [],
+  );
+
+  expect(
+    'a StyleSheet key is not copy',
+    copyIn('const styles = StyleSheet.create({ bookButton: { height: 44 } });'),
+    [],
+  );
+
+  expect(
+    'a translation key is not copy',
+    copyIn('const label = t("home.parableSectionTitle");'),
+    [],
+  );
+
+  expect(
+    'a string constant is not copy',
+    copyIn('const message = "Dictarea nu a putut porni.";'),
+    [],
+  );
+
+  const sheets = styleSheets('const styles = StyleSheet.create({ small: { height: 36 }, big: { minHeight: 50 } });');
+  expect('a style height is read', styleNumber(sheets, 'small', 'height'), 36);
+  expect('a style minHeight is read', styleNumber(sheets, 'big', 'minHeight'), 50);
+  expect('a missing style returns null', styleNumber(sheets, 'nope', 'height'), null);
+
+  const contract = checkContrastMaths();
+
+  console.log('');
+  console.log(`  ${checks} parser check(s), contrast reference ${contract}`);
+  if (failures.length > 0) {
+    for (const failure of failures) console.log(`FAIL  ${failure}`);
+    console.log(`SELF-TEST: FAILED (${failures.length}).`);
+    process.exitCode = 1;
+    return;
+  }
+  console.log('SELF-TEST: OK — the scanner separates screen copy from code, and the style reader works.');
+}
+
+/**
+ * The WCAG contrast maths is the other place a silent error is possible, so it is
+ * checked against the two published reference ratios: black on white is 21:1 and any
+ * colour against itself is 1:1.
+ */
+function checkContrastMaths() {
+  const white = parseHex('#FFFFFF');
+  const black = parseHex('#000000');
+  const whiteOnBlack = contrastRatio(white, black);
+  const same = contrastRatio(white, white);
+  if (Math.abs(whiteOnBlack - 21) > 0.01) {
+    console.log(`FAIL  black on white should be 21:1, computed ${whiteOnBlack.toFixed(2)}`);
+    process.exitCode = 1;
+    return 'INVALID';
+  }
+  if (Math.abs(same - 1) > 0.001) {
+    console.log(`FAIL  a colour against itself should be 1:1, computed ${same.toFixed(3)}`);
+    process.exitCode = 1;
+    return 'INVALID';
+  }
+  console.log('PASS  black on white is 21:1 and a colour against itself is 1:1');
+  return 'verified';
+}
+
 function main() {
+  if (process.argv.includes('--self-test')) {
+    runSelfTest();
+    return;
+  }
   for (const file of SOURCE_FILES) {
     const source = readFileSync(file, 'utf8');
     const elements = scanElements(source);
@@ -633,4 +758,5 @@ function main() {
   process.exitCode = 1;
 }
 
+export { looksLikeCopy, scanTextNodes, styleSheets, styleNumber, contrastRatio, parseHex };
 main();

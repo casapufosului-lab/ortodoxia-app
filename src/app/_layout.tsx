@@ -1,5 +1,9 @@
+// MUST be the first import: with `inlineRequires` enabled, a module body runs on first
+// use, so the splash hold has to come from a module that is evaluated immediately and
+// depends on nothing else. See src/lib/hold-splash.ts.
+import '@/lib/hold-splash';
+
 import { DefaultTheme, Stack, ThemeProvider, router, type Href } from 'expo-router';
-import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect } from 'react';
 
@@ -10,18 +14,6 @@ import { configureRevenueCat } from '@/lib/revenuecat';
 import { markStartup } from '@/lib/startup-timing';
 import { AuthProvider } from '@/providers/auth-provider';
 import { LocalizationProvider, useLocalization } from '@/providers/localization-provider';
-
-/**
- * Hold the native splash until the first real screen can draw.
- *
- * Called at module scope, not inside an effect: the splash must be prevented from
- * auto-hiding before React mounts, otherwise the platform can dismiss it during the
- * first render pass and the user sees the white gap that SplashGate exists to remove.
- * Failures are ignored on purpose — see src/components/splash-gate.tsx.
- */
-SplashScreen.preventAutoHideAsync().catch(() => {
-  // Unsupported platform (web) or already prevented: the splash auto-hides normally.
-});
 
 /**
  * Renders the navigation Stack with localized header titles.
