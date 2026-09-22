@@ -12,6 +12,8 @@ test('LOW #21 back to sign-in exits password recovery explicitly', () => {
 });
 
 test('LOW #21 reset-password back button uses recovery exit handler', () => {
-  assert.match(auth, /<Pressable onPress=\{backToSignIn\}>/);
+  // The assertion is about which handler runs, not about the attribute list, so it
+  // matches the Pressable regardless of the accessibility props added by A11Y-001.
+  assert.match(auth, /<Pressable\b[^>]*\bonPress=\{backToSignIn\}/);
   assert.doesNotMatch(auth, /onPress=\{\(\) => setMode\('sign-in'\)\}/);
 });

@@ -568,6 +568,7 @@ const ro = {
   'account.notificationChannelName': 'Mesajul zilei',
   'region.moldovaCalendarPending': 'Calendarul ales este salvat. Conținutul local va fi publicat numai după verificarea surselor bisericești.',
   'region.moldovaChooseCalendar': 'Alege calendarul bisericesc pentru Republica Moldova. Aplicația nu alege automat în locul tău.',
+  'region.calendarUnavailable': 'Calendarul ales nu este disponibil pentru această țară.',
   'calendar.moldovaUnavailable': 'Calendarul ortodox pentru Republica Moldova nu este disponibil momentan.',
   'common.retry': 'Reîncearcă',
   'common.chooseCalendar': 'Alege calendarul',
@@ -1087,6 +1088,7 @@ export type DictionaryKey = TranslationKey | `${TranslationKey}#one` | `${Transl
 const en = {
   'region.moldovaCalendarPending': 'Your selected calendar is saved. Local content will be published only after the Church sources have been verified.',
   'region.moldovaChooseCalendar': 'Choose the Church calendar for the Republic of Moldova. The application does not choose automatically for you.',
+  'region.calendarUnavailable': 'The chosen calendar is not available for this country.',
   'terms.title': 'Terms and conditions',
   'terms.meta': 'Version: 1.0 — {effectiveDate}',
   'terms.s1Title': '1. Operator and acceptance',
@@ -2034,6 +2036,7 @@ const el = {
   'privacy.s2_7Content': 'Οι προσευχές αποθηκεύονται στον πίνακα `prayers` του Supabase. Τα αποθηκευμένα αγαπημένα βρίσκονται στον πίνακα `favorites` που συνδέεται με τον λογαριασμό.',
   'region.moldovaCalendarPending': 'Το επιλεγμένο ημερολόγιο έχει αποθηκευτεί. Το τοπικό περιεχόμενο θα δημοσιευτεί μόνο μετά την επαλήθευση των εκκλησιαστικών πηγών.',
   'region.moldovaChooseCalendar': 'Επιλέξτε το εκκλησιαστικό ημερολόγιο για τη Δημοκρατία της Μολδαβίας. Η εφαρμογή δεν επιλέγει αυτόματα για εσάς.',
+  'region.calendarUnavailable': 'Το επιλεγμένο ημερολόγιο δεν είναι διαθέσιμο για αυτή τη χώρα.',
   'terms.title': 'Όροι και προϋποθέσεις',
   'terms.meta': 'Έκδοση: 1.0 — {effectiveDate}',
   'terms.s1Title': '1. Υπεύθυνος επεξεργασίας και αποδοχή',
@@ -2582,6 +2585,7 @@ const sr = {
   // ── Region ─────────────────────────────────────────────────────────────
   'region.moldovaCalendarPending': 'Изабрани календар је сачуван. Локални садржај ће бити објављен тек након верификације црквених извора.',
   'region.moldovaChooseCalendar': 'Изаберите црквени календар за Републику Молдавију. Апликација не бира аутоматски у ваше име.',
+  'region.calendarUnavailable': 'Изабрани календар није доступан за ову земљу.',
 
   // ── Privacy screen ──────────────────────────────────────────────────
   'privacy.title': 'Политика приватности',
@@ -3121,6 +3125,7 @@ const bg = {
 
   'region.moldovaCalendarPending': 'Избраният календар е запазен. Местното съдържание ще бъде публикувано само след проверка на църковните източници.',
   'region.moldovaChooseCalendar': 'Избери църковния календар за Република Молдова. Приложението не избира автоматично вместо теб.',
+  'region.calendarUnavailable': 'Избраният календар не е наличен за тази държава.',
 
   // ── Privacy screen ──────────────────────────────────────────────────
   'privacy.title': 'Политика за поверителност',
@@ -3703,6 +3708,7 @@ const mk = {
 
   'region.moldovaCalendarPending': 'Избраниот календар е зачуван. Локалната содржина ќе биде објавена само по проверка на црковните извори.',
   'region.moldovaChooseCalendar': 'Избери го црковниот календар за Република Молдова. Апликацијата не избира автоматски наместо тебе.',
+  'region.calendarUnavailable': 'Избраниот календар не е достапен за оваа земја.',
 
   // ── Privacy screen ──────────────────────────────────────────────────
   'privacy.title': 'Политика за приватност',
@@ -4285,6 +4291,7 @@ const uk = {
 
   'region.moldovaCalendarPending': 'Обраний календар збережено. Локальний вміст буде опубліковано лише після перевірки церковних джерел.',
   'region.moldovaChooseCalendar': 'Оберіть церковний календар для Республіки Молдова. Застосунок не обирає автоматично за вас.',
+  'region.calendarUnavailable': 'Обраний календар недоступний для цієї країни.',
 
   'privacy.title': 'Політика конфіденційності',
   'legal.toBeCompleted': '[буде заповнено]',
@@ -4833,6 +4840,7 @@ const ka = {
   'layout.privacyTitle': 'კონფიდენციალურობის პოლიტიკა',
   'region.moldovaCalendarPending': 'არჩეული კალენდარი შენახულია. ადგილობრივი კონტენტი გამოქვეყნდება მხოლოდ საეკლესიო წყაროების გადამოწმების შემდეგ.',
   'region.moldovaChooseCalendar': 'აირჩიეთ საეკლესიო კალენდარი მოლდოვას რესპუბლიკისთვის. აპლიკაცია თქვენს ნაცვლად ავტომატურად არ ირჩევს.',
+  'region.calendarUnavailable': 'არჩეული კალენდარი ამ ქვეყნისთვის მიუწვდომელია.',
   'privacy.title': 'კონფიდენციალურობის პოლიტიკა',
   'legal.toBeCompleted': '[შესავსებია]',
   'privacy.meta': 'ვერსია: 1.0 — {effectiveDate}',
@@ -5363,6 +5371,7 @@ const ru = {
   'layout.privacyTitle': 'Политика конфиденциальности',
   'region.moldovaCalendarPending': 'Выбранный календарь сохранён. Местный контент будет опубликован только после проверки церковных источников.',
   'region.moldovaChooseCalendar': 'Выберите церковный календарь для Республики Молдова. Приложение не выбирает его автоматически вместо вас.',
+  'region.calendarUnavailable': 'Выбранный календарь недоступен для этой страны.',
   'privacy.title': 'Политика конфиденциальности',
   'legal.toBeCompleted': '[подлежит заполнению]',
   'privacy.meta': 'Версия: 1.0 — {effectiveDate}',
@@ -5890,6 +5899,7 @@ const sq = {
   'layout.privacyTitle': 'Politika e privatësisë',
   'region.moldovaCalendarPending': 'Kalendari i zgjedhur është ruajtur. Përmbajtja lokale do të publikohet vetëm pas verifikimit të burimeve kishtare.',
   'region.moldovaChooseCalendar': 'Zgjidh kalendarin kishtar për Republikën e Moldavisë. Aplikacioni nuk e zgjedh automatikisht në vendin tënd.',
+  'region.calendarUnavailable': 'Kalendari i zgjedhur nuk është i disponueshëm për këtë vend.',
   'privacy.title': 'Politika e privatësisë',
   'legal.toBeCompleted': '[për t\'u plotësuar]',
   'privacy.meta': 'Versioni: 1.0 — {effectiveDate}',

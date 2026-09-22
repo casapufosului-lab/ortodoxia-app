@@ -26,24 +26,89 @@ test('provider restores each storage preference independently', () => {
   assert.doesNotMatch(providerSource, /Promise\.all\s*\(/);
   assert.match(providerSource, /Promise\.allSettled\(\[/);
   assert.match(providerSource, /LANGUAGE_STORAGE_KEY = 'ortodoxia\.language'/);
-  assert.match(providerSource, /if \(savedLanguage\.status === 'fulfilled'\) \{\s*setLanguageCodeState\(resolveLanguageCode\(savedLanguage\.value\)\);\s*\} else \{\s*console\.error\([^;]+savedLanguage\.reason\);/);
+  // A stored language is applied only when it is actually present; a missing value
+  // must NOT be coerced through resolveLanguageCode(), because that maps null to
+  // Romanian and would override device detection on first launch.
+  assert.match(providerSource, /if \(savedLanguage\.status === 'fulfilled' && savedLanguage\.value\) \{\s*setLanguageCodeState\(resolveLanguageCode\(savedLanguage\.value\)\);/);
+  assert.match(providerSource, /console\.error\([^;]+savedLanguage\.reason\)/);
   assert.match(providerSource, /if \(savedCountry\.status === 'fulfilled'\)/);
   assert.match(providerSource, /console\.error\([^;]+savedCountry\.reason\)/);
   assert.match(providerSource, /if \(savedCalendars\.status === 'rejected'\)/);
   assert.match(providerSource, /console\.error\([^;]+savedCalendars\.reason\)/);
 });
 
-test('provider gates children until hydration finishes and preserves defaults', () => {
-  assert.match(providerSource, /useState<LanguageCode>\('ro'\)/);
+test('provider gates children until hydration finishes and seeds from the device', () => {
+  // First launch must follow the device language rather than assuming Romanian.
+  assert.match(providerSource, /useState<LanguageCode>\(\s*\(\) => detectDeviceLanguage\(\) \?\? 'ro',\s*\)/);
   assert.match(providerSource, /useState<CountryCode>\(DEFAULT_COUNTRY\)/);
   assert.match(providerSource, /useState<CalendarPreferences>\(\{\}\)/);
-  assert.match(providerSource, /\.finally\(\(\) => \{\s*if \(active\) setIsLoading\(false\);\s*\}\)/);
+  // A11Y-001 added a startup mark inside the same callback, so the assertion pins the
+  // behaviour (loading ends exactly once, in the settle handler) rather than the exact
+  // one-line body.
+  assert.match(providerSource, /\.finally\(\(\) => \{\s*if \(active\) \{[\s\S]*?setIsLoading\(false\);[\s\S]*?\}\s*\}\)/);
   assert.equal((providerSource.match(/setIsLoading\(false\)/g) ?? []).length, 1);
   assert.match(providerSource, /if \(isLoading\) return null;\s*return <LocalizationContext\.Provider value=\{value\}>\{children\}<\/LocalizationContext\.Provider>/);
 });
 
+test('choosing a country aligns the language only until the user chooses one', () => {
+  const countryStart = providerSource.indexOf('setCountryCode: async (nextCountryCode)');
+  assert.ok(countryStart >= 0);
+  const countryEnd = providerSource.indexOf('setLanguageCode: async', countryStart);
+  const block = providerSource.slice(countryStart, countryEnd);
+  assert.ok(block.includes('setCountryCodeState(nextCountryCode);'));
+  assert.ok(block.includes('AsyncStorage.setItem(COUNTRY_STORAGE_KEY, nextCountryCode)'));
+  // The follow behaviour exists and is guarded by "no explicit choice yet".
+  assert.ok(block.includes("if (!explicitLanguage)"), 'must not override an explicit language choice');
+  assert.ok(block.includes('getRegion(nextCountryCode).languageCode'));
+});
+
 test('language writes update state immediately and log storage failures', () => {
-  assert.match(providerSource, /setLanguageCode: async \(nextLanguageCode\) => \{\s*setLanguageCodeState\(nextLanguageCode\);\s*try \{\s*await AsyncStorage\.setItem\(LANGUAGE_STORAGE_KEY, nextLanguageCode\);\s*\} catch \(error\) \{\s*console\.error\('Failed to save language preference:', error\);\s*\}\s*\}/);
+  const start = providerSource.indexOf('setLanguageCode: async (nextLanguageCode)');
+  assert.ok(start >= 0);
+  const block = providerSource.slice(start, start + 500);
+  assert.ok(block.includes('setLanguageCodeState(nextLanguageCode);'));
+  assert.ok(block.includes('await AsyncStorage.setItem(LANGUAGE_STORAGE_KEY, nextLanguageCode);'));
+  assert.ok(block.includes("console.error('Failed to save language preference:', error);"));
+});
+
+// ─── REAL device-language detection ──────────────────────────────────────────
+// These drive the exported function with a stubbed Intl so the mapping from a
+// device locale to a supported language is verified directly, not by grepping.
+
+function detectWithDeviceLocale(locale) {
+  const sandboxWithIntl = {
+    exports: {},
+    require: () => ({}),
+    Intl: {
+      DateTimeFormat: function DateTimeFormat() {
+        return { resolvedOptions: () => ({ locale }) };
+      },
+    },
+  };
+  const transpiledConfig = ts.transpileModule(source, {
+    compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ESNext },
+  });
+  vm.createContext(sandboxWithIntl);
+  vm.runInContext(transpiledConfig.outputText, sandboxWithIntl);
+  return sandboxWithIntl.exports.detectDeviceLanguage();
+}
+
+test('REAL detectDeviceLanguage maps supported device locales to a language', () => {
+  assert.equal(detectWithDeviceLocale('el-GR'), 'el');
+  assert.equal(detectWithDeviceLocale('el-CY'), 'el');
+  assert.equal(detectWithDeviceLocale('sr-RS'), 'sr');
+  assert.equal(detectWithDeviceLocale('ru-BY'), 'ru');
+  assert.equal(detectWithDeviceLocale('ka-GE'), 'ka');
+  assert.equal(detectWithDeviceLocale('ro-MD'), 'ro');
+  assert.equal(detectWithDeviceLocale('uk-UA'), 'uk');
+  assert.equal(detectWithDeviceLocale('en-US'), 'en');
+});
+
+test('REAL detectDeviceLanguage returns null for unsupported device locales', () => {
+  // Returning null (not 'ro') keeps the fallback decision with the caller.
+  assert.equal(detectWithDeviceLocale('ja-JP'), null);
+  assert.equal(detectWithDeviceLocale('de-DE'), null);
+  assert.equal(detectWithDeviceLocale(''), null);
 });
 
 test('SUPPORTED_LANGUAGES are exact', () => {

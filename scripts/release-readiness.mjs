@@ -35,6 +35,7 @@
  */
 
 import { readFileSync, existsSync, readdirSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
 import { dirname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -615,6 +616,43 @@ function checkI18n() {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// 11. Accessibility (a quality gate, decidable from the source)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Accessibility is the one quality item on the improvement list that is entirely
+ * decidable from the source, so it is a gate rather than a checklist entry. The check
+ * shells out to the audit script instead of re-implementing its rules: two copies of
+ * the same rule is how they drift apart.
+ *
+ * The audit covers control roles and labels, input labels, decorative images, the 44pt
+ * touch target, WCAG AA contrast and hardcoded copy. It runs in under a second with no
+ * bundler and no network, so it is cheap enough for every run of this gate.
+ */
+function checkAccessibility() {
+  const scriptPath = join(ROOT, 'scripts', 'accessibility-audit.mjs');
+  if (!existsSync(scriptPath)) {
+    record('FAIL', 'a11y', 'scripts/accessibility-audit.mjs is missing — accessibility is unchecked');
+    return;
+  }
+  const result = spawnSync(process.execPath, [scriptPath], { cwd: ROOT, encoding: 'utf8' });
+  const output = `${result.stdout ?? ''}${result.stderr ?? ''}`.trim();
+  if (result.status === 0) {
+    const summary = /(\d+) source file\(s\) scanned/.exec(output);
+    record('PASS', 'a11y', `accessibility audit is clean${summary ? ` across ${summary[1]} source file(s)` : ''}`);
+    return;
+  }
+  const count = /(\d+) finding\(s\)/.exec(output);
+  const examples = output.split('\n').filter((line) => /^\s{6}\S/.test(line)).slice(0, 3);
+  record(
+    'FAIL',
+    'a11y',
+    `accessibility audit reported ${count ? count[1] : 'unknown'} finding(s)`,
+    examples.length > 0 ? `examples: ${examples.map((line) => line.trim()).join(' | ')}` : undefined,
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Report
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -635,6 +673,7 @@ function main() {
   checkTestWiring();
   checkSecretHygiene();
   checkI18n();
+  checkAccessibility();
 
   const order = { FAIL: 0, DEFERRED: 1, PASS: 2 };
   results.sort((a, b) => order[a.level] - order[b.level]);

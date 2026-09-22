@@ -86,6 +86,24 @@ const DICTATION_FAILED = {
   sq: 'Diktimi nuk mundi të nisë. Provo përsëri.',
 };
 
+/**
+ * Thrown when a saved calendar preference is not valid for the selected country.
+ * The message is developer-facing (the UI never renders it) but it was still a
+ * Romanian literal in a provider, so it belongs in the corpus like any other string.
+ */
+const CALENDAR_UNAVAILABLE = {
+  ro: 'Calendarul ales nu este disponibil pentru această țară.',
+  en: 'The chosen calendar is not available for this country.',
+  el: 'Το επιλεγμένο ημερολόγιο δεν είναι διαθέσιμο για αυτή τη χώρα.',
+  sr: 'Изабрани календар није доступан за ову земљу.',
+  bg: 'Избраният календар не е наличен за тази държава.',
+  mk: 'Избраниот календар не е достапен за оваа земја.',
+  uk: 'Обраний календар недоступний для цієї країни.',
+  ka: 'არჩეული კალენდარი ამ ქვეყნისთვის მიუწვდომელია.',
+  ru: 'Выбранный календарь недоступен для этой страны.',
+  sq: 'Kalendari i zgjedhur nuk është i disponueshëm për këtë vend.',
+};
+
 const INSERTIONS = [
   { anchor: "'home.liveAccessibilityLabel':", values: { 'home.heroTitle': HERO_TITLE } },
   {
@@ -96,6 +114,7 @@ const INSERTIONS = [
       'chat.dictationStartFailed': DICTATION_FAILED,
     },
   },
+  { anchor: "'region.moldovaChooseCalendar':", values: { 'region.calendarUnavailable': CALENDAR_UNAVAILABLE } },
 ];
 
 function parseLocaleBlocks(source) {

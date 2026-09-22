@@ -1,7 +1,9 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { createContext, type PropsWithChildren, useContext, useEffect, useMemo, useState } from 'react';
 
+import { markStartup } from '@/lib/startup-timing';
 import {
+  detectDeviceLanguage,
   getCalendar,
   getCalendarsForCountry,
   getDefaultCalendar,
@@ -39,7 +41,11 @@ const LocalizationContext = createContext<LocalizationContextValue | null>(null)
 
 export function LocalizationProvider({ children }: PropsWithChildren) {
   const [countryCode, setCountryCodeState] = useState<CountryCode>(DEFAULT_COUNTRY);
-  const [languageCode, setLanguageCodeState] = useState<LanguageCode>('ro');
+  // First launch follows the device language instead of assuming Romanian. The
+  // user's explicit choice always wins once stored.
+  const [languageCode, setLanguageCodeState] = useState<LanguageCode>(
+    () => detectDeviceLanguage() ?? 'ro',
+  );
   const [calendarPreferences, setCalendarPreferences] = useState<CalendarPreferences>({});
   const [isLoading, setIsLoading] = useState(true);
 
@@ -53,11 +59,17 @@ export function LocalizationProvider({ children }: PropsWithChildren) {
     ])
       .then(([savedCountry, savedCalendars, savedLanguage]) => {
         if (!active) return;
-        if (savedLanguage.status === 'fulfilled') {
+
+        // Language precedence: an explicit stored choice wins; otherwise keep the
+        // device-detected language chosen at first launch. The seed value is
+        // deliberately NOT run through resolveLanguageCode, because that function
+        // maps a missing value to Romanian and would undo device detection.
+        if (savedLanguage.status === 'fulfilled' && savedLanguage.value) {
           setLanguageCodeState(resolveLanguageCode(savedLanguage.value));
-        } else {
+        } else if (savedLanguage.status === 'rejected') {
           console.error('Failed to restore language preference:', savedLanguage.reason);
         }
+
         if (savedCountry.status === 'fulfilled') {
           setCountryCodeState(getRegion(savedCountry.value).countryCode);
         } else {
@@ -76,7 +88,12 @@ export function LocalizationProvider({ children }: PropsWithChildren) {
         }
       })
       .finally(() => {
-        if (active) setIsLoading(false);
+        if (active) {
+          setIsLoading(false);
+          // The single gate in front of the navigator: everything below this provider
+          // renders only after this resolves (see src/components/splash-gate.tsx).
+          markStartup('providersReady');
+        }
       });
 
     return () => { active = false; };
@@ -98,7 +115,9 @@ export function LocalizationProvider({ children }: PropsWithChildren) {
     region,
     setCalendarCode: async (nextCalendarCode) => {
       if (!getCalendar(nextCalendarCode, countryCode)) {
-        throw new Error('Calendarul ales nu este disponibil pentru această țară.');
+        // The thrown text is developer-facing (no screen renders it), but a Romanian
+        // literal here still bypasses the corpus; the audit flags it as hardcoded copy.
+        throw new Error(translate(languageCode, 'region.calendarUnavailable'));
       }
       const nextPreferences = { ...calendarPreferences, [countryCode]: nextCalendarCode };
       setCalendarPreferences(nextPreferences);
@@ -107,9 +126,23 @@ export function LocalizationProvider({ children }: PropsWithChildren) {
     setCountryCode: async (nextCountryCode) => {
       setCountryCodeState(nextCountryCode);
       await AsyncStorage.setItem(COUNTRY_STORAGE_KEY, nextCountryCode);
+
+      // Selecting a country also selects its language, but ONLY while the user has
+      // never made an explicit language choice. Without this, a first-time user in
+      // Greece who picks Greece would still see Romanian UI.
+      try {
+        const explicitLanguage = await AsyncStorage.getItem(LANGUAGE_STORAGE_KEY);
+        if (!explicitLanguage) {
+          const regionLanguage = getRegion(nextCountryCode).languageCode;
+          setLanguageCodeState(regionLanguage);
+        }
+      } catch (error) {
+        console.error('Failed to align language with the selected country:', error);
+      }
     },
     setLanguageCode: async (nextLanguageCode) => {
       setLanguageCodeState(nextLanguageCode);
+      // Mark the choice as explicit so a later country change will not override it.
       try {
         await AsyncStorage.setItem(LANGUAGE_STORAGE_KEY, nextLanguageCode);
       } catch (error) {
