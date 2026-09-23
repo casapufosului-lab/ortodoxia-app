@@ -48,6 +48,38 @@ type ChatResponse = {
 };
 
 /**
+ * Server quota codes → localized messages.
+ *
+ * The Edge Function answers with a machine-readable `code` (`cooldown`, `daily_limit`, `client_limit`,
+ * `ip_limit`, `monthly_cap`) and a Romanian sentence. The sentence stays as a FALLBACK for a client that
+ * does not know the code yet; everything the app can name is rendered in the user's own language, because
+ * "limita de mesaje a fost atinsă" is not an answer for someone reading the app in Georgian.
+ */
+const QUOTA_MESSAGE_KEYS: Record<string, TranslationKey> = {
+  cooldown: 'chat.quotaCooldown',
+  daily_limit: 'chat.quotaDailyLimit',
+  client_limit: 'chat.quotaClientLimit',
+  ip_limit: 'chat.quotaIpLimit',
+  monthly_cap: 'chat.quotaMonthlyCap',
+};
+
+/**
+ * `true` only for the codes that mean "nothing left today".
+ *
+ * The cooldown is deliberately NOT here: it is temporary, so the remaining count the server sent must be
+ * preserved rather than zeroed.
+ */
+function isQuotaExhausted(code: unknown): boolean {
+  return code === 'daily_limit' || code === 'client_limit' || code === 'ip_limit' || code === 'monthly_cap';
+}
+
+/** The localized sentence for a server quota code, or `fallback` when the code is unknown/absent. */
+function quotaMessage(details: { code?: unknown } | null | undefined, fallback: string, translate: (key: TranslationKey) => string): string {
+  const key = typeof details?.code === 'string' ? QUOTA_MESSAGE_KEYS[details.code] : undefined;
+  return key === undefined ? fallback : translate(key);
+}
+
+/**
  * Client-side ceiling for a chat request.
  *
  * `supabase.functions.invoke` applies a timeout only when one is passed, and the
@@ -495,12 +527,10 @@ function ChatConversation() {
           try {
             const details = await error.context.json();
             if (!isCurrentRequest()) return;
-            if (typeof details?.error === 'string') message = details.error;
+            message = quotaMessage(details, typeof details?.error === 'string' ? details.error : message, t);
             if (typeof details?.remaining === 'number') setRemaining(details.remaining);
             if (typeof details?.dailyLimit === 'number') setDailyLimit(details.dailyLimit);
-            // Quota exhausted (any code): nothing left today.
-            if (['daily_limit', 'client_limit', 'ip_limit', 'monthly_cap'].includes(details?.code)) setRemaining(0);
-            // Cooldown is temporary: preserve the server-provided remaining quota.
+            if (isQuotaExhausted(details?.code)) setRemaining(0);
           } catch {
             // PÃ„Æ’strÃ„Æ’m mesajul simplu de mai sus.
           }

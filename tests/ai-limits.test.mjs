@@ -146,7 +146,9 @@ test('the endpoint accepts exactly the denial reasons the database can return', 
 
 test('the app sends the device identifier with every chat request', () => {
   assert.match(chatScreen, /headers: \{ 'x-device-id': await getAiLimitDeviceId\(\) \}/);
-  assert.match(chatScreen, /if \(\['daily_limit', 'client_limit', 'ip_limit', 'monthly_cap'\]\.includes\(details\?\.code\)\) setRemaining\(0\);/);
+  // Quota codes are localized on the client (tests/quota-messages-i18n.test.mjs); here we only pin the
+  // badge behaviour: every exhausted-quota code clears the counter, the cooldown does not.
+  assert.match(chatScreen, /if \(isQuotaExhausted\(details\?\.code\)\) setRemaining\(0\);/);
 });
 
 // ─── C · the client identifier ───────────────────────────────────────────────
