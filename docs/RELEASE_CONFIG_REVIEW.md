@@ -36,15 +36,46 @@ le-am validat (`npx expo config --type public` rezolvă configul) și am reparat
 2. **`EXPO_PUBLIC_REVENUECAT_APPLE_API_KEY` lipsește** (se emite după ce contul plătit Apple există).
 3. **Produsele IAP trebuie create în ambele magazine** (`ro.ortodoxia.premium.monthly` / `.annual`) și
    atașate la offering-ul RevenueCat — altfel ecranul premium nu are ce vinde.
-4. **De verificat o dată, online:** `npx eas-cli project:info` — slug-ul din `app.json` (`ortodoxia`) și
-   `owner` (`ortodoxia`) trebuie să corespundă proiectului EAS existent. `projectId`-ul este același, deci
-   build-urile merg; dacă în dashboard proiectul se numește altfel, se redenumește acolo (nu în două locuri).
+4. **Verificat:** `npx eas-cli project:info` → `@ortodoxia/ortodoxia`. Slug-ul (`ortodoxia`) și `owner`
+   (`ortodoxia`) din `app.json` corespund proiectului EAS existent, deci nu trebuie redenumit nimic.
+
+## Starea EAS (23.09.2026, seara)
+
+| Build | Profil | Commit | Rezultat |
+|---|---|---|---|
+| `03569e16` (pornit de contul `ortodoxia123`) | `production` | `caed0dd` | **terminat** → `.aab`, `versionCode 1` |
+| `79c70e73` (pornit de aici) | `preview` | `74d065a` | în coadă → APK de test instalabil |
+| `1811380f` | `preview` | `74d065a` | **anulat** (duplicat: aceeași comandă a fost reluată) |
+
+**`.aab`-ul de producție NU se trimite la magazin**, din două motive măsurate:
+
+1. e construit din commit-ul `caed0dd`, adică **înainte** de localizarea mesajelor de cotă (`7e39a3b`) și de
+   reparările din `eas.json` (`3411405`, `74d065a`);
+2. profilul de producție are **cheia RevenueCat de test** — un build de magazin cu ea nu poate vinde nimic,
+   exact ce semnalează `--release` cu FAIL.
+
+**`versionCode 1` e deja folosit** de acel build: următorul build de producție trebuie să aibă `versionCode 2`,
+iar asta se întâmplă singur, fiindcă `autoIncrement: true` a fost adăugat între timp.
+
+### Ce mai trebuie pentru `submit` (owner)
+
+1. **Cheile RevenueCat reale** în profilul `production` (`EXPO_PUBLIC_REVENUECAT_GOOGLE_API_KEY` +
+   `EXPO_PUBLIC_REVENUECAT_APPLE_API_KEY`), plus produsele `ro.ortodoxia.premium.monthly` / `.annual`
+   create în Play Console și App Store Connect și atașate la offering-ul RevenueCat.
+2. **Play Console:** aplicația `ro.ortodoxia.app` creată, un track (intern/closed) și un **cont de serviciu**
+   cu drept de publicare (`eas credentials` sau cheia JSON la `eas submit`).
+3. **App Store Connect:** aplicația înregistrată, acordurile semnate, credențialele Apple în EAS.
+4. Abia apoi: `eas build --profile production --platform android` (→ `versionCode 2`) și
+   `eas submit --profile production --platform android --latest`.
+
+Comanda de submit **nu a fost rulată**: ar fi trimis artefactul vechi, cu chei de test.
 
 ## Cum se verifică
 
 ```powershell
-npm run test:release          # CI mode: 23 pass / 0 fail / 3 deferred (cele „deferred" sunt chei de magazin)
+npm run test:release          # CI mode: 24 pass / 0 fail / 3 deferred (cele „deferred" sunt chei de magazin)
 node scripts/release-readiness.mjs --release   # RELEASE mode: iese cu FAIL pe cheile de magazin
 npm test                      # include tests/release-config.test.mjs (7 teste pe app.json + eas.json)
 npx expo config --type public  # configul rezolvat, așa cum îl vede EAS
+npx eas-cli build:list --limit 3   # ce s-a construit și din ce commit
 ```
