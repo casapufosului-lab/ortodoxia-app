@@ -19,6 +19,14 @@ type Prayer = {
   audio_path: string | null;
 };
 
+/**
+ * C-09: lifetime of the signed URL issued for a prayer recording.
+ *
+ * A prayer recording runs at most a few minutes; five minutes is long enough for a
+ * full listen plus a retry, and short enough that a leaked URL expires quickly.
+ */
+const PRAYER_AUDIO_SIGNED_URL_TTL_SECONDS = 300;
+
 function normalizeSearchText(value: string, locale: string) {
   return value
     .normalize('NFD')
@@ -29,9 +37,12 @@ function normalizeSearchText(value: string, locale: string) {
 
 export default function PrayersScreen() {
   const { user } = useAuth();
-  const { t, region } = useLocalization();
+  const { t, region, languageCode } = useLocalization();
   const [query, setQuery] = useState('');
   const [prayers, setPrayers] = useState<Prayer[]>([]);
+  // J-04: true when the selected language has no prayers yet and the rows shown
+  // come from the untranslated corpus.
+  const [untranslatedFallback, setUntranslatedFallback] = useState(false);
   const [favoriteIds, setFavoriteIds] = useState<string[]>([]);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [speakingId, setSpeakingId] = useState<string | null>(null);
@@ -49,11 +60,31 @@ export default function PrayersScreen() {
     setErrorMessage('');
 
     try {
-      const { data, error } = await supabase
+      // J-04: the query had no language filter at all, so a Greek or Georgian
+      // user saw the Romanian corpus. Ask for the selected language first and
+      // only fall back to the unfiltered (all-language) result when the prayers
+      // corpus has not been translated yet — the same two-step pattern the home
+      // screen uses for daily_content. The fallback is surfaced to the user
+      // instead of being silently presented as localized content.
+      const selectColumns = 'id, category, title, body, editorial_source, audio_path';
+      let { data, error } = await supabase
         .from('prayers')
-        .select('id, category, title, body, editorial_source, audio_path')
+        .select(selectColumns)
         .eq('is_published', true)
+        .eq('language_code', languageCode)
         .order('sort_order', { ascending: true });
+
+      let fellBackToOtherLanguage = false;
+      if (!error && (data ?? []).length === 0) {
+        const fallback = await supabase
+          .from('prayers')
+          .select(selectColumns)
+          .eq('is_published', true)
+          .order('sort_order', { ascending: true });
+        data = fallback.data;
+        error = fallback.error;
+        fellBackToOtherLanguage = !fallback.error && (fallback.data ?? []).length > 0;
+      }
 
       if (error) {
         if (loadRequestRef.current !== requestId) return;
@@ -63,6 +94,7 @@ export default function PrayersScreen() {
 
       if (loadRequestRef.current !== requestId) return;
       setPrayers(data ?? []);
+      setUntranslatedFallback(fellBackToOtherLanguage);
 
       if (user) {
         const { data: favorites, error: favoritesError } = await supabase
@@ -89,7 +121,7 @@ export default function PrayersScreen() {
         setIsLoading(false);
       }
     }
-  }, [t, user]);
+  }, [languageCode, t, user]);
 
   useEffect(() => {
     const timeoutId = setTimeout(() => void loadPrayers(), 0);
@@ -180,8 +212,19 @@ export default function PrayersScreen() {
       setSpeakingId(prayer.id);
 
       if (prayer.audio_path) {
-        const { data } = supabase.storage.from('prayer-audio').getPublicUrl(prayer.audio_path);
-        const player = createAudioPlayer(data.publicUrl, { updateInterval: 250 });
+        // C-09: the bucket is private, so the player must use a short-lived signed
+        // URL. getPublicUrl() pointed at a permanently readable object and would
+        // return a URL that no longer resolves.
+        const { data, error } = await supabase.storage
+          .from('prayer-audio')
+          .createSignedUrl(prayer.audio_path, PRAYER_AUDIO_SIGNED_URL_TTL_SECONDS);
+        if (speechRequestRef.current !== speechRequestId) return;
+        if (error || !data?.signedUrl) {
+          setSpeakingId(null);
+          setErrorMessage(t('prayers.audioStartError'));
+          return;
+        }
+        const player = createAudioPlayer(data.signedUrl, { updateInterval: 250 });
         audioPlayerRef.current = player;
         player.addListener('playbackStatusUpdate', (status) => {
           if (audioPlayerRef.current !== player) return;
@@ -232,6 +275,11 @@ export default function PrayersScreen() {
     <Screen>
       <PageHeader eyebrow={t('prayers.eyebrow')} title={t('nav.prayers')} subtitle={t('prayers.subtitle')} />
       <Text style={styles.aiVoiceNotice}>{t('prayers.aiVoiceNotice')}</Text>
+      {untranslatedFallback ? (
+        <Text accessibilityLiveRegion="polite" style={styles.untranslatedNotice}>
+          {t('prayers.untranslatedNotice')}
+        </Text>
+      ) : null}
       <TextInput accessibilityLabel={t('prayers.search')} placeholder={t('prayers.search')} placeholderTextColor={palette.muted} value={query} onChangeText={setQuery} style={styles.search} />
       <Text style={styles.searchHint}>{t('prayers.searchHint')}</Text>
       {errorMessage ? (
@@ -292,6 +340,7 @@ const styles = StyleSheet.create({
   search: { backgroundColor: palette.paper, borderColor: palette.line, borderWidth: 1, borderRadius: 14, paddingHorizontal: 16, minHeight: 50, color: palette.ink, fontSize: 16 },
   searchHint: { color: palette.muted, fontSize: 12, lineHeight: 17, marginTop: -4 },
   aiVoiceNotice: { color: palette.muted, fontSize: 12, lineHeight: 17, marginTop: -5 },
+  untranslatedNotice: { color: palette.goldDark, fontSize: 12, lineHeight: 17, fontWeight: '700' },
   list: { gap: 12 },
   row: { flexDirection: 'row', gap: 12 },
   copy: { flex: 1, gap: 7 },

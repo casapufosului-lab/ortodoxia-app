@@ -1,12 +1,20 @@
 import { createClient } from 'npm:@supabase/supabase-js@2';
-import { classifyExpoPushTickets, isNotificationDue } from './send-core.ts';
+import {
+  classifyExpoPushTickets,
+  isNotificationDue,
+  resolveFeastRankCode,
+} from './send-core.ts';
 
 // ─── CORS ───────────────────────────────────────────────────────────────────
 
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'content-type, x-cron-secret',
-};
+import { corsHeaders as buildCorsHeaders, preflightResponse } from '../_shared/http.ts';
+
+const ALLOWED_HEADERS = 'content-type, x-cron-secret';
+
+/** CORS headers for this request; the origin comes from the ALLOWED_ORIGINS secret. */
+function corsHeaders(req: Request) {
+  return buildCorsHeaders(req, ALLOWED_HEADERS);
+}
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -31,6 +39,7 @@ type CalendarDay = {
   title: string | null;
   saints: string[];
   feast_rank: string | null;
+  feast_rank_code: string | null;
   fasting_note: string | null;
 };
 
@@ -147,15 +156,25 @@ export function isSunday(timezone: string, now: Date = new Date()): boolean {
   return weekday === 'Sunday';
 }
 
-/** Priority: red_cross > sunday > black_cross > fasting > daily. ONE notification per user per day. */
+/**
+ * Priority: red_cross > sunday > black_cross > fasting > daily. ONE notification per user per day.
+ *
+ * Classification is driven by the canonical feast-rank code, never by comparing a
+ * localized display literal. The legacy Romanian/Greek strings are accepted only
+ * as a fallback so that rows written before the canonical column existed still
+ * classify correctly (previously `feastRank === 'cruce roșie'` meant the Greek
+ * calendar could never produce a red_cross notification).
+ */
 export function determineNotificationType(
   feastRank: string | null | undefined,
   fastingNote: string | null | undefined,
   sunday: boolean,
+  feastRankCode?: string | null,
 ): NotificationType {
-  if (feastRank === 'cruce roșie') return 'red_cross';
+  const rank = resolveFeastRankCode(feastRankCode, feastRank);
+  if (rank === 'red_cross') return 'red_cross';
   if (sunday) return 'sunday';
-  if (feastRank === 'cruce neagră') return 'black_cross';
+  if (rank === 'black_cross') return 'black_cross';
   if (fastingNote && fastingNote.trim().length > 0) return 'fasting';
   return 'daily';
 }
@@ -245,15 +264,34 @@ function isSafeCalendarCode(value: string | null) {
 
 // ─── Response helper ────────────────────────────────────────────────────────
 
+/**
+ * The request currently being handled.
+ *
+ * json() is called ~60 times across the functions and cannot take the request as a
+ * parameter without editing every call site. Deno serves each request in its own task,
+ * and the value is assigned synchronously at the top of the handler and read before the
+ * handler returns, so a module-level marker is not observable across requests.
+ */
+let activeRequest: Request | null = null;
+
 function json(body: Record<string, unknown>, status = 200) {
+  const req = activeRequest;
+  if (!req) {
+    // Defensive: never emit CORS headers for an unknown origin.
+    return new Response(JSON.stringify(body), {
+      status,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }
   return new Response(JSON.stringify(body), {
     status,
-    headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    headers: { ...corsHeaders(req), 'Content-Type': 'application/json' },
   });
 }
 
 Deno.serve(async (req: Request) => {
-  if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
+  activeRequest = req;
+  if (req.method === 'OPTIONS') return preflightResponse(req, ALLOWED_HEADERS);
   if (req.method !== 'POST') return json({ error: 'Metodă neacceptată.' }, 405);
 
   // ── Authorization: cron secret ──
@@ -282,6 +320,11 @@ Deno.serve(async (req: Request) => {
   let eligible = 0;
   let sent = 0;
   let skipped = 0;
+  // Skips caused by an operational failure (query/claim/transport error) are
+  // counted separately from expected skips (no device, no content, wrong time).
+  // The run only reports success when no failures occurred, so a broken pipeline
+  // cannot look healthy to the scheduler.
+  let failed = 0;
 
   for (const preference of (preferences ?? []) as Preference[]) {
     if (!isSafeCountryCode(preference.country_code) || !isSafeCalendarCode(preference.calendar_code)) {
@@ -315,7 +358,7 @@ Deno.serve(async (req: Request) => {
       preference.calendar_code
         ? admin
             .from('calendar_days')
-            .select('title, saints, feast_rank, fasting_note')
+            .select('title, saints, feast_rank, feast_rank_code, fasting_note')
             .eq('country_code', preference.country_code)
             .eq('language_code', languageCode)
             .eq('calendar_code', preference.calendar_code)
@@ -332,11 +375,11 @@ Deno.serve(async (req: Request) => {
 
     // ── Use published daily content when present; otherwise use a fixed editorial fallback. ──
     if (contentResult.error) {
-      skipped += 1;
+      failed += 1;
       continue;
     }
     if (devicesResult.error) {
-      skipped += 1;
+      failed += 1;
       continue;
     }
 
@@ -349,10 +392,15 @@ Deno.serve(async (req: Request) => {
     const calendar = calendarResult.data as CalendarDay | null;
     const dailyContent = (contentResult.data as DailyContent | null) ?? getFallbackDailyContent(languageCode);
 
-    // ── Notification type: exactly one per user per day ──
-    const notificationType = determineNotificationType(calendar?.feast_rank, calendar?.fasting_note, sunday);
+    // ── Notification type: exactly one per user per day (canonical rank code) ──
+    const notificationType = determineNotificationType(
+      calendar?.feast_rank,
+      calendar?.fasting_note,
+      sunday,
+      calendar?.feast_rank_code,
+    );
 
-    const { data: messageRows } = await admin
+    const { data: messageRows, error: messageError } = await admin
       .from('notification_messages')
       .select('language_code, country_code, calendar_code, day_type, theme, title_template, body_template')
       .eq('is_active', true)
@@ -362,6 +410,14 @@ Deno.serve(async (req: Request) => {
       .or(preference.calendar_code
         ? `calendar_code.is.null,calendar_code.eq.${preference.calendar_code}`
         : 'calendar_code.is.null');
+
+    // A failure here previously fell through silently and produced a Romanian
+    // fallback title/body for every language. Count it and skip the send instead
+    // of emitting a message we cannot localize.
+    if (messageError) {
+      failed += 1;
+      continue;
+    }
 
     const editorialMessage = pickEditorialMessage(
       (messageRows ?? []) as NotificationMessage[],
@@ -388,7 +444,7 @@ Deno.serve(async (req: Request) => {
     );
 
     if (reserveError) {
-      skipped += 1;
+      failed += 1;
       continue;
     }
 
@@ -421,18 +477,21 @@ Deno.serve(async (req: Request) => {
         body: JSON.stringify(messages),
       });
     } catch {
-      // Ambiguous outcome: Expo may have accepted the push before the transport failed.
-      // Keep the reservation so a later cron run cannot send the same notification twice.
-      skipped += 1;
+      // Ambiguous outcome: Expo may have accepted the push before the transport
+      // failed. Keep the reservation (so a retry cannot duplicate the push) but
+      // report the run as failed so the scheduler surfaces the problem.
+      failed += 1;
       continue;
     }
 
     if (!response.ok) {
+      // Expo rejected the whole batch. Release the reservations so the next cron
+      // run can retry the same devices, and count the run as failed.
       await admin.rpc('release_notification_reservation', {
         p_device_ids: pendingDevices.map((d) => d.id),
         p_content_date: now.date,
       });
-      skipped += 1;
+      failed += 1;
       continue;
     }
 
@@ -479,5 +538,11 @@ Deno.serve(async (req: Request) => {
     if (retryDeviceIds.length > 0 || deactivateDeviceIds.length > 0 || hasAmbiguousTickets) skipped += 1;
   }
 
-  return json({ success: true, eligible, sent, skipped });
+  // Report failure honestly: a run where every eligible user failed must not look
+  // like a healthy run to the scheduler. `success` is only true when no
+  // operational failure occurred. Ambiguous transport outcomes are counted as
+  // `ambiguous` (reservation intentionally kept) rather than as failures.
+  const success = failed === 0;
+  const status = success ? 200 : 500;
+  return json({ success, eligible, sent, skipped, failed }, status);
 });

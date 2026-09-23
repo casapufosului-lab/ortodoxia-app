@@ -11,20 +11,47 @@
  * Returns sanitized JSON — no API key, no service role key, no raw payloads.
  */
 import { createClient } from 'npm:@supabase/supabase-js@2';
-import { getEligibleSources, getSourceById, type LiveSourceDef } from './sources.ts';
+import { getEligibleSources, getSourceById, LIVE_SOURCES, type LiveSourceDef } from './sources.ts';
 import { createYouTubeClient, type YouTubeClient } from './youtube.ts';
 import type { CacheStore, CachedStatusRow, SanitizedResponse } from './status.ts';
-import { computeAllSourceStatuses, computeSourceStatus } from './status.ts';
+import {
+  computeAllSourceStatuses,
+  computeSourceStatus,
+  createDiscoveryBudget,
+  discoveryBudgetSummary,
+} from './status.ts';
 
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-country-code',
-};
+import { corsHeaders as buildCorsHeaders, preflightResponse } from '../_shared/http.ts';
+
+const ALLOWED_HEADERS = 'authorization, x-client-info, apikey, content-type, x-country-code';
+
+/** CORS headers for this request; the origin comes from the ALLOWED_ORIGINS secret. */
+function corsHeaders(req: Request) {
+  return buildCorsHeaders(req, ALLOWED_HEADERS);
+}
+
+/**
+ * The request currently being handled.
+ *
+ * json() is called ~60 times across the functions and cannot take the request as a
+ * parameter without editing every call site. Deno serves each request in its own task,
+ * and the value is assigned synchronously at the top of the handler and read before the
+ * handler returns, so a module-level marker is not observable across requests.
+ */
+let activeRequest: Request | null = null;
 
 function json(body: Record<string, unknown>, status = 200) {
+  const req = activeRequest;
+  if (!req) {
+    // Defensive: never emit CORS headers for an unknown origin.
+    return new Response(JSON.stringify(body), {
+      status,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }
   return new Response(JSON.stringify(body), {
     status,
-    headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    headers: { ...corsHeaders(req), 'Content-Type': 'application/json' },
   });
 }
 
@@ -114,7 +141,8 @@ function createSupacheCacheAdapter(
 // ─── Entry point ────────────────────────────────────────────────────────────
 
 Deno.serve(async (req: Request) => {
-  if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
+  activeRequest = req;
+  if (req.method === 'OPTIONS') return preflightResponse(req, ALLOWED_HEADERS);
   if (req.method !== 'GET') return json({ error: 'Metodă neacceptată.' }, 405);
 
   const supabaseUrl = Deno.env.get('SUPABASE_URL');
@@ -134,10 +162,25 @@ Deno.serve(async (req: Request) => {
     : null;
 
   const nowMs = Date.now();
+
+  // This function is deployed with verify_jwt = false so that guests (who have no
+  // account) can read live status — it is read-only, serves only public broadcast
+  // metadata, and never receives the YouTube key. Because it is therefore callable
+  // by anyone, the request surface is kept deliberately narrow:
+  //   * the country header is validated against the known source registry, so an
+  //     arbitrary value cannot influence work performed;
+  //   * discovery is bounded by a per-invocation search budget (see status.ts), so
+  //     repeated or hostile calls cannot consume the daily API quota;
+  //   * `?id=` still accepts only a canonical source id.
   const requestedCountryCode = (req.headers.get('x-country-code') ?? 'RO').trim().toUpperCase();
+  const knownCountryCodes = new Set(LIVE_SOURCES.map((source) => source.countryCode));
+  if (!knownCountryCodes.has(requestedCountryCode)) {
+    return json({ error: 'Cod de țară necunoscut.' }, 400);
+  }
 
   // Optional single-source filter: ?id=trinitas-tv (must be a known canonical ID)
   const requestedId = new URL(req.url).searchParams.get('id');
+  const budget = createDiscoveryBudget();
 
   if (requestedId) {
     const source = getSourceById(requestedId);
@@ -152,12 +195,12 @@ Deno.serve(async (req: Request) => {
         currentBroadcast: null,
       });
     }
-    const result = await computeSourceStatus(source, youtube, cache, nowMs, apiKeyPresent);
-    return json({ sources: [result] });
+    const result = await computeSourceStatus(source, youtube, cache, nowMs, apiKeyPresent, budget);
+    return json({ sources: [result], budget: discoveryBudgetSummary(budget) });
   }
 
   const eligible = getEligibleSources(requestedCountryCode);
-  const results = await computeAllSourceStatuses(eligible, youtube, cache, nowMs, apiKeyPresent);
+  const results = await computeAllSourceStatuses(eligible, youtube, cache, nowMs, apiKeyPresent, budget);
 
-  return json({ sources: results });
+  return json({ sources: results, budget: discoveryBudgetSummary(budget) });
 });

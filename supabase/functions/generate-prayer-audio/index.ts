@@ -1,9 +1,13 @@
 import { createClient } from 'npm:@supabase/supabase-js@2';
 
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'content-type, x-generation-token',
-};
+import { corsHeaders as buildCorsHeaders, preflightResponse } from '../_shared/http.ts';
+
+const ALLOWED_HEADERS = 'content-type, x-generation-token';
+
+/** CORS headers for this request; the origin comes from the ALLOWED_ORIGINS secret. */
+function corsHeaders(req: Request) {
+  return buildCorsHeaders(req, ALLOWED_HEADERS);
+}
 
 const allowedVoices = new Set([
   'alloy',
@@ -26,15 +30,34 @@ type RequestBody = {
   voice?: unknown;
 };
 
+/**
+ * The request currently being handled.
+ *
+ * json() is called ~60 times across the functions and cannot take the request as a
+ * parameter without editing every call site. Deno serves each request in its own task,
+ * and the value is assigned synchronously at the top of the handler and read before the
+ * handler returns, so a module-level marker is not observable across requests.
+ */
+let activeRequest: Request | null = null;
+
 function json(body: Record<string, unknown>, status = 200) {
+  const req = activeRequest;
+  if (!req) {
+    // Defensive: never emit CORS headers for an unknown origin.
+    return new Response(JSON.stringify(body), {
+      status,
+      headers: { 'Content-Type': 'application/json' },
+    });
+  }
   return new Response(JSON.stringify(body), {
     status,
-    headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    headers: { ...corsHeaders(req), 'Content-Type': 'application/json' },
   });
 }
 
 Deno.serve(async (req: Request) => {
-  if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders });
+  activeRequest = req;
+  if (req.method === 'OPTIONS') return preflightResponse(req, ALLOWED_HEADERS);
   if (req.method !== 'POST') return json({ error: 'Metodă neacceptată.' }, 405);
 
   const generationToken = Deno.env.get('PRAYER_AUDIO_GENERATION_TOKEN');

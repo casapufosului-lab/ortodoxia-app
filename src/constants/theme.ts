@@ -8,19 +8,22 @@ import '@/global.css';
 import { Platform } from 'react-native';
 
 export const Colors = {
+  /* Light-only brand palette (app.json: userInterfaceStyle = "light"). */
   light: {
-    text: '#000000',
-    background: '#ffffff',
-    backgroundElement: '#F0F0F3',
-    backgroundSelected: '#E0E1E6',
-    textSecondary: '#60646C',
+    text: '#10344F',
+    background: '#FFFFFF',
+    backgroundElement: '#F1F8FE',
+    backgroundSelected: '#DCEBF9',
+    textSecondary: '#3F6285',
   },
+  /* The app ships light branding only; this entry mirrors the light palette so a device
+     forced into dark mode still renders the approved brand instead of black surfaces. */
   dark: {
-    text: '#ffffff',
-    background: '#000000',
-    backgroundElement: '#212225',
-    backgroundSelected: '#2E3135',
-    textSecondary: '#B0B4BA',
+    text: '#10344F',
+    background: '#FFFFFF',
+    backgroundElement: '#F1F8FE',
+    backgroundSelected: '#DCEBF9',
+    textSecondary: '#3F6285',
   },
 } as const;
 

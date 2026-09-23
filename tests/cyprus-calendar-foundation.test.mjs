@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import { classifyFeastRank, isMajorFeast } from '../src/lib/feast-rank.ts';
 
 const configSrc = readFileSync(new URL('../src/i18n/config.ts', import.meta.url), 'utf8');
 const calendarSrc = readFileSync(new URL('../src/app/(tabs)/calendar.tsx', import.meta.url), 'utf8');
@@ -22,17 +23,22 @@ test('Cyprus has one automatic church calendar', () => {
 });
 
 test('Greece and Cyprus use major-feast presentation', () => {
+  // The legend still selects the major-feast wording for GR/CY.
   assert.ok(
     calendarSrc.includes(
       "(countryCode === 'GR' || countryCode === 'CY') ? 'calendar.majorFeastLegend' : 'calendar.redCrossLegend'",
     ),
   );
 
-  assert.ok(
-    calendarSrc.includes(
-      "const isHighlightedFeast = (countryCode === 'GR' || countryCode === 'CY')",
-    ),
-  );
+  // The classification itself must come from the canonical model: the Greek
+  // calendar stores "δεσποτική/θεομητορική εορτή", which the canonical codes map
+  // to great_feast / theotokos_feast. The previous assertion required a source
+  // string that named the Greek calendars by hand, which the model replaced.
+  assert.equal(classifyFeastRank('δεσποτική εορτή'), 'great_feast');
+  assert.equal(classifyFeastRank('θεομητορική εορτή'), 'theotokos_feast');
+  assert.equal(isMajorFeast(classifyFeastRank('δεσποτική εορτή')), true);
+  assert.equal(isMajorFeast(classifyFeastRank('θεομητορική εορτή')), true);
+  assert.ok(!calendarSrc.includes('isHighlightedFeast'));
 });
 
 test('notifications support Greece and Cyprus calendars', () => {

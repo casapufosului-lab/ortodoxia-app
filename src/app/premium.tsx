@@ -91,13 +91,13 @@ export default function PremiumScreen() {
         <Text style={styles.plan}>{t('premium.planMonthly')}</Text>
         <Text style={styles.introPrice}>{monthlyPrice ?? t('premium.priceInStore')}</Text>
         <Text style={styles.price}>{t('premium.renewsAutomatically')}</Text>
-        <PrimaryButton label={user ? (busyPlan === 'monthly' ? t('premium.processing') : t('premium.activateMonthly')) : t('premium.loginToSubscribe')} onPress={() => void purchase('monthly')} />
+        <PrimaryButton disabled={busyPlan !== null} label={user ? (busyPlan === 'monthly' ? t('premium.processing') : t('premium.activateMonthly')) : t('premium.loginToSubscribe')} onPress={() => void purchase('monthly')} />
       </Card>
       <Card>
         <Text style={styles.plan}>{t('premium.planAnnual')}</Text>
         <Text style={styles.introPrice}>{annualPrice ?? t('premium.priceInStore')}</Text>
         <Text style={styles.price}>{t('premium.renewsAutomatically')}</Text>
-        <PrimaryButton label={user ? (busyPlan === 'annual' ? t('premium.processing') : t('premium.activateAnnual')) : t('premium.loginToSubscribe')} onPress={() => void purchase('annual')} />
+        <PrimaryButton disabled={busyPlan !== null} label={user ? (busyPlan === 'annual' ? t('premium.processing') : t('premium.activateAnnual')) : t('premium.loginToSubscribe')} onPress={() => void purchase('annual')} />
       </Card>
       <Card style={styles.disclosure}>
         <Text style={styles.disclosureTitle}>{t('premium.disclosureTitle')}</Text>
@@ -107,7 +107,7 @@ export default function PremiumScreen() {
         <Text style={styles.disclosureText}>{t('premium.disclosureAfterCancel')}</Text>
         <Text style={styles.disclosureText}>{t('premium.disclosureRefunds')}</Text>
       </Card>
-      <SecondaryButton label={busyPlan === 'restore' ? t('premium.restoring') : t('premium.restorePurchases')} onPress={() => void handleRestore()} />
+      <SecondaryButton disabled={busyPlan !== null} label={busyPlan === 'restore' ? t('premium.restoring') : t('premium.restorePurchases')} onPress={() => void handleRestore()} />
       {loading ? <View style={styles.loadingRow}><ActivityIndicator color={palette.blue} size="small" /><Text style={styles.loadingText}>{t('premium.processingPayment')}</Text></View> : null}
       <Text style={styles.note}>{t('premium.paymentNote')}</Text>
       <View style={styles.legalLinks}>

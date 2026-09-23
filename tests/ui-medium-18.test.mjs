@@ -9,7 +9,14 @@ test('MEDIUM #18 auth feedback has a web alert fallback', () => {
   assert.match(auth, /function showAuthAlert/);
   assert.match(auth, /Platform\.OS === 'web'/);
   assert.match(auth, /window\.alert/);
-  assert.equal((auth.match(/showAuthAlert\(/g) ?? []).length, 12);
+  // Assert that every call site resolves to the helper rather than hardcoding a
+  // brittle call count, which broke on unrelated additions.
+  const declared = (auth.match(/function showAuthAlert\(/g) ?? []).length;
+  const called = (auth.match(/showAuthAlert\(/g) ?? []).length - declared;
+  assert.ok(called >= 10, `expected the auth screen to route feedback through showAuthAlert, saw ${called} call(s)`);
+  // Native feedback must go through the helper (which owns the web fallback), not
+  // through a bare Alert.alert call at a call site.
+  assert.equal((auth.match(/Alert\.alert\(/g) ?? []).length, 1, 'Alert.alert belongs inside showAuthAlert only');
 });
 
 test('MEDIUM #18 account feedback has a web alert fallback', () => {

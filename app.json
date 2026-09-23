@@ -7,20 +7,17 @@
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "ortodoxia",
-    "userInterfaceStyle": "automatic",
+    "userInterfaceStyle": "light",
     "ios": {
-      "icon": "./assets/expo.icon",
-      "bundleIdentifier": "ro.ortodoxia.app",
+     "bundleIdentifier": "ro.ortodoxia.app",
       "buildNumber": "1"
     },
     "android": {
       "package": "ro.ortodoxia.app",
       "versionCode": 1,
       "adaptiveIcon": {
-        "backgroundColor": "#E6F4FE",
-        "foregroundImage": "./assets/images/android-icon-foreground.png",
-        "backgroundImage": "./assets/images/android-icon-background.png",
-        "monochromeImage": "./assets/images/android-icon-monochrome.png"
+        "backgroundColor": "#FFFFFF",
+        "foregroundImage": "./assets/images/android-icon-foreground.png"
       },
       "predictiveBackGestureEnabled": false
     },
@@ -32,11 +29,17 @@
       "expo-router",
       "expo-notifications",
       [
+        "expo-secure-store",
+        {
+          "faceIDPermission": "Permite aplicației Ortodoxia să folosească Face ID pentru a-ți proteja sesiunea de autentificare."
+        }
+      ],
+      [
         "expo-splash-screen",
         {
-          "backgroundColor": "#208AEF",
+          "backgroundColor": "#FFFFFF",
           "image": "./assets/images/splash-icon.png",
-          "imageWidth": 76
+          "imageWidth": 180
         }
       ],
       [

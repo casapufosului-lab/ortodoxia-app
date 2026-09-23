@@ -19,8 +19,12 @@ test('native password recovery deep link uses the registered app scheme', () => 
   assert.ok(authScreen.includes(': NATIVE_PASSWORD_RECOVERY_REDIRECT_URL;'));
 });
 
-test('native recovery helper consumes implicit recovery tokens', () => {
-  assert.ok(helper.includes("getUrlParam(url, 'type') !== 'recovery'"));
+test('native recovery helper consumes implicit e-mail link tokens', () => {
+  // The helper accepts every auth e-mail link type, not recovery alone: an e-mail
+  // confirmation carries a valid session that must be consumed rather than ignored.
+  assert.ok(helper.includes('SUPPORTED_LINK_TYPES'));
+  assert.ok(helper.includes('isSupportedLinkType(linkType)'));
+  assert.ok(helper.includes("['recovery', 'signup', 'magiclink', 'email_change', 'invite']"));
   assert.ok(helper.includes("getUrlParam(url, 'access_token')"));
   assert.ok(helper.includes("getUrlParam(url, 'refresh_token')"));
   assert.ok(helper.includes('supabase.auth.setSession({'));
@@ -35,7 +39,7 @@ test('native recovery handles both cold-start and runtime deep links', () => {
 test('auth provider enters and preserves recovery mode until sign-out', () => {
   assert.ok(provider.includes('getInitialNativePasswordRecoverySession'));
   assert.ok(provider.includes('subscribeToNativePasswordRecovery'));
-  assert.ok(provider.includes('setIsPasswordRecovery(true)'));
+  // Recovery mode is entered only for a recovery link; a confirmation link signs the\n  // user in without forcing the reset form.\n  assert.ok(provider.includes("setIsPasswordRecovery(result.linkType === 'recovery')"));
   assert.ok(provider.includes("event === 'SIGNED_OUT' ? false : current"));
 });
 
@@ -57,10 +61,35 @@ test('startup gate defers auth events until cold-start recovery is resolved', ()
 });
 
 test('cold-start recovery wins over any queued ordinary auth event', () => {
-  const recovery = provider.indexOf('if (recoverySession) {');
+  // A successful cold-start recovery must discard any auth event that arrived
+  // while startup was still resolving, so an ordinary SIGNED_IN cannot overwrite
+  // the recovery session.
+  const recovery = provider.indexOf('applyRecoveryResult(recovery)');
   const clearPending = provider.indexOf('pendingAuthEventRef.current = null;', recovery);
-  const recoveryMode = provider.indexOf('setIsPasswordRecovery(true);', recovery);
-  assert.ok(recovery >= 0);
-  assert.ok(clearPending > recovery);
-  assert.ok(recoveryMode > clearPending);
+  assert.ok(recovery >= 0, 'cold-start recovery must be applied through applyRecoveryResult');
+  assert.ok(clearPending > recovery, 'the queued auth event must be cleared after recovery wins');
+
+  // The helper sets recovery mode for status "ok" and does not touch session state
+  // for the other outcomes.
+  const helperStart = provider.indexOf('const applyRecoveryResult =');
+  const helperEnd = provider.indexOf('const loadInitialSession', helperStart);
+  const helperBlock = provider.slice(helperStart, helperEnd);
+  assert.ok(helperBlock.includes("if (result.status === 'ok')"));
+  assert.ok(helperBlock.includes("setIsPasswordRecovery(result.linkType === 'recovery')"));
+  assert.ok(helperBlock.includes("if (result.status === 'error')"));
+});
+
+test('an unusable recovery deep link surfaces a specific error instead of failing silently', () => {
+  // Regression guard for the audit finding: the token exchange used to discard its
+  // error and return null, so an expired link was indistinguishable from "no link".
+  assert.ok(helper.includes("status: 'error'"));
+  assert.ok(helper.includes("reason: 'expired_or_invalid'"));
+  assert.ok(helper.includes("reason: 'malformed_link'"));
+  assert.ok(!/if \(error\) return null;/.test(helper), 'the setSession error must not be discarded');
+
+  // The provider records it and the screen renders it.
+  assert.ok(provider.includes('recoveryLinkError'));
+  assert.ok(provider.includes('setRecoveryLinkError(result.reason)'));
+  assert.ok(authScreen.includes('recoveryLinkError'));
+  assert.ok(authScreen.includes("t('auth.errorResetExpired')"));
 });

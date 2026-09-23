@@ -10,6 +10,13 @@ type AuthContextValue = {
   isPasswordRecovery: boolean;
   session: Session | null;
   user: User | null;
+  /**
+   * Set when a native password-recovery deep link could not be consumed (the link
+   * was expired, already used, or malformed). The auth screen renders a specific
+   * message for it instead of silently showing the sign-in form.
+   */
+  recoveryLinkError: 'expired_or_invalid' | 'malformed_link' | null;
+  clearRecoveryLinkError: () => void;
   signOut: () => Promise<void>;
 };
 
@@ -19,23 +26,40 @@ export function AuthProvider({ children }: PropsWithChildren) {
   const [session, setSession] = useState<Session | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isPasswordRecovery, setIsPasswordRecovery] = useState(false);
+  const [recoveryLinkError, setRecoveryLinkError] = useState<'expired_or_invalid' | 'malformed_link' | null>(null);
   const startupResolvedRef = useRef(false);
   const pendingAuthEventRef = useRef<{ event: string; session: Session | null } | null>(null);
 
   useEffect(() => {
     let isMounted = true;
 
+    const applyRecoveryResult = (result: Awaited<ReturnType<typeof getInitialNativePasswordRecoverySession>>) => {
+      if (result.status === 'ok') {
+        setSession(result.session);
+        // Only a genuine recovery link forces the password-reset screen. An e-mail
+        // confirmation carries a valid session too, but the user must land signed in
+        // on their normal destination — previously these links were a dead end
+        // because the fragment's session was never consumed at all.
+        setIsPasswordRecovery(result.linkType === 'recovery');
+        setRecoveryLinkError(null);
+        return true;
+      }
+      if (result.status === 'error') {
+        // Do not fake success and do not stay silent: record why the link failed.
+        setRecoveryLinkError(result.reason);
+      }
+      return false;
+    };
+
     const loadInitialSession = async () => {
       try {
-        const recoverySession = await getInitialNativePasswordRecoverySession();
+        const recovery = await getInitialNativePasswordRecoverySession();
         if (!isMounted) return;
 
         startupResolvedRef.current = true;
 
-        if (recoverySession) {
+        if (applyRecoveryResult(recovery)) {
           pendingAuthEventRef.current = null;
-          setSession(recoverySession);
-          setIsPasswordRecovery(true);
           return;
         }
 
@@ -75,10 +99,16 @@ export function AuthProvider({ children }: PropsWithChildren) {
       setIsLoading(false);
     });
 
-    const unsubscribeRecovery = subscribeToNativePasswordRecovery((recoverySession) => {
+    const unsubscribeRecovery = subscribeToNativePasswordRecovery((result) => {
       if (!isMounted) return;
-      setSession(recoverySession);
-      setIsPasswordRecovery(true);
+      if (result.status === 'ok') {
+        setSession(result.session);
+        // Same distinction as at cold start: only a recovery link opens the reset form.
+        setIsPasswordRecovery(result.linkType === 'recovery');
+        setRecoveryLinkError(null);
+      } else if (result.status === 'error') {
+        setRecoveryLinkError(result.reason);
+      }
       setIsLoading(false);
     });
 
@@ -102,11 +132,13 @@ export function AuthProvider({ children }: PropsWithChildren) {
     isPasswordRecovery,
     session,
     user: session?.user ?? null,
+    recoveryLinkError,
+    clearRecoveryLinkError: () => setRecoveryLinkError(null),
     signOut: async () => {
       const { error } = await supabase.auth.signOut();
       if (error) throw error;
     },
-  }), [isLoading, isPasswordRecovery, session]);
+  }), [isLoading, isPasswordRecovery, recoveryLinkError, session]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

@@ -56,17 +56,34 @@ export function configureRevenueCat() {
   if (Platform.OS === 'web') return;
 
   const apiKey = Platform.OS === 'ios' ? APPLE_API_KEY : GOOGLE_API_KEY;
-  if (!apiKey) {
+  if (!apiKey || isPlaceholderRevenueCatKey(apiKey)) {
     // Fără cheie configurată, SDK-ul nu se poate inițializa; logăm doar în dev.
     if (__DEV__) {
-      console.warn('RevenueCat: lipsește cheia publică în .env.');
+      console.warn('RevenueCat: lipsește cheia publică în .env sau este un placeholder.');
     }
     return;
   }
 
-  Purchases.setLogLevel(LOG_LEVEL.DEBUG);
+  // Debug logging must never be enabled in a release build: RevenueCat's DEBUG
+  // output includes the app user id and purchase details, which then sit in the
+  // device log and contradict the privacy policy.
+  if (__DEV__) {
+    Purchases.setLogLevel(LOG_LEVEL.DEBUG);
+  }
   Purchases.configure({ apiKey });
   configured = true;
+}
+
+/**
+ * True when a configured key is a placeholder rather than a real RevenueCat key.
+ *
+ * `.env.example` ships values like `your_apple_api_key_here`. Those are non-empty,
+ * so a naive truthiness check treats them as configured and the SDK fails later
+ * with an opaque store error instead of the honest "store unavailable" path.
+ */
+export function isPlaceholderRevenueCatKey(apiKey: string | undefined | null): boolean {
+  if (!apiKey) return true;
+  return /^(your_|REPLACE|CHANGEME|xxx)/i.test(apiKey.trim());
 }
 
 export function isRevenueCatConfigured() {
@@ -124,11 +141,48 @@ export async function getRevenueCatOfferings(): Promise<PurchasesPackage[] | nul
   return offerings.current?.availablePackages ?? null;
 }
 
+/**
+ * Find the package for a plan.
+ *
+ * RevenueCat's dashboard assigns default identifiers (`$rc_monthly`, `$rc_annual`)
+ * unless an operator renames them, and the setup checklist asks for `monthly` /
+ * `annual`. Matching only the custom names meant that on a default-configured project
+ * `packageForPlan` returned null and **both** buy buttons answered "plan unavailable"
+ * — nobody could subscribe, with no indication of why.
+ *
+ * Resolution order:
+ *   1. the exact custom identifier the project's setup documents;
+ *   2. RevenueCat's standard package type for the same period;
+ *   3. the product's own billing period, for a package whose identifier is arbitrary.
+ * Matching is case-insensitive so `Monthly` behaves like `monthly`.
+ */
 export function packageForPlan(
   packages: PurchasesPackage[],
   plan: RevenueCatPlan,
 ): PurchasesPackage | null {
-  return packages.find((pkg) => pkg.identifier === plan) ?? null;
+  const wantedIdentifier = plan === 'annual' ? 'annual' : 'monthly';
+  // `PACKAGE_TYPE` is exposed as a static on the SDK class, not as a named export.
+  const standardType = plan === 'annual'
+    ? Purchases.PACKAGE_TYPE.ANNUAL
+    : Purchases.PACKAGE_TYPE.MONTHLY;
+
+  // 1. Exact custom identifier.
+  const byIdentifier = packages.find(
+    (pkg) => pkg.identifier?.toLowerCase() === wantedIdentifier,
+  );
+  if (byIdentifier) return byIdentifier;
+
+  // 2. RevenueCat standard package type.
+  const byPackageType = packages.find((pkg) => pkg.packageType === standardType);
+  if (byPackageType) return byPackageType;
+
+  // 3. Fall back to the underlying product's billing period.
+  const byProduct = packages.find((pkg) => {
+    const period = pkg.product?.subscriptionPeriod;
+    if (!period) return false;
+    return plan === 'annual' ? /^P1Y|^P12M/.test(period) : /^P1M|^P1W/.test(period);
+  });
+  return byProduct ?? null;
 }
 
 /**

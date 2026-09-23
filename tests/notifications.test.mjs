@@ -556,7 +556,9 @@ test('HIGH #8 exports a non-throwing timezone validator', () => {
 test('HIGH #8 invalid timezone guard skips only that preference before localNow', () => {
   const fn = readFileSync(join(root, 'supabase/functions/send-daily-notifications/index.ts'), 'utf8');
   const start = fn.indexOf('for (const preference of');
-  const end = fn.indexOf('return json({ success: true', start);
+  // The loop now ends at the honest run-summary computation rather than a
+  // hardcoded `success: true` literal, which no longer exists.
+  const end = fn.indexOf('const success = failed === 0', start);
   assert.ok(start >= 0 && end > start);
   const loop = fn.slice(start, end);
   const guard = loop.indexOf('if (!isValidTimezone(timezone))');
@@ -569,7 +571,9 @@ test('HIGH #8 invalid timezone guard skips only that preference before localNow'
 test('HIGH #8 keeps exactly one timezone, now and sunday declaration in loop', () => {
   const fn = readFileSync(join(root, 'supabase/functions/send-daily-notifications/index.ts'), 'utf8');
   const start = fn.indexOf('for (const preference of');
-  const end = fn.indexOf('return json({ success: true', start);
+  // The loop ends where the honest run summary is computed. success is no
+  // longer a hardcoded literal (a run with failures must report failure).
+  const end = fn.indexOf('const success = failed === 0', start);
   const loop = fn.slice(start, end);
   assert.equal((loop.match(/const timezone = preference\.timezone \|\| DEFAULT_TIMEZONE/g) ?? []).length, 1);
   assert.equal((loop.match(/const now = localNow\(timezone\)/g) ?? []).length, 1);
@@ -579,7 +583,9 @@ test('HIGH #8 keeps exactly one timezone, now and sunday declaration in loop', (
 test('HIGH #8 invalid non-empty timezone is not silently replaced with Bucharest', () => {
   const fn = readFileSync(join(root, 'supabase/functions/send-daily-notifications/index.ts'), 'utf8');
   const start = fn.indexOf('for (const preference of');
-  const end = fn.indexOf('return json({ success: true', start);
+  // The loop ends where the honest run summary is computed. success is no
+  // longer a hardcoded literal (a run with failures must report failure).
+  const end = fn.indexOf('const success = failed === 0', start);
   const loop = fn.slice(start, end);
   assert.ok(loop.includes('const timezone = preference.timezone || DEFAULT_TIMEZONE'));
   assert.ok(loop.includes('if (!isValidTimezone(timezone))'));

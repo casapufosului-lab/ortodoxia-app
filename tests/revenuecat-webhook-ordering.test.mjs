@@ -4,6 +4,7 @@ import test from 'node:test';
 
 import {
   handleWebhook,
+  providerForStore,
   resolveCustomerSnapshot,
 } from '../supabase/functions/revenuecat-webhook/core.ts';
 
@@ -176,6 +177,66 @@ test('HIGH #7 webhook fetches Customer Info and writes through atomic RPC', asyn
   assert.equal(rpcArgs?.p_user_id, USER_ID);
   assert.equal(rpcArgs?.p_snapshot_at_ms, SNAPSHOT_MS);
   assert.equal(rpcArgs?.p_status, 'active');
+  // E-10: the provider is forwarded instead of being hardcoded in the RPC.
+  assert.equal(rpcArgs?.p_provider, 'revenuecat');
+});
+
+test('E-09 an entitlement without an expiry can never resolve to active', () => {
+  const noExpiry = customerInfo({ expiresDate: null, graceDate: null });
+  const snapshot = resolveCustomerSnapshot(noExpiry, MONTHLY);
+
+  assert.ok(snapshot);
+  assert.equal(snapshot.status, 'expired');
+  assert.equal(snapshot.current_period_end, null);
+  assert.equal(snapshot.cancel_at_period_end, true);
+});
+
+test('E-10 provider is derived from the store, never hardcoded to manual', () => {
+  const withStore = (store) => {
+    const info = customerInfo();
+    info.subscriber.subscriptions[MONTHLY].store = store;
+    return info;
+  };
+
+  assert.equal(resolveCustomerSnapshot(withStore('app_store'), MONTHLY)?.provider, 'apple');
+  assert.equal(resolveCustomerSnapshot(withStore('mac_app_store'), MONTHLY)?.provider, 'apple');
+  assert.equal(resolveCustomerSnapshot(withStore('play_store'), MONTHLY)?.provider, 'google');
+  assert.equal(resolveCustomerSnapshot(withStore('stripe'), MONTHLY)?.provider, 'revenuecat');
+  assert.equal(resolveCustomerSnapshot(withStore('promotional'), MONTHLY)?.provider, 'revenuecat');
+  // An unknown store must not be guessed as apple/google, and must not claim the
+  // row was operator-granted either.
+  assert.equal(resolveCustomerSnapshot(withStore(undefined), MONTHLY)?.provider, 'revenuecat');
+  assert.equal(resolveCustomerSnapshot(withStore('mystery_store'), MONTHLY)?.provider, 'revenuecat');
+});
+
+test('E-10 webhook event store maps to a schema-valid provider', () => {
+  assert.equal(providerForStore('APP_STORE'), 'apple');
+  assert.equal(providerForStore('MAC_APP_STORE'), 'apple');
+  assert.equal(providerForStore('PLAY_STORE'), 'google');
+  assert.equal(providerForStore('AMAZON'), 'revenuecat');
+  assert.equal(providerForStore('PROMOTIONAL'), 'revenuecat');
+  assert.equal(providerForStore(undefined), 'revenuecat');
+  assert.equal(providerForStore('  play_store  '), 'google');
+});
+
+test('E-09/E-10 migration fails closed and records provider provenance', () => {
+  const sql = readFileSync(
+    'supabase/migrations/20260915000300_fail_closed_expiry_and_provider_provenance.sql',
+    'utf8',
+  );
+
+  // E-10: provider is a parameter, constrained, and never hardcoded.
+  assert.match(sql, /p_provider text DEFAULT 'revenuecat'/);
+  assert.match(sql, /CHECK \(provider IN \('apple', 'google', 'revenuecat', 'manual'\)\)/);
+  assert.match(sql, /DROP FUNCTION IF EXISTS public\.sync_revenuecat_subscription\(\s*uuid, text, text, text, text, timestamptz, boolean, bigint\s*\)/i);
+  // E-09: the NULL branch is gone from the Premium allowance lookup, and an active
+  // status without an expiry is downgraded before it is written.
+  assert.ok(!/current_period_end IS NULL OR s\.current_period_end > v_now/.test(sql));
+  assert.ok(!/current_period_end IS NULL OR/.test(sql));
+  assert.match(sql, /AND s\.current_period_end > v_now/);
+  assert.match(sql, /p_current_period_end IS NULL THEN\s*p_status := 'expired'/);
+  assert.match(sql, /SECURITY DEFINER/);
+  assert.match(sql, /SET search_path = ''/);
 });
 
 test('HIGH #7 RevenueCat failure fails closed and never writes subscription', async () => {

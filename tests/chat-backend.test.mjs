@@ -8,22 +8,51 @@ import ts from 'typescript';
 const file = resolve('supabase/functions/orthodox-chat/index.ts');
 const source = readFileSync(file, 'utf8');
 const compiled = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
+
+// The endpoint imports the shared CORS helper from ../_shared/http.ts. The require
+// stub below answers every specifier, so the real module must be compiled and handed
+// over explicitly — otherwise corsHeaders() resolves to undefined and every response
+// path that emits CORS headers throws.
+const sharedFile = resolve('supabase/functions/_shared/http.ts');
+const sharedCompiled = ts.transpileModule(readFileSync(sharedFile, 'utf8'), {
+  compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
+}).outputText;
+const sharedModule = { exports: {} };
+vm.runInNewContext(sharedCompiled, {
+  exports: sharedModule.exports,
+  require: () => ({}),
+  Deno: { env: { get: () => undefined } },
+  Request,
+  Response,
+  URL,
+  TextEncoder,
+});
+const sharedHttp = sharedModule.exports;
+assert.equal(typeof sharedHttp.corsHeaders, 'function', 'shared corsHeaders must compile');
+
 const guestId = 'guest-1234567890123456';
 const userId = '11111111-1111-4111-8111-111111111111';
 
-// Check the actual endpoint against installed Supabase types, with only the Deno host declared.
-test('Chat backend typechecks, including declarations excluded by app tsconfig', () => {
-  const shim = resolve('tests/__virtual_deno.d.ts');
-  const declaration = 'declare namespace Deno { const env: { get(name: string): string | undefined }; function serve(handler: (req: Request) => Promise<Response>): void; }';
-  const host = ts.createCompilerHost({});
-  const originalGet = host.getSourceFile.bind(host);
-  host.getSourceFile = (name, version, ...rest) => resolve(name) === shim ? ts.createSourceFile(name, declaration, version, true) : originalGet(name, version, ...rest);
-  const program = ts.createProgram([file, shim], {
-    noEmit: true, strict: true, skipLibCheck: true, target: ts.ScriptTarget.ES2022,
-    module: ts.ModuleKind.ESNext, moduleResolution: ts.ModuleResolutionKind.Bundler,
-    paths: { 'npm:@supabase/supabase-js@2': [resolve('node_modules/@supabase/supabase-js/dist/index.d.mts')] },
-  }, host);
-  const errors = ts.getPreEmitDiagnostics(program);
+// Check the endpoint through the real Edge typecheck configuration instead of a
+// hand-rolled compiler-option set. The previous inline options were a second,
+// weaker source of truth for the same files: they did not enable
+// `allowImportingTsExtensions`, so the endpoint's `../_shared/http.ts` import
+// produced a TS5097 here while `npm run typecheck:edge` was clean.
+test('Chat backend typechecks under the real Edge tsconfig', () => {
+  const configPath = resolve('tsconfig.edge.json');
+  const { config, error: configError } = ts.readConfigFile(configPath, ts.sys.readFile);
+  assert.equal(configError, undefined, 'tsconfig.edge.json must be readable');
+
+  const parsed = ts.parseJsonConfigFileContent(config, ts.sys, resolve('.'));
+  assert.ok(
+    parsed.fileNames.some(name => resolve(name) === file),
+    'the Edge tsconfig must include the chat endpoint',
+  );
+
+  const program = ts.createProgram(parsed.fileNames, { ...parsed.options, noEmit: true });
+  const errors = ts.getPreEmitDiagnostics(program)
+    .filter(diagnostic => diagnostic.file && resolve(diagnostic.file.fileName) === file);
+
   assert.deepEqual(errors.map(d => ts.flattenDiagnosticMessageText(d.messageText, '\n')), []);
 });
 
@@ -58,7 +87,7 @@ function harness(options = {}) {
     },
   };
   vm.runInNewContext(compiled, {
-    exports: {}, require: () => ({ createClient: () => client }), Request, Response, AbortSignal,
+    exports: {}, require: () => ({ createClient: () => client, ...sharedHttp }), Request, Response, AbortSignal,
     Deno: { env: { get: () => options.missingConfig ? undefined : 'test-only' }, serve: callback => { handler = callback; } },
     fetch: async (url, init) => {
       events.push({ kind: 'fetch', url, body: JSON.parse(init.body), signal: init.signal });

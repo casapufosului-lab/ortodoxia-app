@@ -1,5 +1,12 @@
 /** Stable error codes for known account-deletion failure cases. */
-export type AccountDeletionErrorCode = 'AUTH_REQUIRED' | 'SERVICE_UNAVAILABLE' | 'DELETE_FAILED';
+export type AccountDeletionErrorCode = 'AUTH_REQUIRED' | 'SERVICE_UNAVAILABLE' | 'DELETE_FAILED' | 'TIMEOUT';
+
+/**
+ * Ceiling for the deletion request. The Edge Function walks several tables before
+ * deleting the auth user, so this is generous, but it must exist: a stalled
+ * connection previously left the UI in a permanent busy state.
+ */
+const ACCOUNT_DELETION_TIMEOUT_MS = 60_000;
 
 /**
  * Error thrown by {@link requestAccountDeletion} for known failure cases.
@@ -39,14 +46,30 @@ export async function requestAccountDeletion(): Promise<void> {
     throw new AccountDeletionError('SERVICE_UNAVAILABLE');
   }
 
-  const response = await fetch(`${supabaseUrl}/functions/v1/delete-account`, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${session.access_token}`,
-      apikey: process.env.EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY ?? '',
-      'Content-Type': 'application/json',
-    },
-  });
+  // Account deletion can take several seconds server-side (it walks every
+  // user-owned table before deleting the auth user). A timeout is still required:
+  // without one a stalled connection left the delete button showing its spinner
+  // indefinitely, with no retry and no way to tell whether the account was removed.
+  let response: Response;
+  try {
+    response = await fetch(`${supabaseUrl}/functions/v1/delete-account`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${session.access_token}`,
+        apikey: process.env.EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY ?? '',
+        'Content-Type': 'application/json',
+      },
+      signal: AbortSignal.timeout(ACCOUNT_DELETION_TIMEOUT_MS),
+    });
+  } catch (error) {
+    // A TimeoutError means the request was aborted by our own signal; anything
+    // else is a transport failure. Both are reported distinctly so the UI can tell
+    // the user whether the account may have been deleted.
+    if (error instanceof Error && (error.name === 'TimeoutError' || error.name === 'AbortError')) {
+      throw new AccountDeletionError('TIMEOUT');
+    }
+    throw new AccountDeletionError('SERVICE_UNAVAILABLE');
+  }
 
   const body = await response.json().catch(() => ({}));
 

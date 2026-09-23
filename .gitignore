@@ -56,3 +56,8 @@ example
 
 # Supabase local project metadata
 /supabase/.temp/
+
+# audit vizual (capturi mari, regenerate local) și pachete locale pentru chat
+/audit/
+/packagepentruchat.zip
+/scripts/_scanner.txt

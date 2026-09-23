@@ -161,6 +161,53 @@ function unknownResponse(sourceId: string, nowMs: number): SanitizedResponse {
 }
 
 /**
+ * Discovery budget.
+ *
+ * `search.list` costs 100 units of the YouTube Data API daily quota while a
+ * `videos.list` revalidation costs 1. With 28 eligible sources and the original
+ * 90-minute discovery interval the function issued 28 x 16 = 448 searches per day
+ * (~44,800 units) against a default quota of 10,000, so discovery would fail for
+ * most of the day and every source would sit at UNKNOWN.
+ *
+ * Rather than raising the interval (which only moves the problem) the function now
+ * enforces a per-invocation ceiling on searches. Cache rows carry `next_refresh_at`,
+ * so a source that is skipped this invocation is picked up by a later one; the
+ * ceiling therefore bounds the worst case — including repeated or hostile calls —
+ * without changing the freshness of sources that are refreshed within budget.
+ */
+export const DISCOVERY_SEARCH_COST_UNITS = 100;
+export const YOUTUBE_DAILY_QUOTA_UNITS = 10_000;
+/** Fraction of the daily quota reserved for discovery (the rest covers videos.list). */
+export const DISCOVERY_QUOTA_SHARE = 0.7;
+export const DISCOVERY_MAX_SEARCHES_PER_DAY = Math.floor(
+  (YOUTUBE_DAILY_QUOTA_UNITS * DISCOVERY_QUOTA_SHARE) / DISCOVERY_SEARCH_COST_UNITS,
+);
+
+/**
+ * Mutable per-invocation budget handed to every `computeSourceStatus` call.
+ * A value of `Infinity` means "unbounded" and is used by tests.
+ */
+export type DiscoveryBudget = {
+  remainingSearches: number;
+  skippedForBudget: number;
+};
+
+export function createDiscoveryBudget(maxSearches = DISCOVERY_MAX_SEARCHES_PER_DAY): DiscoveryBudget {
+  return { remainingSearches: maxSearches, skippedForBudget: 0 };
+}
+
+function consumeDiscoveryBudget(budget: DiscoveryBudget | undefined): boolean {
+  if (!budget) return true;
+  if (!Number.isFinite(budget.remainingSearches)) return true;
+  if (budget.remainingSearches <= 0) {
+    budget.skippedForBudget += 1;
+    return false;
+  }
+  budget.remainingSearches -= 1;
+  return true;
+}
+
+/**
  * Compute status for a single enabled, eligible source.
  * Uses cache + single-flight lease to prevent thundering-herd.
  */
@@ -170,6 +217,7 @@ export async function computeSourceStatus(
   cache: CacheStore,
   nowMs: number,
   apiKeyPresent: boolean,
+  budget?: DiscoveryBudget,
 ): Promise<SanitizedResponse> {
   const row = await cache.get(source.id);
 
@@ -203,6 +251,31 @@ export async function computeSourceStatus(
       if (ageMs <= STALE_LIVE_REUSE_MS) {
         return sanitise(row, source.id);
       }
+    }
+    return unknownResponse(source.id, nowMs);
+  }
+
+  // We hold the lease. Discovery costs 100 quota units, so respect the budget:
+  // when it is exhausted the lease is released and the source keeps its previous
+  // verdict until a later invocation refreshes it. This bounds the quota a single
+  // call (or a flood of calls) can consume.
+  if (!consumeDiscoveryBudget(budget)) {
+    await cache.upsert({
+      source_id: source.id,
+      status: row?.status ?? 'unknown',
+      current_video_id: row?.current_video_id ?? null,
+      current_title: row?.current_title ?? null,
+      current_channel_id: row?.current_channel_id ?? null,
+      embeddable: row?.embeddable ?? null,
+      checked_at: row?.checked_at ?? new Date(nowMs).toISOString(),
+      live_started_at: row?.live_started_at ?? null,
+      // Retry soon: the budget resets on the next invocation.
+      next_refresh_at: new Date(nowMs).toISOString(),
+      refresh_lease_until: null,
+    });
+    if (row && row.status === 'live' && row.current_video_id) {
+      const ageMs = nowMs - new Date(row.checked_at).getTime();
+      if (ageMs <= STALE_LIVE_REUSE_MS) return sanitise(row, source.id);
     }
     return unknownResponse(source.id, nowMs);
   }
@@ -304,12 +377,22 @@ export async function computeAllSourceStatuses(
   cache: CacheStore,
   nowMs: number,
   apiKeyPresent: boolean,
+  budget: DiscoveryBudget = createDiscoveryBudget(),
 ): Promise<SanitizedResponse[]> {
   const results: SanitizedResponse[] = [];
   for (const source of sources) {
     results.push(
-      await computeSourceStatus(source, youtube, cache, nowMs, apiKeyPresent),
+      await computeSourceStatus(source, youtube, cache, nowMs, apiKeyPresent, budget),
     );
   }
   return results;
+}
+
+/** Export of the budget type's counter for logging by callers. */
+export function discoveryBudgetSummary(budget: DiscoveryBudget) {
+  return {
+    remainingSearches: Number.isFinite(budget.remainingSearches) ? budget.remainingSearches : null,
+    skippedForBudget: budget.skippedForBudget,
+    maxSearchesPerInvocation: DISCOVERY_MAX_SEARCHES_PER_DAY,
+  };
 }

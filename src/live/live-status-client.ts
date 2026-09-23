@@ -33,6 +33,20 @@ export interface LiveStatusResult {
   sources: SourceStatusResponse[];
 }
 
+/**
+ * Raw payload returned by the Edge Function. The optional `budget` field reports
+ * how much YouTube discovery allowance the invocation consumed, which is what
+ * keeps the endpoint within the daily API quota.
+ */
+export interface LiveStatusResponse {
+  sources: unknown;
+  budget?: {
+    remainingSearches: number | null;
+    skippedForBudget: number;
+    maxSearchesPerInvocation: number;
+  };
+}
+
 // ─── Validation ────────────────────────────────────────────────────────────
 
 const VALID_STATUSES = new Set<string>(['live', 'not_live', 'unknown']);
@@ -86,18 +100,41 @@ export function validateSourceStatus(data: unknown): SourceStatusResponse | null
 export const LIVE_STATUS_FETCH_ERROR_CODE = 'FETCH_FAILED';
 
 /**
+ * Ceiling for the status request.
+ *
+ * `functions.invoke` only applies a timeout when one is supplied. Without it a
+ * stalled request left the LIVE screen on a spinner with no retry and no way out
+ * except leaving the screen. The function performs YouTube calls server-side, so
+ * this is generous but finite.
+ */
+export const LIVE_STATUS_TIMEOUT_MS = 20_000;
+
+/**
  * Fetch live statuses for all enabled sources in a single Edge Function call.
  *
  * - Never calls YouTube Data API directly.
  * - Never exposes API keys in client code.
  * - Malformed data fails safely (filtered out, never crashes).
- * - No duplicate requests from rerenders (caller manages invocation).
+ * - Bounded by an explicit timeout so the UI can always recover.
  */
 export async function fetchLiveStatuses(countryCode: string = 'RO'): Promise<LiveStatusResult> {
-  const { data, error } = await supabase.functions.invoke('live-services-status', {
-    method: 'GET',
-    headers: { 'x-country-code': countryCode },
-  });
+  let data: LiveStatusResponse | null = null;
+  let error: { message?: string } | null = null;
+
+  try {
+    const result = await supabase.functions.invoke<LiveStatusResponse>('live-services-status', {
+      method: 'GET',
+      headers: { 'x-country-code': countryCode },
+      timeout: LIVE_STATUS_TIMEOUT_MS,
+    });
+    data = result.data;
+    error = result.error;
+  } catch (thrown) {
+    // A timeout or transport failure must surface as a retryable error rather than
+    // an unresolved promise.
+    console.warn('live-services-status request failed:', thrown instanceof Error ? thrown.message : thrown);
+    throw new Error(LIVE_STATUS_FETCH_ERROR_CODE);
+  }
 
   if (error || !data) {
     console.warn('live-services-status fetch failed:', error?.message ?? 'no data');

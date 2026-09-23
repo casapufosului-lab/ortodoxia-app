@@ -1,0 +1,38 @@
+{
+  // Typecheck configuration for the Supabase Edge Functions (Deno runtime).
+  //
+  // The root tsconfig.json deliberately excludes `supabase/functions` because
+  // those files import Deno globals and `npm:`/`https:` specifiers that the React
+  // Native type environment cannot resolve. The consequence of that exclusion was
+  // that the entire backend shipped without any static check at all.
+  //
+  // This config closes that gap without pulling in the Deno toolchain: the small
+  // set of Deno globals the functions actually use is declared in
+  // `supabase/functions/deno-shims.d.ts`, and the few remote imports are mapped to
+  // local stubs. It is a *type* check only (noEmit) and is wired into
+  // `npm run typecheck:edge`.
+  "compilerOptions": {
+    "target": "ES2022",
+    // Deno runs on V8/WebKit standards: fetch, Request, Response, URL,
+    // AbortSignal, TextEncoder and console are part of the runtime. `DOM` is the
+    // closest bundled lib and avoids hand-declaring dozens of web globals.
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "strict": true,
+    "noEmit": true,
+    "skipLibCheck": true,
+    "allowImportingTsExtensions": true,
+    "types": [],
+    "paths": {
+      "npm:@supabase/supabase-js@2": ["./supabase/functions/typecheck-stubs/supabase-js.ts"]
+    }
+  },
+  "include": [
+    "supabase/functions/**/*.ts"
+  ],
+  "exclude": [
+    "supabase/functions/**/*.test.mjs",
+    "supabase/functions/typecheck-stubs/**/*"
+  ]
+}

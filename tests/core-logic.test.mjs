@@ -7,20 +7,11 @@ import { fileURLToPath } from 'node:url';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = join(__dirname, '..');
 
-// The two constants and hasPremiumAccess below mirror EXACTLY the implementation
-// in src/lib/subscription.ts. They are duplicated here (rather than imported) so the
-// test is self-contained and runnable without a TS build step, and so the Premium
-// server-trust contract is frozen as an invariant.
-const FREE_DAILY_AI_LIMIT = 5;
-const PREMIUM_DAILY_AI_LIMIT = 50;
-
-function hasPremiumAccess(subscription) {
-  if (!subscription) return false;
-  // 'canceled' păstrează accesul până la sfârșitul perioadei plătite.
-  if (!['active', 'trialing', 'canceled'].includes(subscription.status)) return false;
-  if (!subscription.current_period_end) return true;
-  return new Date(subscription.current_period_end).getTime() > Date.now();
-}
+import {
+  FREE_DAILY_AI_LIMIT,
+  PREMIUM_DAILY_AI_LIMIT,
+  hasPremiumAccess,
+} from '../src/lib/subscription.ts';
 
 test('FREE_DAILY_AI_LIMIT is 5', () => {
   assert.equal(FREE_DAILY_AI_LIMIT, 5);
@@ -30,7 +21,9 @@ test('PREMIUM_DAILY_AI_LIMIT is 50', () => {
   assert.equal(PREMIUM_DAILY_AI_LIMIT, 50);
 });
 
-// Premium determination is server-trust based (real hasPremiumAccess logic).
+// The real implementation is imported (not mirrored): a duplicated copy of
+// hasPremiumAccess is what let the fail-open NULL branch survive review, because
+// the copy kept agreeing with itself.
 test('hasPremiumAccess denies null/undefined', () => {
   assert.equal(hasPremiumAccess(null), false);
   assert.equal(hasPremiumAccess(undefined), false);
@@ -48,6 +41,24 @@ test('hasPremiumAccess denies expired or inactive/wrong statuses', () => {
   assert.equal(hasPremiumAccess({ status: 'active', plan: 'monthly', current_period_end: past, cancel_at_period_end: false }), false);
   assert.equal(hasPremiumAccess({ status: 'past_due', plan: 'monthly', current_period_end: null, cancel_at_period_end: false }), false);
   assert.equal(hasPremiumAccess({ status: 'expired', plan: 'monthly', current_period_end: null, cancel_at_period_end: false }), false);
+});
+
+// E-09: a NULL expiry used to grant Premium forever. Every entitlement status that
+// could otherwise be premium must now fail closed without a readable end date, and an
+// unparseable date must fail closed too.
+test('E-09 hasPremiumAccess fails closed on a missing or invalid period end', () => {
+  for (const status of ['active', 'trialing', 'canceled']) {
+    assert.equal(
+      hasPremiumAccess({ status, plan: 'monthly', current_period_end: null, cancel_at_period_end: false }),
+      false,
+      `${status} with a NULL current_period_end must not grant Premium`,
+    );
+    assert.equal(
+      hasPremiumAccess({ status, plan: 'monthly', current_period_end: 'not-a-date', cancel_at_period_end: false }),
+      false,
+      `${status} with an unparseable current_period_end must not grant Premium`,
+    );
+  }
 });
 
 // Diacritic-insensitive prayer search (exact logic from src/app/(tabs)/prayers.tsx).

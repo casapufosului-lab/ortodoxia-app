@@ -1,5 +1,76 @@
 export const NOTIFICATION_SEND_WINDOW_MINUTES = 5;
 
+/**
+ * Canonical feast-rank codes.
+ *
+ * Mirrors `public.calendar_days.feast_rank_code` (migration
+ * 20260915000100_fix_calendar_rpc_and_canonical_feast_rank.sql) and
+ * `src/lib/feast-rank.ts`. The Edge Function cannot import from `src/`, so the
+ * classifier is duplicated here deliberately and the two copies are kept honest
+ * by a test that asserts identical classification over the same fixture set.
+ */
+export type FeastRankCode =
+  | 'red_cross'
+  | 'black_cross'
+  | 'great_feast'
+  | 'theotokos_feast'
+  | 'sunday';
+
+const FEAST_RANK_CODES: readonly FeastRankCode[] = [
+  'red_cross',
+  'black_cross',
+  'great_feast',
+  'theotokos_feast',
+  'sunday',
+];
+
+/** Diacritic-insensitive normalization used for legacy-literal matching. */
+export function normalizeRankLiteral(value: string): string {
+  return value
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .trim();
+}
+
+const LEGACY_RANK_MARKERS: readonly { code: FeastRankCode; markers: readonly string[] }[] = [
+  { code: 'red_cross', markers: ['red-cross', 'red_cross', 'redcross', 'cruce rosie'] },
+  { code: 'great_feast', markers: ['great feast', 'major feast', 'veliki praznik', 'δεσποτικη εορτη', 'δεσποτικη'] },
+  { code: 'theotokos_feast', markers: ['theotokos', 'θεομητορικη εορτη', 'θεομητορικη', 'μεγαλη εορτη', 'богородич'] },
+  { code: 'sunday', markers: ['duminica', 'sunday', 'κυριακη', 'недел'] },
+  { code: 'black_cross', markers: ['black-cross', 'black_cross', 'blackcross', 'cruce neagra'] },
+];
+
+/**
+ * Classify a rank that may already be canonical or may be a legacy localized
+ * literal. Returns null when unknown, so callers render their own fallback rather
+ * than inventing a rank.
+ */
+export function classifyFeastRank(rawRank: string | null | undefined): FeastRankCode | null {
+  if (rawRank == null) return null;
+  const trimmed = rawRank.trim();
+  if (trimmed.length === 0) return null;
+  if ((FEAST_RANK_CODES as readonly string[]).includes(trimmed)) {
+    return trimmed as FeastRankCode;
+  }
+  const normalized = normalizeRankLiteral(trimmed);
+  for (const { code, markers } of LEGACY_RANK_MARKERS) {
+    if (markers.some((marker) => normalized.includes(marker))) return code;
+  }
+  return null;
+}
+
+/** Resolve the canonical code, preferring the backend value. */
+export function resolveFeastRankCode(
+  canonicalCode: string | null | undefined,
+  rawRank: string | null | undefined,
+): FeastRankCode | null {
+  if (canonicalCode && (FEAST_RANK_CODES as readonly string[]).includes(canonicalCode)) {
+    return canonicalCode as FeastRankCode;
+  }
+  return classifyFeastRank(rawRank);
+}
+
 function parseTimeToMinutes(value: string): number | null {
   const match = /^(\d{2}):(\d{2})$/.exec(value.slice(0, 5));
   if (!match) return null;

@@ -17,6 +17,7 @@ import { buildYouTubeWatchUrl, determinePlaybackMode } from '@/live/live-playbac
 import { getEnabledLiveSources } from '@/live/live-services';
 import type { PermanentLiveSource } from '@/live/types';
 import { YouTubeEmbed } from '@/live/youtube-embed';
+import { localizeLocation } from '@/lib/i18n-locations';
 import { useLocalization } from '@/providers/localization-provider';
 
 /**
@@ -71,10 +72,12 @@ export default function LiveScreen() {
 
   const closePlayer = useCallback(() => { setActivePlayerVideoId(null); }, []);
 
-  // Close player on unmount
-  useEffect(() => {
-    return () => { setActivePlayerVideoId(null); };
-  }, []);
+  // L-05: there is deliberately no "close player on unmount" effect.
+  // Unmounting already discards this component's state, so calling
+  // setActivePlayerVideoId(null) from a cleanup function would be a no-op
+  // state update on an unmounted component (React warns about it and it can
+  // interleave badly with the in-flight status request). The player is closed
+  // explicitly through closePlayer() while the screen is still mounted.
 
   const handleSourceAction = useCallback(async (vm: SourceViewModel) => {
     const mode = determinePlaybackMode(vm.status, vm.source);
@@ -98,9 +101,18 @@ export default function LiveScreen() {
     if (openError === LIVE_OPEN_ERROR_CODE) setError(t('live.errorOpenSource'));
   }, [t]);
 
-  function getStatusLabel(status: SourceStatusResponse | null): {
+  function getStatusLabel(status: SourceStatusResponse | null, source: PermanentLiveSource): {
     text: string; color: string; emoji: string;
   } {
+    // I-06: `getEligibleSources` on the backend skips sources whose
+    // supportsDynamicLiveDetection is false, so cy-paphos, rs-sumadija and
+    // rs-tumane can never receive a status entry. Rendering the neutral
+    // "view broadcasts" label for them implied detection was merely pending.
+    // They get an explicit "not monitored" label instead, while the action
+    // button still opens the official source.
+    if (!source.supportsDynamicLiveDetection) {
+      return { text: t('live.statusNoDetection'), color: palette.muted, emoji: '○' };
+    }
     if (!status) return { text: t('live.statusView'), color: palette.muted, emoji: '▶' };
     switch (status.status) {
       case 'live':
@@ -152,12 +164,12 @@ export default function LiveScreen() {
       ) : sources.map((source) => {
         const status = sourceStatuses.get(source.id) ?? null;
         const vm: SourceViewModel = { source, status };
-        const label = getStatusLabel(status);
+        const label = getStatusLabel(status, source);
         return (
           <Card key={source.id} style={styles.sourceCard}>
             <View style={styles.sourceHeader}>
               <Text style={styles.sourceName}>{source.name}</Text>
-              <Text style={styles.location}>{source.location}</Text>
+              <Text style={styles.location}>{localizeLocation(source.location, t)}</Text>
             </View>
             <Text style={styles.provider}>{t('live.providerLabel').replace('{provider}', source.provider)}</Text>
             {source.scheduleNote ? (

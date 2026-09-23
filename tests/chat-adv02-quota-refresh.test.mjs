@@ -25,7 +25,22 @@ test('ADV-02 chat reloads quota whenever the retained Chat route regains focus',
 
 test('ADV-02 foregrounding the native app revalidates server quota and subscription', () => {
   assert.ok(source.includes('AppState.addEventListener'));
-  assert.ok(source.includes("if (state === 'active') void loadConversation();"));
+  // The handler is a guarded multi-line condition (it must not reload while
+  // dictation is active, and since L-06 it must not reload on a trivial app
+  // switch), so assert the structure rather than one exact line: the previous
+  // single-line string assertion had drifted out of sync with the source and was
+  // never executed by any npm script.
+  const listenerStart = source.indexOf("AppState.addEventListener('change'");
+  assert.ok(listenerStart >= 0);
+  const listenerEnd = source.indexOf('});', listenerStart);
+  assert.ok(listenerEnd > listenerStart);
+  const listener = source.slice(listenerStart, listenerEnd);
+  assert.ok(listener.includes("state !== 'active'"), 'must record when the app leaves the foreground');
+  assert.ok(listener.includes('backgroundedAtRef.current = Date.now();'));
+  assert.ok(listener.includes('backgroundedAtRef.current = null;'), 'must consume the marker once');
+  assert.ok(listener.includes('void loadConversation();'), 'must revalidate against the server');
+  assert.ok(listener.includes('CHAT_FOREGROUND_RELOAD_MIN_ABSENCE_MS'));
+  assert.ok(listener.includes('CHAT_FOREGROUND_RELOAD_MIN_STALENESS_MS'));
   assert.ok(source.includes('return () => subscription.remove();'));
 });
 
