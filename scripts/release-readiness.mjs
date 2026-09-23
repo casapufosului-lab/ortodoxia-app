@@ -393,12 +393,22 @@ function checkContentReadiness() {
     }
   }
 
-  // bible_verses: verify the app has a documented export/import path rather than
-  // silently depending on remote-only data.
+  // bible_verses: the corpus must exist locally (generated from the live database), not only remotely.
+  // The exporter plus the documented pipeline are the export/import path; the seed files are the corpus.
   const hasExportTooling = existsSync(join(ROOT, 'scripts', 'bible-corpus-export.mjs'))
     && readIfExists('docs/BIBLE_CORPUS_PIPELINE.md') !== null;
-  if (hasExportTooling) {
-    record('PASS', 'content', 'a Bible corpus export/import path is documented and present');
+  const corpusSeed = readIfExists('supabase/migrations/20260923000300_seed_bible_verses_corpus.sql');
+  const seededVerses = corpusSeed === null ? 0 : Number.parseInt(/rânduri: (\d+)/.exec(corpusSeed)?.[1] ?? '0', 10);
+  if (hasExportTooling && seededVerses >= 7000) {
+    record('PASS', 'content', `a Bible corpus export/import path exists and ${seededVerses} verses are seeded locally`);
+  } else if (hasExportTooling) {
+    record(
+      'DEFERRED',
+      'content',
+      'the export path exists but no corpus seed has been generated yet',
+      'BLOCKED_MISSING_SOURCE_DATA: run `npm run content:export` with the project credentials to write the seed '
+      + 'from the live database. Do not fabricate verses.',
+    );
   } else {
     record(
       'DEFERRED',
@@ -409,12 +419,23 @@ function checkContentReadiness() {
     );
   }
 
-  // prayer audio: the app must not claim an MP3 exists unless a path is set.
-  const audioMigration = readIfExists('supabase/migrations/20260831000300_add_prayer_audio.sql') ?? '';
-  const updatesAudioPath = /update\s+public\.prayers[\s\S]*?audio_path\s*=/i.test(audioMigration);
-  const hasAudioMigrations = existsSync(join(ROOT, 'supabase', 'migrations'));
-  if (updatesAudioPath) {
-    record('PASS', 'content', 'prayer audio paths are seeded by a migration');
+  // prayer audio: the app must not claim an MP3 exists unless a path is set. Any migration that seeds
+  // audio_path counts — the check used to look at one hard-coded filename, so a corpus seed that does
+  // exactly the right thing was reported as missing.
+  // `migrationsDir` este deja declarat mai sus, în aceeași funcție (verificarea de daily_content).
+  const hasAudioMigrations = existsSync(migrationsDir);
+  const audioSeeders = hasAudioMigrations
+    ? readdirSync(migrationsDir).filter((name) => /\.sql$/i.test(name)).filter((name) => {
+      const sql = readIfExists(join('supabase', 'migrations', name)) ?? '';
+      return /audio_path/i.test(sql) && /(insert\s+into\s+public\.prayers|update\s+public\.prayers)/i.test(sql);
+    })
+    : [];
+  const seededAudio = audioSeeders
+    .map((name) => readIfExists(join('supabase', 'migrations', name)) ?? '')
+    .join('\n');
+  const audioPaths = (seededAudio.match(/'[^']*\.[a-z0-9]{2,4}'/gi) ?? []).length;
+  if (audioPaths > 0) {
+    record('PASS', 'content', `prayer audio paths are seeded by a migration (${String(audioPaths)} căi)`);
   } else if (hasAudioMigrations) {
     record(
       'DEFERRED',

@@ -48,6 +48,10 @@ const SKIPPED = new Map([
     'tests/database/ai-caps.mjs',
     'Same external PGlite requirement as chat-quota.mjs: it executes the per-device/IP and monthly-cap migration on a real engine. The static guarantees it covers are asserted by tests/ai-limits.test.mjs, which does run here.',
   ],
+  [
+    'tests/database/content-seeds.mjs',
+    'Same external PGlite requirement: it applies the generated content seeds (verses, prayers with audio, calendar) to a real engine and compares the row counts with the seed headers. The static guarantees are asserted by tests/bible-corpus-export.test.mjs.',
+  ],
 ]);
 
 const IGNORED_DIRS = new Set(['node_modules', '.git', '.expo', 'dist', 'work', 'android', 'ios']);

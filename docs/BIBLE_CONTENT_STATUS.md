@@ -103,3 +103,24 @@ Any additional empty verse outside these exact five must be considered an integr
 - Live Supabase was READ-ONLY during the audit.
 - No local Bible data file (JSON/CSV) exists in the repository. Verse content lives only in the remote Supabase table.
 - The only repository files referencing Bible content are `src/data/bible-source.ts`, `src/app/(tabs)/bible.tsx`, and `supabase/migrations/20260831000800_create_bible_verses.sql`.
+
+---
+
+## CORPUS EXPORTAT (23.09.2026) — versetele nu mai depind de baza remote
+
+Până acum, versetele existau **doar** în baza remote (rândul de mai sus era adevărul). Din 23.09.2026
+există un export complet, generat din baza reală și versionat în depozit:
+
+| Fișier | Ce conține | Rânduri |
+|---|---|---|
+| `supabase/migrations/20260923000300_seed_bible_verses_corpus.sql` | corpusul biblic (PK: traducere, carte, capitol, verset) | **7 958** |
+| `supabase/migrations/20260923000400_seed_prayers_with_audio.sql` | rugăciunile, cu `audio_path` | 10 |
+| `supabase/migrations/20260923000500_seed_calendar_days_corpus.sql` | calendarul, cu codurile de calendar | 5 110 |
+
+Pipeline-ul (export → seed → verificare, cu amprentă sha256 a rândurilor) este documentat în
+`docs/BIBLE_CORPUS_PIPELINE.md`. Seed-urile sunt **idempotente** (`on conflict do nothing`), deci pe baza
+de producție nu modifică niciun rând, iar pe o bază goală o reconstruiesc exact: dovedit cu
+`node tests/database/content-seeds.mjs <pglite>` (19 aserțiuni pe un PostgreSQL real, inclusiv
+idempotența și numărul exact de rânduri). Marcajele de verset gol din tabelul de mai sus rămân
+neatinse: exportul copiază textul exact, nu îl completează.
+
