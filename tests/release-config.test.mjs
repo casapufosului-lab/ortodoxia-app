@@ -41,6 +41,29 @@ test('A. profilul de producție are toate variabilele publice cerute', () => {
   }
   assert.match(env.EXPO_PUBLIC_SUPABASE_URL, /^https:\/\/[a-z]+\.supabase\.co$/);
   assert.match(env.EXPO_PUBLIC_SUPPORT_EMAIL, /^[^@\s]+@[^@\s]+\.[a-z]{2,}$/i);
+
+  // Fiecare profil care poate produce o aplicație instalabilă are nevoie de aceleași valori: altfel
+  // build-ul de test pornește și crapă la importul clientului Supabase.
+  for (const profileName of ['development', 'preview']) {
+    const profileEnv = eas?.build?.[profileName]?.env ?? {};
+    const missing = required.filter((name) => typeof profileEnv[name] !== 'string' || profileEnv[name].trim() === '');
+    assert.deepEqual(missing, [], `${profileName} nu poate porni fără: ${missing.join(', ')}`);
+  }
+
+  // Și valorile trebuie să coincidă între profile (altfel diferența se vede doar pe telefon).
+  const seen = new Map();
+  for (const [profileName, profile] of Object.entries(eas?.build ?? {})) {
+    for (const [name, value] of Object.entries(profile?.env ?? {})) {
+      if (!name.startsWith('EXPO_PUBLIC_') || /REVENUECAT/.test(name)) continue;
+      if (seen.has(name)) {
+        assert.equal(value, seen.get(name).value, `${name} diferă între ${seen.get(name).profile} și ${profileName}`);
+      } else {
+        seen.set(name, { profile: profileName, value });
+      }
+    }
+  }
+  // Poarta verifică aceeași regulă, ca o diferență să nu treacă neobservată la release.
+  assert.match(gate, /public values differ between profiles/);
 });
 
 test('B. în profilul de producție nu ajunge niciun secret de server', () => {

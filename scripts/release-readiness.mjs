@@ -539,6 +539,31 @@ function checkEasConfiguration() {
     );
   }
 
+  // Public values are repeated in every profile (EAS injects only the selected profile's env). That is
+  // safe only while the copies agree: a Supabase URL that differs between preview and production is a bug
+  // that would show up on a device, not in the repository.
+  const profiles = Object.entries(eas?.build ?? {});
+  const seenValues = new Map();
+  const conflicts = [];
+  for (const [profileName, profile] of profiles) {
+    for (const [name, value] of Object.entries(profile?.env ?? {})) {
+      if (!name.startsWith('EXPO_PUBLIC_')) continue;
+      const previous = seenValues.get(name);
+      if (previous === undefined) {
+        seenValues.set(name, { profile: profileName, value });
+        continue;
+      }
+      // Cheile RevenueCat diferă prin definiție între profile (test în preview, live în producție).
+      if (name === 'EXPO_PUBLIC_REVENUECAT_GOOGLE_API_KEY' || name === 'EXPO_PUBLIC_REVENUECAT_APPLE_API_KEY') continue;
+      if (previous.value !== value) conflicts.push(`${name} (${previous.profile} vs ${profileName})`);
+    }
+  }
+  if (conflicts.length === 0) {
+    record('PASS', 'release', `public values agree across ${String(profiles.length)} build profiles`);
+  } else {
+    record('FAIL', 'release', `public values differ between profiles: ${conflicts.join(', ')}`);
+  }
+
   // The iOS permission messages exist in two places (app.json infoPlist and the speech plugin).
   // Two sources of truth drift; the strings must stay identical.
   const appJson = readIfExists('app.json');
