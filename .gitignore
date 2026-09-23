@@ -61,3 +61,6 @@ example
 /audit/
 /packagepentruchat.zip
 /scripts/_scanner.txt
+
+# Jurnalul build-ului Android local (npm run android / gradlew): se scrie la fiecare rulare
+gradle-build.log
