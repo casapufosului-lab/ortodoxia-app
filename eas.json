@@ -24,6 +24,7 @@
       }
     },
     "production": {
+      "autoIncrement": true,
       "env": {
         "ENVIRONMENT": "production",
         "EXPO_PUBLIC_SUPABASE_URL": "https://pgjabfgibdpcomegkojg.supabase.co",
@@ -39,5 +40,8 @@
         "EXPO_PUBLIC_TERMS_URL": "https://ortodoxia.web.app/terms"
       }
     }
+  },
+  "submit": {
+    "production": {}
   }
 }

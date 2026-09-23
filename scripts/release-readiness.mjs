@@ -451,6 +451,125 @@ function checkContentReadiness() {
 // 7. Calendar coverage (H-06)
 // ─────────────────────────────────────────────────────────────────────────────
 
+// ─────────────────────────────────────────────────────────────────────────────
+// 7. EAS build/submit configuration (the release actually leaves through this file)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * The production profile is what ships. Three things must never be true of it:
+ *   - a `test_` RevenueCat key (a store build with test keys cannot sell anything —
+ *     and the stores reject IAP that does not work);
+ *   - a service-role key of any kind (that is a real secret, not a publishable key);
+ *   - a missing `autoIncrement` (two builds would claim the same versionCode/buildNumber
+ *     and the second upload is rejected by Play Console / App Store Connect).
+ * The legal values and the Supabase publishable key are public by design and are checked for presence.
+ */
+function checkEasConfiguration() {
+  const raw = readIfExists('eas.json');
+  if (raw === null) {
+    record('FAIL', 'release', 'eas.json is missing — no build profile exists');
+    return;
+  }
+  let eas;
+  try {
+    eas = JSON.parse(raw);
+  } catch (error) {
+    record('FAIL', 'release', `eas.json is not valid JSON: ${String(error)}`);
+    return;
+  }
+
+  const production = eas?.build?.production;
+  if (production === null || production === undefined) {
+    record('FAIL', 'release', 'eas.json has no production build profile');
+    return;
+  }
+  const env = production.env ?? {};
+
+  const required = [
+    'EXPO_PUBLIC_SUPABASE_URL',
+    'EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY',
+    'EXPO_PUBLIC_LEGAL_ENTITY',
+    'EXPO_PUBLIC_SUPPORT_EMAIL',
+    'EXPO_PUBLIC_LEGAL_POSTAL_ADDRESS',
+    'EXPO_PUBLIC_LEGAL_JURISDICTION',
+    'EXPO_PUBLIC_LEGAL_EFFECTIVE_DATE',
+    'EXPO_PUBLIC_PRIVACY_POLICY_URL',
+    'EXPO_PUBLIC_TERMS_URL',
+  ];
+  const missing = required.filter((name) => typeof env[name] !== 'string' || env[name].trim() === '');
+  if (missing.length === 0) {
+    record('PASS', 'release', 'the production profile supplies every public variable the app needs');
+  } else if (RELEASE_MODE) {
+    record('FAIL', 'release', `production profile is missing: ${missing.join(', ')}`);
+  } else {
+    record('DEFERRED', 'release', `production profile is missing: ${missing.join(', ')}`);
+  }
+
+  const testKeys = Object.entries(env)
+    .filter(([name, value]) => /REVENUECAT/.test(name) && typeof value === 'string' && value.startsWith('test_'))
+    .map(([name]) => name);
+  if (testKeys.length === 0) {
+    record('PASS', 'release', 'no RevenueCat test key is shipped by the production profile');
+  } else {
+    // This is deliberately loud: a store build with a test key cannot take a payment.
+    record(
+      RELEASE_MODE ? 'FAIL' : 'DEFERRED',
+      'release',
+      `production profile still ships a RevenueCat TEST key: ${testKeys.join(', ')}`,
+      'BLOCKED_MISSING_SOURCE_DATA: the platform keys are issued per store account. Replace them with the live '
+      + 'public SDK keys (EAS environment variables) before building for the stores.',
+    );
+  }
+
+  const secretNames = Object.keys(env).filter((name) => /SERVICE_ROLE|SECRET|_TOKEN$/.test(name));
+  if (secretNames.length === 0) {
+    record('PASS', 'release', 'the production profile carries no server-only secret');
+  } else {
+    record('FAIL', 'release', `production profile exposes server-only values: ${secretNames.join(', ')}`);
+  }
+
+  if (production.autoIncrement === true) {
+    record('PASS', 'release', 'the production profile increments the build number automatically');
+  } else {
+    record(
+      RELEASE_MODE ? 'FAIL' : 'DEFERRED',
+      'release',
+      'production profile has no autoIncrement: a second upload would reuse the same version',
+      'Set "autoIncrement": true in eas.json so buildNumber/versionCode advance on every production build.',
+    );
+  }
+
+  // The iOS permission messages exist in two places (app.json infoPlist and the speech plugin).
+  // Two sources of truth drift; the strings must stay identical.
+  const appJson = readIfExists('app.json');
+  if (appJson !== null) {
+    let app;
+    try {
+      app = JSON.parse(appJson);
+    } catch {
+      app = null;
+    }
+    const infoPlist = app?.expo?.ios?.infoPlist ?? {};
+    const plugin = (app?.expo?.plugins ?? []).find(
+      (entry) => Array.isArray(entry) && entry[0] === 'expo-speech-recognition',
+    );
+    const pluginConfig = Array.isArray(plugin) ? plugin[1] ?? {} : {};
+    const pairs = [
+      ['NSSpeechRecognitionUsageDescription', 'speechRecognitionPermission'],
+      ['NSMicrophoneUsageDescription', 'microphonePermission'],
+    ];
+    const drift = pairs.filter(([plistKey, pluginKey]) =>
+      typeof infoPlist[plistKey] === 'string'
+      && typeof pluginConfig[pluginKey] === 'string'
+      && infoPlist[plistKey] !== pluginConfig[pluginKey]);
+    if (drift.length === 0) {
+      record('PASS', 'release', 'the iOS permission messages agree with the speech plugin');
+    } else {
+      record('FAIL', 'release', `iOS permission messages drifted: ${drift.map(([key]) => key).join(', ')}`);
+    }
+  }
+}
+
 function checkCalendarCoverage() {
   const dir = join(ROOT, 'supabase', 'migrations');
   if (!existsSync(dir)) {
@@ -689,6 +808,7 @@ function main() {
   checkEnvVariables();
   checkEasProjectId();
   checkStoreAssets();
+  checkEasConfiguration();
   checkContentReadiness();
   checkCalendarCoverage();
   checkTestWiring();
