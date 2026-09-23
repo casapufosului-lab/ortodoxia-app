@@ -44,6 +44,10 @@ const SKIPPED = new Map([
     'tests/database/chat-quota.mjs',
     'Needs an external PGlite database path as argv[2]; it is not a node:test suite and requires a Postgres-compatible engine that is not a project dependency.',
   ],
+  [
+    'tests/database/ai-caps.mjs',
+    'Same external PGlite requirement as chat-quota.mjs: it executes the per-device/IP and monthly-cap migration on a real engine. The static guarantees it covers are asserted by tests/ai-limits.test.mjs, which does run here.',
+  ],
 ]);
 
 const IGNORED_DIRS = new Set(['node_modules', '.git', '.expo', 'dist', 'work', 'android', 'ios']);

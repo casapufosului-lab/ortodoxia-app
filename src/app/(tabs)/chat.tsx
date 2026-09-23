@@ -7,6 +7,7 @@ import { ActivityIndicator, AppState, KeyboardAvoidingView, Platform, Pressable,
 import { Card, PageHeader, PrimaryButton, Screen } from '@/components/mvp-ui';
 import { palette } from '@/constants/palette';
 import { type TranslationKey, translatePlural } from '@/i18n/config';
+import { getAiLimitDeviceId } from '@/lib/ai-limit-device';
 import { chatGuestSupabase, ensureGuestChatSession, supabase } from '@/lib/supabase';
 import { FREE_DAILY_AI_LIMIT, hasPremiumAccess, PREMIUM_DAILY_AI_LIMIT, type SubscriptionRow } from '@/lib/subscription';
 import { useRevenueCat } from '@/hooks/use-revenuecat';
@@ -475,6 +476,10 @@ function ChatConversation() {
 
       const { data, error } = await chatClient.functions.invoke<ChatResponse>('orthodox-chat', {
         body: { message: clean, threadId },
+        // The server enforces its free-tier brakes on a salted hash of (this identifier + the
+        // client address). Without the header only the IP brake applies, which is why the value
+        // is sent on every request even though the server never trusts it on its own.
+        headers: { 'x-device-id': await getAiLimitDeviceId() },
         // Without an explicit timeout the request can hang indefinitely while the
         // composer stays disabled, leaving the user with no way to recover except
         // restarting the app. The Edge Function bounds its own upstream AI call to
@@ -493,7 +498,8 @@ function ChatConversation() {
             if (typeof details?.error === 'string') message = details.error;
             if (typeof details?.remaining === 'number') setRemaining(details.remaining);
             if (typeof details?.dailyLimit === 'number') setDailyLimit(details.dailyLimit);
-            if (details?.code === 'daily_limit') setRemaining(0);
+            // Quota exhausted (any code): nothing left today.
+            if (['daily_limit', 'client_limit', 'ip_limit', 'monthly_cap'].includes(details?.code)) setRemaining(0);
             // Cooldown is temporary: preserve the server-provided remaining quota.
           } catch {
             // PÃ„Æ’strÃ„Æ’m mesajul simplu de mai sus.

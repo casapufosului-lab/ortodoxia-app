@@ -64,17 +64,18 @@ test('MEDIUM #11 reservation RPC remains service-role only', () => {
 
 test('MEDIUM #11 client no longer treats every HTTP 429 as exhausted quota', () => {
   assert.ok(!client.includes("error.context.status === 429"));
+  // The override is driven by the server's own codes (20260923000100 added client/IP/monthly ones).
   assert.ok(
-    client.includes("if (details?.code === 'daily_limit') setRemaining(0);"),
+    client.includes("if (['daily_limit', 'client_limit', 'ip_limit', 'monthly_cap'].includes(details?.code)) setRemaining(0);"),
   );
 });
 
-test('MEDIUM #11 client accepts server remaining value before daily-limit override', () => {
+test('MEDIUM #11 client accepts server remaining value before the exhausted-quota override', () => {
   const remaining = client.indexOf(
     "if (typeof details?.remaining === 'number') setRemaining(details.remaining);",
   );
   const daily = client.indexOf(
-    "if (details?.code === 'daily_limit') setRemaining(0);",
+    "if (['daily_limit', 'client_limit', 'ip_limit', 'monthly_cap'].includes(details?.code)) setRemaining(0);",
   );
   assert.ok(remaining >= 0);
   assert.ok(daily > remaining);
