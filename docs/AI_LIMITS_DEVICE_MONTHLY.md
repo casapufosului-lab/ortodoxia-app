@@ -90,17 +90,51 @@ select * from public.ai_monthly_status();
   document's operator steps.
 - `npm run typecheck:all` and `npm run lint:chat-backend` are clean.
 
-## 6. Not verified / open
+## 6. Stare în producție (23.09.2026, seara) și ce a fost reparat
 
-- No live Supabase run and no deployment: the migration has never been executed against a real database,
-  and the endpoint has never been deployed with the new arguments.
-- PGlite serialises statements: the advisory locks and `FOR UPDATE` clauses are exercised but not raced.
-  A multi-session concurrency check on a real PostgreSQL instance is still required before production.
-- The client brake's interaction with shared addresses (a family or an office behind one NAT) is a
-  product decision: the paid exemption is the current answer, and 20/60 per day are starting values that
-  can be revised in the migration.
-- Quota messages are Romanian, like the rest of the server-side errors; the machine-readable codes
-  (`client_limit`, `ip_limit`, `monthly_cap`) are what a localized client should map.
-- No refund is issued when the upstream AI call fails after a reservation. This keeps the existing
-  policy (an accepted reservation consumes one attempt) and prevents repeated failing calls from
-  bypassing the limit; it also means a monthly counter can be spent without a reply.
+Aplicat pe proiectul `pgjabfgibdpcomegkojg` („Ortodoxia"):
+
+1. `npx supabase db push` → `20260922083211_seed_daily_content_365_days` și
+   `20260923000100_add_client_and_monthly_ai_caps`.
+2. `npx supabase functions deploy orthodox-chat`.
+3. La prima verificare reală, chatul a răspuns **500** („Limita zilnică nu a putut fi verificată").
+   Cauza, măsurată direct pe bază: `public.reserve_ai_request` răspundea
+   `42703: column u.last_request_at does not exist` — coloanele de cooldown **lipseau din baza reală**,
+   deși migrația care le adaugă (`20260903000100_harden_ai_usage`) figura ca aplicată în istoricul remote.
+   Deci chatul AI era oprit în producție pentru TOȚI utilizatorii, nu doar limitele noi.
+4. Reparat cu `20260923000200_restore_ai_usage_cooldown_columns.sql` (idempotentă, pur aditivă: rândurile
+   existente primesc `last_request_at = NULL`, adică „fără cooldown"; nicio rezervare nu devine invalidă).
+5. Verificat după reparare, pe producție:
+   - RPC direct: `{"remaining_limit":4,"daily_limit":5,"success":true,"denial_reason":null,"retry_after_seconds":0,"client_limit":20,"monthly_remaining":19999}`;
+   - contoarele se mișcă: bugetul lunar 0 → 1, contorul de dispozitiv și cel de IP câte 1, cu cooldown setat;
+   - **apel real de chat: HTTP 200, răspuns de 474 caractere** („Rugăciunea lui Iisus…"), `remaining=4`.
+
+**Garda pusă:** `npm run db:drift` compară schema REALĂ (specificația PostgREST) cu coloanele și funcțiile
+cerute de cod (`scripts/schema-checks.mjs`) și iese cu eroare la orice diferență; fără `SUPABASE_URL` și
+`SUPABASE_SERVICE_ROLE_KEY` refuză să pretindă că a verificat. Lecția: istoricul migrațiilor spune ce s-a
+CERUT, nu ce EXISTĂ — schema se verifică pe schemă.
+
+## 7. Ce rămâne de făcut (owner)
+
+- **O versiune nouă a aplicației** (build EAS + submit): frâna pe dispozitiv are nevoie de headerul
+  `x-device-id` pe care îl trimite clientul nou (`src/lib/ai-limit-device.ts`). Până atunci, în
+  producție acționează limita pe cont, cea pe IP și plafonul lunar; dispozitivul apare ca `unknown`.
+- Plafonul lunar: valoarea activă e cea din migrație (20 000). Se schimbă cu
+  `select public.set_ai_monthly_cap(<n>)` din SQL editor; `select * from public.ai_monthly_status()`
+  arată consumul.
+- `AI_LIMIT_SALT` (opțional): fără el, sarea este cheia de service (oricum server-only). Dacă îl
+  schimbi mai târziu, hash-urile de client se schimbă, deci contoarele de dispozitiv/IP o iau de la zero
+  pentru ziua respectivă.
+
+## 8. Ce NU e verificat
+
+- PGlite serializează instrucțiunile: lock-urile de advisory și `FOR UPDATE` sunt exercitate, dar nu
+  concurate. Rămâne necesară o probă pe mai multe sesiuni reale.
+- Frâna pe client (dispozitiv+IP) nu poate fi dovedită în producție până nu există o versiune a
+  aplicației care trimite `x-device-id`; partea de server este dovedită (contoarele s-au mișcat).
+- Interacțiunea cu adrese partajate (familie/birou în spatele unui NAT) rămâne o decizie de produs:
+  scutirea identităților plătite e răspunsul actual, iar 20/60 pe zi sunt valori de pornire.
+- Mesajele de cotă sunt în română; codurile (`client_limit`, `ip_limit`, `monthly_cap`) sunt cele pe care
+  un client localizat ar trebui să le mapeze.
+- Nu se emite refund dacă apelul AI pică după rezervare (politica existentă: o rezervare acceptată
+  consumă o încercare).

@@ -25,7 +25,18 @@
     },
     "production": {
       "env": {
-        "ENVIRONMENT": "production"
+        "ENVIRONMENT": "production",
+        "EXPO_PUBLIC_SUPABASE_URL": "https://pgjabfgibdpcomegkojg.supabase.co",
+        "EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY": "sb_publishable_jUBqWb3gn6ZDOcUuNJbVKg_CwswrjQr",
+        "EXPO_PUBLIC_REVENUECAT_GOOGLE_API_KEY": "test_hVIDVoaJiBadAmRvNXnXpadrmFl",
+        "EXPO_PUBLIC_LEGAL_ENTITY": "Ștefan Ștefan",
+        "EXPO_PUBLIC_SUPPORT_EMAIL": "contact@ortodoxiaapp.anonaddy.com",
+        "EXPO_PUBLIC_LEGAL_POSTAL_ADDRESS": "Rm. Vâlcea, județul Vâlcea, România",
+        "EXPO_PUBLIC_LEGAL_JURISDICTION": "România",
+        "EXPO_PUBLIC_LEGAL_LOCALITY": "Rm. Vâlcea",
+        "EXPO_PUBLIC_LEGAL_EFFECTIVE_DATE": "23 septembrie 2026",
+        "EXPO_PUBLIC_PRIVACY_POLICY_URL": "https://ortodoxia.web.app/privacy",
+        "EXPO_PUBLIC_TERMS_URL": "https://ortodoxia.web.app/terms"
       }
     }
   }
