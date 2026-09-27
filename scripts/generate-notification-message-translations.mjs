@@ -17,8 +17,9 @@ const targets = {
   sq: 'Albanian',
 };
 
-function envNumber(name, fallback) {
-  const raw = process.env[name];
+// Citirea se face static (process.env.NUME la locul apelului), nu dinamic cu process.env[name]:
+// regulile Expo cer acces static la variabilele de mediu, iar așa variabilele se și văd în cod.
+function envNumber(raw, name, fallback) {
   if (!raw) return fallback;
   const value = Number(raw);
   if (!Number.isInteger(value) || value < 0) throw new Error(`${name} must be a non-negative integer`);
@@ -149,9 +150,9 @@ async function generate() {
   if (!targets[languageCode]) throw new Error(`TARGET_LANGUAGE must be one of: ${Object.keys(targets).join(', ')}`);
 
   const source = readRomanianMessages();
-  const limit = envNumber('LIMIT', source.length);
-  const offset = envNumber('OFFSET', 0);
-  const groupSize = envNumber('REQUEST_GROUP_SIZE', 25);
+  const limit = envNumber(process.env.LIMIT, 'LIMIT', source.length);
+  const offset = envNumber(process.env.OFFSET, 'OFFSET', 0);
+  const groupSize = envNumber(process.env.REQUEST_GROUP_SIZE, 'REQUEST_GROUP_SIZE', 25);
   const slice = source.slice(offset, offset + limit);
   const results = [];
 

@@ -155,16 +155,19 @@ export default function AuthScreen() {
   // A recovery deep link that could not be consumed (expired, already used or
   // malformed) used to fail completely silently: the user was shown the ordinary
   // sign-in form with no explanation and no way to request a new link.
-  useEffect(() => {
-    if (!recoveryLinkError) return;
-    setResetMessage({
-      type: 'error',
-      text: recoveryLinkError === 'malformed_link'
-        ? t('auth.errorResetInvalid')
-        : t('auth.errorResetExpired'),
-    });
-    clearRecoveryLinkError();
-  }, [clearRecoveryLinkError, recoveryLinkError, t]);
+  //
+  // Mesajul se citește direct din starea providerului, fără setState într-un effect (care ar
+  // produce randări în cascadă). Rămâne vizibil până când omul cere un link nou sau revine la
+  // autentificare — în ambele locuri se golește eroarea din provider.
+  const recoveryMessage = recoveryLinkError
+    ? {
+        type: 'error' as const,
+        text: recoveryLinkError === 'malformed_link'
+          ? t('auth.errorResetInvalid')
+          : t('auth.errorResetExpired'),
+      }
+    : null;
+  const visibleResetMessage = resetMessage ?? recoveryMessage;
 
   useEffect(() => {
     if (!user || isPasswordRecovery || recoveryRedirect) return;
@@ -262,6 +265,7 @@ export default function AuthScreen() {
       setResetPassword('');
       setConfirmResetPassword('');
       setResetMessage(null);
+      clearRecoveryLinkError();
       setMode('sign-in');
     } catch (error) {
       showAuthAlert(t('account.signOutErrorTitle'), friendlyAuthError(error, t));
@@ -326,6 +330,8 @@ export default function AuthScreen() {
     if (submitInFlightRef.current || loading) return;
     submitInFlightRef.current = true;
     setResetMessage(null);
+    // Omul cere un link nou: vechea eroare de link nu mai are ce căuta pe ecran.
+    clearRecoveryLinkError();
     if (!email.trim() || !email.includes('@')) {
       setResetMessage({ type: 'error', text: t('auth.emailRequiredMessage') });
       showAuthAlert(t('auth.emailRequiredTitle'), t('auth.emailRequiredAlertMessage'));
@@ -387,7 +393,7 @@ export default function AuthScreen() {
           </>
         )}
         <PrimaryButton disabled={loading} label={loading ? t('auth.processing') : activeMode === 'reset-password' ? t('auth.saveNewPassword') : activeMode === 'sign-in' ? t('auth.signInButton') : t('auth.signUpButton')} onPress={submit} />
-        {resetMessage ? <Text accessibilityLiveRegion="polite" style={[styles.message, resetMessage.type === 'success' ? styles.success : styles.error]}>{resetMessage.text}</Text> : null}
+        {visibleResetMessage ? <Text accessibilityLiveRegion="polite" style={[styles.message, visibleResetMessage.type === 'success' ? styles.success : styles.error]}>{visibleResetMessage.text}</Text> : null}
         {activeMode === 'sign-in' ? <Pressable accessibilityRole="button" accessibilityState={{ disabled: loading }} disabled={loading} accessibilityLabel={t('auth.forgotPassword')} onPress={sendResetEmail}><Text style={styles.link}>{t('auth.forgotPassword')}</Text></Pressable> : null}
         {activeMode === 'reset-password' ? (
           <Pressable accessibilityLabel={t('auth.backToSignIn')} accessibilityRole="button" onPress={backToSignIn}><Text style={styles.link}>{t('auth.backToSignIn')}</Text></Pressable>
