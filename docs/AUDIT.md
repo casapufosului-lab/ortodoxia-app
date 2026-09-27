@@ -47,7 +47,7 @@ Rugăciuni, Chat, Cont (`src/app/(tabs)/`) — plus ecrane separate `live.tsx`, 
 | 14 | Grafică de magazin 512×512 și 1024×500 (`STORE_SUBMISSION_KIT.md` §1; `store/README.md` §2) | **FĂCUT** | `assets/store/play-icon-512.png` = 512×512 (639 322 B), `assets/store/play-feature-1024x500.png` = 1024×500 (210 103 B), dimensiuni citite din antetul PNG | Nu am verificat prezența canalului alpha pe pixel (§6). |
 | 15 | Textele listării (titlu, descrieri, cuvinte-cheie) | **FĂCUT** | `docs/STORE_SUBMISSION_KIT.md:32-74`; `store/README.md:14-15` (kit §2 e sursa) | Confirmarea lor de către proprietar (`STORE_SUBMISSION_KIT.md:167`). |
 | 16 | Capturi de ecran pentru magazine | **LIPSĂ** | `store/screenshots/README.md:3` („Pozele NU au fost făcute"); în folder nu există niciun PNG, doar README | Toate capturile, pe telefon real. |
-| 17 | Favorite: versete, psalmi și rugăciuni (`STORE_SUBMISSION_KIT.md:52`) | **PARȚIAL** | Favorite există doar pe rugăciuni: `src/app/(tabs)/prayers.tsx:100-110,162-187`; tabelul are doar `prayer_id`: `supabase/migrations/20260829000100_initial_schema.sql:95-99` | Favorite pe versete și psalmi nu există în cod („psalm" nu apare deloc în `src/`). |
+| 17 | Favorite: versete, psalmi și rugăciuni (`STORE_SUBMISSION_KIT.md:52`) | **PARȚIAL** | Favorite pe rugăciuni (`src/app/(tabs)/prayers.tsx`) și, din runda 20, **pe versete**: inimă pe fiecare verset în `src/app/(tabs)/bible.tsx`, tabel nou `verse_favorites` cu RLS (`supabase/migrations/20260927000100_add_verse_favorites.sql`), cheia versetului testată în `src/lib/verse-favorites.ts` + `tests/verse-favorites.test.mjs` (8 teste) | **Psalmii nu există în corpus**: cele 27 de cărți din `20260923000300_seed_bible_verses_corpus.sql` sunt toate din Noul Testament. Favoritele pe psalmi se pot face doar când corpusul primește Psalmii (decizie de conținut, la proprietar). |
 | 18 | `LICENSE` fără atribuirea Expo (`REPAIR_FINAL_CLOSURE_002.md` §5) | **FĂCUT** | `LICENSE:3` — „Copyright (c) 2026 Ortodoxia"; poarta: „PASS [release] LICENSE does not carry the Expo template attribution" | Nimic. |
 | 19 | Legătura EAS (`projectId`, `owner`) (`REPAIR_FINAL_CLOSURE_002.md` §4.2) | **FĂCUT** | `app.json:72` (`projectId: ef0641df-…`), `:75` (`owner: ortodoxia`); poarta: „PASS [release] EAS projectId and owner are configured" | Nimic. |
 | 20 | Calendar 2027 (`REPAIR_FINAL_CLOSURE_002.md` §4.3) | **LIPSĂ** | Poarta: „DEFERRED [calendar] calendar data covers only 2026 — no rows for 2027"; `src/lib/feast-rank.ts:194,201-202` (limita `SEEDED_CALENDAR_RANGE`); planul e în `REPAIR_FINAL_CLOSURE_002.md:158` | Datele liturgice pentru 2027, când vor fi publicate. |
@@ -179,3 +179,31 @@ Rugăciuni, Chat, Cont (`src/app/(tabs)/`) — plus ecrane separate `live.tsx`, 
 - **Rămâne de făcut de proprietar:** cheia Apple pentru RevenueCat, cheia Google reală în profilul
   `production` (acum e de test), cron-ul notificărilor, deploy-ul funcțiilor `delete-account` și
   `live-services-status`.
+
+---
+
+## Ce s-a reparat după audit (27.09.2026, runda 20)
+
+- **Favoritele funcționează acum și pe versete** (rândul 17). Până acum inima exista doar la rugăciuni,
+  deși kitul de magazin promitea favorite pe „versete, psalmi și rugăciuni". Ce s-a făcut:
+  - tabel nou `verse_favorites`, cu aceleași reguli de acces ca `favorites` (fiecare om își vede și își
+    schimbă doar favoritele lui) și cu cheie străină compusă către `bible_verses`, ca să nu se poată salva
+    un favorit pentru un verset inexistent. **Nu** am rescris tabelul `favorites` (ar fi însemnat schimbarea
+    cheii primare, adică exact operația care poate pierde favoritele existente);
+  - ștergerea contului șterge și noul tabel, explicit, în același pas cu celelalte (`supabase/functions/delete-account/index.ts`),
+    iar testul care cere lista de tabele șterse a fost actualizat odată cu codul;
+  - în ecranul Bibliei, fiecare verset are o inimă care se apasă; fără cont, drumul duce la autentificare.
+    Inima se pune optimist, iar dacă serverul refuză, se pune la loc — ce se vede trebuie să fie ce e salvat;
+  - cheia versetului (traducere, carte, capitol, verset) se compune într-un singur loc, `src/lib/verse-favorites.ts`,
+    cu 8 teste în `tests/verse-favorites.test.mjs`. Unul dintre teste a găsit imediat o hibă reală: un rând
+    `null` venit din bază arunca, deși funcția promitea că aruncă doar rândul stricat, nu toată lista.
+- **Psalmii rămân fără favorite, și spun de ce:** corpusul are 27 de cărți, toate din Noul Testament, deci nu
+  există versete de psalmi de pus la favorite. Nu am inventat conținut. Când corpusul primește Psalmii,
+  favoritele merg fără nicio schimbare de cod.
+- **Verificare:** typecheck (+ funcțiile Edge), lint curat, **608 teste** trec, auditul de accesibilitate curat
+  (61 de fișiere, 0 probleme) și poarta de lansare **PASSED** (24 trecute, 0 căzute, 3 amânate).
+  **Nu am rulat pe telefon** și nu am aplicat migrația pe proiectul Supabase — proba e a proprietarului.
+- **O greșeală a mea, spusă pe față:** am scris trei fișiere (helper-ul, testul și migrația) într-un al doilea
+  arbore creat din greșeală, cu numele de folder `orthodoxia-app` în loc de `ortodoxia-app`. Am mutat fișierele
+  în repo-ul real, am șters arborele greșit (conținea doar fișierele mele din această rundă) și am verificat că
+  migrația din repo e cea corectă.

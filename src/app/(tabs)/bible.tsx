@@ -1,10 +1,13 @@
+import { router } from 'expo-router';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Linking, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Alert, Linking, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { Card, PageHeader, PrimaryButton, Screen, SectionTitle } from '@/components/mvp-ui';
 import { palette } from '@/constants/palette';
 import { BIBLE_SOURCE } from '@/data/bible-source';
 import { supabase } from '@/lib/supabase';
+import { isFavoriteKey, keysFromRows, toggleFavoriteKey, verseKey } from '@/lib/verse-favorites';
+import { useAuth } from '@/providers/auth-provider';
 import { useLocalization } from '@/providers/localization-provider';
 
 const books = [
@@ -54,6 +57,70 @@ export default function BibleScreen() {
   const [error, setError] = useState<string | null>(null);
   const requestRef = useRef(0);
   const book = books.find((item) => item.code === bookCode) ?? books[0];
+  const { user } = useAuth();
+  const [favoriteKeys, setFavoriteKeys] = useState<string[]>([]);
+  const favoriteBusyRef = useRef(new Set<string>());
+
+  /** Favoritele utilizatorului curent; se recitesc cand se schimba contul. */
+  const loadFavorites = useCallback(async () => {
+    if (!user) {
+      setFavoriteKeys([]);
+      return;
+    }
+    const { data, error: favoritesError } = await supabase
+      .from('verse_favorites')
+      .select('translation_id, book_code, chapter, verse')
+      .eq('user_id', user.id);
+    if (favoritesError) {
+      Alert.alert(t('prayers.favoritesError'));
+      return;
+    }
+    setFavoriteKeys(keysFromRows((data ?? []) as never));
+  }, [t, user]);
+
+  // Aceeasi asezare ca la rugaciuni: incarcarea pleaca dupa randare, nu in timpul ei.
+  useEffect(() => {
+    const timeoutId = setTimeout(() => void loadFavorites(), 0);
+    return () => clearTimeout(timeoutId);
+  }, [loadFavorites]);
+
+  /** Pune sau scoate versetul din favorite. Fara cont, drumul duce la autentificare. */
+  async function toggleFavorite(item: BibleVerse) {
+    if (!user) {
+      router.push('/auth');
+      return;
+    }
+    const cheie = verseKey({ translationId: BIBLE_SOURCE.id, bookCode, chapter, verse: item.verse });
+    if (favoriteBusyRef.current.has(cheie)) return;
+    favoriteBusyRef.current.add(cheie);
+    const era = isFavoriteKey(favoriteKeys, cheie);
+    setFavoriteKeys((chei) => toggleFavoriteKey(chei, cheie));
+    try {
+      const result = era
+        ? await supabase
+            .from('verse_favorites')
+            .delete()
+            .eq('user_id', user.id)
+            .eq('translation_id', BIBLE_SOURCE.id)
+            .eq('book_code', bookCode)
+            .eq('chapter', chapter)
+            .eq('verse', item.verse)
+        : await supabase.from('verse_favorites').insert({
+            user_id: user.id,
+            translation_id: BIBLE_SOURCE.id,
+            book_code: bookCode,
+            chapter,
+            verse: item.verse,
+          });
+      if (result.error) throw result.error;
+    } catch {
+      // Ce se vede trebuie sa fie ce e salvat: inima se pune inapoi cum era.
+      setFavoriteKeys((chei) => toggleFavoriteKey(chei, cheie));
+      Alert.alert(t('prayers.favoriteError'));
+    } finally {
+      favoriteBusyRef.current.delete(cheie);
+    }
+  }
 
   const loadChapter = useCallback(async () => {
     const requestId = ++requestRef.current;
@@ -200,12 +267,29 @@ export default function BibleScreen() {
           <Text style={styles.statusText}>{t('bible.noSearchResults')}</Text>
         ) : (
           <View style={styles.verseList}>
-            {visibleVerses.map((item) => (
-              <Text key={item.verse} style={styles.verseText}>
-                <Text style={styles.verseNumber}>{item.verse} </Text>
-                {item.verse_text}
-              </Text>
-            ))}
+            {visibleVerses.map((item) => {
+              const cheie = verseKey({ translationId: BIBLE_SOURCE.id, bookCode, chapter, verse: item.verse });
+              const favorit = isFavoriteKey(favoriteKeys, cheie);
+              return (
+                <View key={item.verse} style={styles.verseRow}>
+                  <Text style={styles.verseText}>
+                    <Text style={styles.verseNumber}>{item.verse} </Text>
+                    {item.verse_text}
+                  </Text>
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel={favorit ? t('prayers.favoriteRemove') : t('prayers.favoriteAdd')}
+                    accessibilityState={{ selected: favorit }}
+                    hitSlop={8}
+                    onPress={() => void toggleFavorite(item)}
+                    style={styles.favoriteButton}>
+                    <Text style={[styles.favoriteIcon, favorit && styles.favoriteIconActive]}>
+                      {favorit ? '\u2665' : '\u2661'}
+                    </Text>
+                  </Pressable>
+                </View>
+              );
+            })}
           </View>
         )}
       </Card>
@@ -239,7 +323,11 @@ const styles = StyleSheet.create({
   readerCard: { backgroundColor: palette.card, borderColor: palette.sky, paddingVertical: 24 },
   reference: { color: palette.goldDark, fontSize: 15, fontWeight: '800', letterSpacing: 0.8, textTransform: 'uppercase' },
   verseList: { gap: 12 },
-  verseText: { color: palette.ink, fontSize: 17, lineHeight: 28, fontFamily: 'serif' },
+  verseRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 10 },
+  verseText: { flex: 1, color: palette.ink, fontSize: 17, lineHeight: 28, fontFamily: 'serif' },
+  favoriteButton: { paddingTop: 4, paddingHorizontal: 2 },
+  favoriteIcon: { color: palette.muted, fontSize: 20 },
+  favoriteIconActive: { color: palette.goldDark },
   verseNumber: { color: palette.goldDark, fontSize: 13, fontWeight: '800', fontFamily: undefined },
   statusBox: { gap: 14 },
   statusText: { color: palette.muted, fontSize: 15, lineHeight: 22 },

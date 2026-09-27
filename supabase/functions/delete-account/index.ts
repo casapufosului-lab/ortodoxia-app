@@ -149,6 +149,13 @@ Deno.serve(async (req: Request) => {
     .eq('user_id', userId);
   if (favErr) errors.push(`favorites: ${favErr.message}`);
 
+  // 4e-bis. verse_favorites (favorite pe versete, tabel adaugat in 20260927000100)
+  const { error: verseFavErr } = await admin
+    .from('verse_favorites')
+    .delete()
+    .eq('user_id', userId);
+  if (verseFavErr) errors.push(`verse_favorites: ${verseFavErr.message}`);
+
   // 4f. usage_daily
   const { error: usageErr } = await admin
     .from('usage_daily')

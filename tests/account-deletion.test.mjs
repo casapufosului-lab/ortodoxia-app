@@ -37,7 +37,7 @@ test('Edge Function uses service-role for server-side deletions', () => {
 });
 
 test('Edge Function deletes all user-owned tables explicitly', () => {
-  for (const table of ['notification_devices', 'notification_preferences', 'chat_messages', 'chat_threads', 'favorites', 'usage_daily', 'profiles']) {
+  for (const table of ['notification_devices', 'notification_preferences', 'chat_messages', 'chat_threads', 'favorites', 'verse_favorites', 'usage_daily', 'profiles']) {
     assert.ok(fn.includes(`'${table}'`), `missing explicit delete for ${table}`);
   }
 });
