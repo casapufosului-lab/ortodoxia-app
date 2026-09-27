@@ -34,7 +34,9 @@ Până atunci, promisiunea rămâne neacoperită într-un document care ajunge l
 2. **Profilul `production` are o cheie Google de TEST** (`eas.json:53`, `test_hVIDVoa…`). Cu o cheie de
    test, SDK-ul închide aplicația într-un build de release.
 3. **Cron-ul notificărilor zilnice nu e configurat** (`docs/NOTIFICATION_STATUS.md:100-104`): promisiunea
-   „notificare la ora aleasă" nu se împlinește fără el.
+   „notificare la ora aleasă" nu se împlinește fără el. **Update (runda 18):** scriptul de programare
+   există acum, gata de rulat, în `supabase/cron/schedule-daily-notifications.sql`, iar pașii tăi sunt
+   în `docs/CRON-NOTIFICARI.md`; lipsește doar rularea pe proiectul tău (extensii + secret + Vault).
 4. **Funcțiile `delete-account` și `live-services-status` nu sunt dovedite ca deployate** pe proiectul
    Supabase.
 

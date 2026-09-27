@@ -31,7 +31,14 @@ Pure helper functions for notification logic. **No React, no Supabase, no networ
 - `calendarCountryMismatch(countryCode, calendarCode)` — cross-country calendar detection
 
 ### Server-side (Edge Function `send-daily-notifications`)
-Runs on a 1-minute cron schedule. For each enabled user whose local time matches their configured `daily_time`:
+
+> **Cine o cheamă:** nimeni, încă. Funcția e completă, dar programatorul (Supabase Cron) trebuie
+> pornit de proprietar — scriptul e gata în `supabase/cron/schedule-daily-notifications.sql`, iar
+> pașii sunt în `docs/CRON-NOTIFICARI.md`. Fără el, notificările nu pleacă.
+
+Se cheamă la fiecare 5 minute (fereastra de potrivire a orei locale e de 5 minute, vezi
+`NOTIFICATION_SEND_WINDOW_MINUTES`). Pentru fiecare om cu preferința pornită și ora locală în
+fereastră:
 
 1. Fetches daily content, calendar day, and active devices in parallel
 2. Determines notification type using `determineNotificationType()`
