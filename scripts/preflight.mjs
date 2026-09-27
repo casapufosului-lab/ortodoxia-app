@@ -97,11 +97,19 @@ if (dossierFound) pass('dosar de lansare gasit', dossierFound.replace(root + '\\
 else warn('dosar de lansare', 'nu am gasit niciun fisier cu texte de magazin in docs/ sau store/');
 
 // 3b. Capturi si grafica pentru magazin
-const shotsDir = join(root, 'store', 'screenshots');
-if (existsSync(shotsDir)) {
-  const shots = readdirSync(shotsDir).filter((f) => /\.(png|jpg|jpeg)$/i.test(f));
-  if (shots.length > 0) pass('capturi pentru magazin', shots.length + ' fisiere in store/screenshots');
-  else warn('capturi pentru magazin', 'folderul store/screenshots e gol');
+let shotsDir = null;
+let shots = [];
+for (const dir of candidates) {
+  const candidate = join(dir, 'screenshots');
+  if (existsSync(candidate)) {
+    shotsDir = candidate;
+    shots = readdirSync(candidate).filter((f) => /\.(png|jpg|jpeg)$/i.test(f));
+    break;
+  }
+}
+if (shotsDir) {
+  if (shots.length > 0) pass('capturi pentru magazin', shots.length + ' fisiere in ' + shotsDir.replace(root + '\\', '') + (shotsDir.startsWith(root) ? '' : ' (langa proiect)'));
+  else warn('capturi pentru magazin', 'folderul ' + shotsDir.replace(root + '\\', '') + ' e gol');
 } else {
   warn('capturi pentru magazin', 'nu exista folderul store/screenshots');
 }

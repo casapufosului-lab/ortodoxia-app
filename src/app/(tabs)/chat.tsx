@@ -227,7 +227,7 @@ function ChatConversation() {
         dictationActiveRef.current = true;
         pauseDictationReloads();
         setDictationStatus('listening');
-        setDictationMessage(t('chat.dictationListening'));
+        setDictationMessage(translateRef.current('chat.dictationListening'));
       }),
       speechRecognition.addListener('result', (event) => {
         const transcript = event?.results?.[0]?.transcript ?? '';
@@ -235,7 +235,7 @@ function ChatConversation() {
 
         setInput((current) => appendDictationText(current, transcript));
         setDictationStatus('processing');
-        setDictationMessage(t('chat.dictationAdded'));
+        setDictationMessage(translateRef.current('chat.dictationAdded'));
       }),
       speechRecognition.addListener('end', () => {
         dictationActiveRef.current = false;

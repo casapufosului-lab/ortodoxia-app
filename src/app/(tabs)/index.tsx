@@ -39,7 +39,6 @@ export default function HomeScreen() {
   // Query content in the language the user actually selected. The previous
   // `language === region ? region : 'en'` mapping silently served English to a
   // user who had chosen another supported language.
-  const calendarLanguageCode = languageCode;
   // Localized place names for the enabled LIVE sources (falls back to the
   // canonical registry value when a place has no translated name).
   const liveLocations = getEnabledLiveSources(countryCode)
@@ -124,7 +123,7 @@ export default function HomeScreen() {
           .rpc('get_calendar_days_localized', {
             p_country_code: countryCode,
             p_calendar_code: calendarCode,
-            p_language_code: calendarLanguageCode,
+            p_language_code: languageCode,
             p_start_date: dateKey,
             p_end_date: dateKey,
           })
@@ -184,7 +183,7 @@ export default function HomeScreen() {
         setIsLoading(false);
       }
     }
-  }, [calendarCode, calendarLanguageCode, countryCode, dateKey, region.languageCode, t]);
+  }, [calendarCode, countryCode, dateKey, languageCode, region.languageCode, t]);
 
   useEffect(() => {
     const timeoutId = setTimeout(() => void loadHome(), 0);
