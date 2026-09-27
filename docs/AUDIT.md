@@ -1,3 +1,5 @@
+> **Raportul final pe toate aplicatiile** (ce s-a reparat si ce ramane de partea proprietarului) este in `C:\Users\pcgar\Desktop\RAPORT-FINAL-APLICATII.md`.
+
 # AUDIT — Ortodoxia (audit al stării reale, citire-only)
 
 Audit făcut la 2026-09-27, pe copia locală `C:\Users\pcgar\Documents\ortodoxia-app`. Nu am modificat
