@@ -1,5 +1,10 @@
 # Kit de publicare în magazine (gata de folosit în ziua în care conturile sunt plătite)
 
+> **Atenție (27.09.2026):** textul de listare promite favorite la versete și psalmi, dar în cod
+> favoritele există **doar la rugăciuni** (tabela `favorites` are doar `prayer_id`). Ori se
+> implementează, ori promisiunea se scoate din listare. Restul stării reale:
+> [STARE-REALA.md](./STARE-REALA.md).
+
 Ce e în acest document: exact ce se încarcă, cu ce text, ce răspunsuri se dau la formularele magazinelor
 și în ce ordine se rulează comenzile. Tot ce se putea pregăti fără plată e deja făcut și verificat.
 

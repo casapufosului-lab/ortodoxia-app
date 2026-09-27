@@ -1,5 +1,10 @@
 # ORTODOXIA-APP-REPAIR-FINAL-CLOSURE-002 — final closure report
 
+> **Atenție (27.09.2026):** o parte din cifrele și lipsurile din raportul acesta sunt învechite — lucruri
+> date aici ca nefăcute (textele legale, `projectId`, conținutul zilnic de 365 de zile, `audio_path`) au
+> fost rezolvate după data raportului, iar poarta de release dă acum alte numere. Starea verificată acum
+> este în [STARE-REALA.md](./STARE-REALA.md), cu dovadă în fișier și linie.
+
 Local technical closure of the Ortodoxia mobile app (`C:\Users\pcgar\Documents\ortodoxia-app`).
 Read-only with respect to `ortodoxia-social-engine` (never accessed).
 

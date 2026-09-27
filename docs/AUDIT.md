@@ -160,3 +160,20 @@ Rugăciuni, Chat, Cont (`src/app/(tabs)/`) — plus ecrane separate `live.tsx`, 
 10. **Starea testelor și a typecheck-ului.** Am rulat doar poarta de release și validatorul i18n. Nu am
     rulat `npm test`, `tsc --noEmit` sau `npm run verify`.
 11. **Istoricul git** (ce e comis și ce nu) — nu am rulat nicio comandă git, conform cerinței.
+
+---
+
+## Ce s-a reparat după audit (27.09.2026, runda 2)
+
+- **Contradicțiile document–cod sunt strânse într-un singur loc verificat:** `docs/STARE-REALA.md`,
+  cu dovadă în fișier și linie pentru fiecare rând (textele legale, `projectId`/`owner`, 365 de zile de
+  conținut, `audio_path`, numerele porții, contaminarea intenționată a seed-ului georgian,
+  `assets/expo.icon/icon.json` care nu există).
+- **Am pus avertismente de tip „datele de aici sunt învechite"** în capul documentelor care induc în
+  eroare: `REPAIR_FINAL_CLOSURE_002.md` și `STORE_SUBMISSION_KIT.md`.
+- **Promisiunea de favorite la versete și psalmi** e marcată ca neacoperită: în cod favoritele există
+  doar la rugăciuni (tabela `favorites` are doar `prayer_id`). De decis: se implementează sau se scoate
+  din textul de magazin.
+- **Rămâne de făcut de proprietar:** cheia Apple pentru RevenueCat, cheia Google reală în profilul
+  `production` (acum e de test), cron-ul notificărilor, deploy-ul funcțiilor `delete-account` și
+  `live-services-status`.
