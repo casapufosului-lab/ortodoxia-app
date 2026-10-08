@@ -195,7 +195,12 @@ function scanTextNodes(source) {
           : ch === '\u300c' ? '\u300d'
             : ch === '\u300e' ? '\u300f'
               : ch;
-      mode = ch === '`' ? 'template' : 'string';
+      // The literal is consumed right here, so the scanner stays in code mode. Setting
+      // `mode` to 'string'/'template' made the top-of-loop branch swallow the NEXT
+      // literal's opening quote, which shifted every later literal by one and made the
+      // reported copy depend on the file's layout instead of its content: it misread
+      // `throw new Error('OAuth URL missing.')` in src/app/auth.tsx as user-visible copy
+      // as soon as any two-quote declaration was added above it.
       i += 1;
       while (i < source.length && source[i] !== terminator) {
         if (source[i] === '\\') i += 1;
