@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { checkDeletionCoverage, runDeletion, scanUserOwnedTables } from '../scripts/lib/deletion-coverage.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = join(__dirname, '..');
@@ -37,8 +38,54 @@ test('Edge Function uses service-role for server-side deletions', () => {
 });
 
 test('Edge Function deletes all user-owned tables explicitly', () => {
-  for (const table of ['notification_devices', 'notification_preferences', 'chat_messages', 'chat_threads', 'favorites', 'verse_favorites', 'usage_daily', 'profiles']) {
-    assert.ok(fn.includes(`'${table}'`), `missing explicit delete for ${table}`);
+  // C12: înainte se verifica TEXTUL funcției (`fn.includes('verse_favorites')`), care ar fi trecut și
+  // dacă ștergerea exista doar într-un comentariu. Acum comportamentul e EXECUTAT cu un client fals,
+  // iar lista tabelelor așteptate vine din migrații, nu din codul funcției.
+  assert.ok(fn.includes('deleteOwnedData'), 'handlerul trebuie să apeleze secvența testabilă din core.ts');
+});
+
+test('C12: fiecare tabelă cu references auth.users e ștearsă explicit sau prin cascadă documentată', async () => {
+  const result = await checkDeletionCoverage({ root });
+  assert.deepEqual(result.missing, [], `tabele neacoperite: ${result.missing.join(', ')}`);
+  assert.deepEqual(result.unknownExplicit, [], `ștergeri din tabele care nu aparțin utilizatorului`);
+  assert.deepEqual(result.cascadesWithoutClause, [], 'fiecare tabelă deținută de utilizator are ON DELETE CASCADE');
+  assert.ok(result.userOwnedTables.length >= 10, `lista migrațiilor pare incompletă: ${result.userOwnedTables.join(', ')}`);
+});
+
+test('C12: ordinea dependențelor — chat_messages înainte de chat_threads', async () => {
+  const result = await checkDeletionCoverage({ root });
+  assert.equal(result.orderViolation, null);
+});
+
+test('C11: un SELECT eșuat pe chat_threads e raportat, nu înghițit', async () => {
+  const corePath = join(root, 'supabase/functions/delete-account/core.ts');
+  const { outcome } = await runDeletion(corePath, { failOn: ['chat_threads.select'] });
+  assert.ok(
+    outcome.errors.some((entry) => entry.startsWith('chat_threads(list)')),
+    `eroarea de listare trebuie să apară în errors: ${JSON.stringify(outcome)}`,
+  );
+});
+
+test('orice eroare reală de ștergere oprește fluxul înainte de ștergerea contului', async () => {
+  const corePath = join(root, 'supabase/functions/delete-account/core.ts');
+  for (const table of ['notification_devices', 'notification_preferences', 'favorites', 'verse_favorites', 'usage_daily', 'profiles']) {
+    const { outcome } = await runDeletion(corePath, { failOn: [`${table}.delete`] });
+    assert.ok(outcome.errors.some((entry) => entry.startsWith(table)), `${table} nu oprește fluxul`);
+  }
+});
+
+test('o tabelă inexistentă în baza live e raportată ca skipped, fără să blocheze ștergerea', async () => {
+  const corePath = join(root, 'supabase/functions/delete-account/core.ts');
+  const { outcome } = await runDeletion(corePath, { missingTables: ['verse_favorites', 'ai_reports'] });
+  assert.equal(outcome.errors.length, 0, JSON.stringify(outcome.errors));
+  assert.ok(outcome.skipped.some((entry) => entry.startsWith('verse_favorites')), JSON.stringify(outcome.skipped));
+});
+
+test('documentația listează exact tabelele șterse (nu poate rămâne în urmă)', async () => {
+  const doc = readFileSync(join(root, 'docs/ACCOUNT_DELETION.md'), 'utf8');
+  const owned = [...scanUserOwnedTables(join(root, 'supabase/migrations')).keys()];
+  for (const table of owned) {
+    assert.ok(doc.includes(`\`${table}\``), `docs/ACCOUNT_DELETION.md nu pomenește tabela ${table}`);
   }
 });
 
@@ -186,9 +233,9 @@ function scanSql(dir) {
 const migrations = scanSql(join(root, 'supabase/migrations'));
 const allSql = migrations.map((f) => readFileSync(f, 'utf8')).join('\n');
 
-test('user-owned tables have ON DELETE CASCADE on auth.users', () => {
-  assert.ok(allSql.includes("references auth.users(id) on delete cascade"));
-});
+// Verificarea „user-owned tables have ON DELETE CASCADE on auth.users" verifica o singură apariție în
+// tot SQL-ul (putea trece cu o singură tabelă corectă). Acoperirea per tabelă e acum în testul C12 de
+// mai sus (`result.cascadesWithoutClause`), calculată din migrații.
 
 test('account-deletion.ts has no subscription table access', () => {
   assert.ok(!clientHelper.includes("'subscriptions'"));

@@ -19,9 +19,13 @@
    - `chat_messages` (fetched via owned threads first)
    - `chat_threads`
    - `favorites`
+   - `verse_favorites`
    - `usage_daily`
    - `profiles`
-4. If any step fails → abort before auth deletion, return 500 with details
+4. If any step fails → abort before auth deletion, return 500 with details.
+   A table that does not exist yet in the live database (`42P01` / `PGRST205`, e.g. a migration not
+   applied) is reported in the function log as `skipped` and does **not** block the deletion: there are
+   no rows to delete. The empty DELETE is never silently ignored.
 5. Delete auth user via `admin.auth.admin.deleteUser(userId)` — final step, triggers remaining cascades
 
 ## Deleted Records
@@ -30,6 +34,7 @@
 |-------|-----|-----|
 | `profiles` | Explicit DELETE by user_id | User profile data |
 | `favorites` | Explicit DELETE by user_id | Saved prayer favorites |
+| `verse_favorites` | Explicit DELETE by user_id | Saved verse favorites |
 | `chat_threads` | Explicit DELETE by user_id | AI conversation threads |
 | `chat_messages` | Explicit DELETE by thread_id (via owned threads) | AI conversation messages |
 | `usage_daily` | Explicit DELETE by user_id | Daily AI usage counters |
@@ -38,6 +43,11 @@
 | `notification_preferences` | Explicit DELETE by user_id | Notification settings |
 | `auth.users` | `admin.auth.admin.deleteUser()` — final step | Auth account |
 | `subscriptions` | Cascade via auth.users DELETE | Billing row (see retained) |
+| `ai_reports` | Cascade via auth.users DELETE | AI content reports (free text written by the user) |
+
+The code list is authoritative and machine-checked: `supabase/functions/delete-account/core.ts`
+(`EXPLICITLY_DELETED_TABLES`, `CASCADE_ONLY_TABLES`) is asserted against the migrations by
+`tests/account-deletion.test.mjs`, so a user-owned table added later cannot be forgotten here.
 
 ## Retained Data
 

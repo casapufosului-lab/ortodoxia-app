@@ -1,5 +1,7 @@
 import { createClient } from 'npm:@supabase/supabase-js@2';
 
+import { deleteOwnedData } from './core.ts';
+
 // ─── CORS ───────────────────────────────────────────────────────────────────
 
 import { corsHeaders as buildCorsHeaders, preflightResponse } from '../_shared/http.ts';
@@ -84,91 +86,37 @@ Deno.serve(async (req: Request) => {
   //    Tables with ON DELETE CASCADE on auth.users will also cascade, but we
   //    delete explicitly for clarity and to control the sequence.
   //
-  //    DELETED:
+  //    DELETED (lista exactă: ./core.ts → EXPLICITLY_DELETED_TABLES):
   //      - notification_deliveries (via devices)
   //      - notification_devices
   //      - notification_preferences
   //      - chat_messages (via threads)
   //      - chat_threads
   //      - favorites
+  //      - verse_favorites
   //      - usage_daily
   //      - profiles
   //
-  //    RETAINED:
+  //    RETAINED / CASCADE ONLY (lista exactă: ./core.ts → CASCADE_ONLY_TABLES):
   //      - subscriptions: billing lifecycle managed by RevenueCat / Apple / Google;
   //        row will cascade-delete with auth.users but the external billing record
   //        persists. Subscriptions rows contain no PII beyond user_id.
+  //      - ai_reports: rapoartele de conținut AI; cascadează cu auth.users.
   //
   //    NOT USER-OWNED (global content):
   //      - prayers, daily_content, calendar_days, bible_verses,
   //        live_service_status_cache, guest_usage_daily
 
-  const errors: string[] = [];
+  // 4a-4g. Secvența propriu-zisă stă în `./core.ts`, ca modul pur, ca să poată fi EXECUTATĂ de teste
+  // (pozițiile C11 și C12 din audit) în loc să fie doar căutată ca text. Ordinea dependențelor și
+  // tratarea erorilor sunt documentate acolo.
+  const { errors, skipped } = await deleteOwnedData(admin, userId);
 
-  // 4a. notification_deliveries (via notification_devices cascade)
-  const { error: ndevErr } = await admin
-    .from('notification_devices')
-    .delete()
-    .eq('user_id', userId);
-  if (ndevErr) errors.push(`notification_devices: ${ndevErr.message}`);
-
-  // 4b. notification_preferences
-  const { error: nprefErr } = await admin
-    .from('notification_preferences')
-    .delete()
-    .eq('user_id', userId);
-  if (nprefErr) errors.push(`notification_preferences: ${nprefErr.message}`);
-
-  // 4c. chat_messages — delete by joining on owned threads
-  //     We fetch thread IDs first, then delete messages for each.
-  const { data: threads, error: threadListErr } = await admin
-    .from('chat_threads')
-    .select('id')
-    .eq('user_id', userId);
-
-  if (!threadListErr && threads && threads.length > 0) {
-    const threadIds = threads.map((t: { id: string }) => t.id);
-    const { error: msgsErr } = await admin
-      .from('chat_messages')
-      .delete()
-      .in('thread_id', threadIds);
-    if (msgsErr) errors.push(`chat_messages: ${msgsErr.message}`);
+  // Tabele lipsă în baza live (migrație neaplicată) nu blochează ștergerea contului, dar se văd în
+  // log — fără date de utilizator, doar numele tabelului.
+  if (skipped.length > 0) {
+    console.warn(`delete-account: tabele inexistente, sărite: ${skipped.join('; ')}`);
   }
-
-  // 4d. chat_threads
-  const { error: threadsErr } = await admin
-    .from('chat_threads')
-    .delete()
-    .eq('user_id', userId);
-  if (threadsErr) errors.push(`chat_threads: ${threadsErr.message}`);
-
-  // 4e. favorites
-  const { error: favErr } = await admin
-    .from('favorites')
-    .delete()
-    .eq('user_id', userId);
-  if (favErr) errors.push(`favorites: ${favErr.message}`);
-
-  // 4e-bis. verse_favorites (favorite pe versete, tabel adaugat in 20260927000100)
-  const { error: verseFavErr } = await admin
-    .from('verse_favorites')
-    .delete()
-    .eq('user_id', userId);
-  if (verseFavErr) errors.push(`verse_favorites: ${verseFavErr.message}`);
-
-  // 4f. usage_daily
-  const { error: usageErr } = await admin
-    .from('usage_daily')
-    .delete()
-    .eq('user_id', userId);
-  if (usageErr) errors.push(`usage_daily: ${usageErr.message}`);
-
-  // 4g. profiles
-  const { error: profileErr } = await admin
-    .from('profiles')
-    .delete()
-    .eq('id', userId);
-  if (profileErr) errors.push(`profiles: ${profileErr.message}`);
 
   // If any DB cleanup step failed, abort before deleting the auth user to
   // avoid leaving orphaned data that the user cannot request to re-delete.
@@ -176,9 +124,12 @@ Deno.serve(async (req: Request) => {
     return json({ error: 'Ștergerea datelor nu a reușit. Încearcă din nou.' }, 500);
   }
 
-  // 5. Delete the auth user. This is the final step and triggers any remaining
-  //    cascades (e.g., subscriptions). Must be done last so that if it fails,
-  //    the user can retry without data loss.
+  // 5. Delete the auth user. This is the final step and triggers the remaining
+  //    cascades (subscriptions, ai_reports). It runs only after every user-owned
+  //    table above was deleted successfully — so, if this step fails, the data
+  //    rows are ALREADY gone: a retry can no longer restore them, it can only
+  //    finish deleting the account. (Anteriorul comentariu „retry without data
+  //    loss" era fals — vezi poziția C11 din audit.)
   const { error: deleteUserErr } = await admin.auth.admin.deleteUser(userId);
   if (deleteUserErr) {
     return json({ error: 'Contul nu a putut fi șters. Încearcă din nou.' }, 500);
