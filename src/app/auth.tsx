@@ -71,6 +71,27 @@ ${message}`);
  */
 const OAUTH_REQUEST_TIMEOUT_MS = 30_000;
 
+/**
+ * Upper bound for the e-mail + password sign-in.
+ *
+ * WHY THIS EXISTS
+ * ---------------
+ * `signInWithPassword` was the only network call in this screen without a bound. If the
+ * request never settled (captive portal, dropped connection, a stalled write) the button
+ * kept spinning and no message was ever shown - the user saw a form that "did nothing".
+ * The bound converts that into the ordinary alert on the existing error path.
+ */
+const SIGN_IN_TIMEOUT_MS = 30_000;
+
+/**
+ * B9 din audit: versiunea documentelor legale acceptate la creare de cont.
+ *
+ * Se salveaza in metadatele utilizatorului (`terms_accepted_at` + `terms_version`), ca
+ * sa se poata dovedi CE s-a acceptat si CAND. Cand textul termenilor se schimba
+ * semnificativ, valoarea se incrementeaza si acceptarea poate fi ceruta din nou.
+ */
+const TERMS_VERSION = '2026-10-08';
+
 function withTimeout<T>(promise: PromiseLike<T>, ms: number, message: string): Promise<T> {
   return new Promise<T>((resolve, reject) => {
     const timer = setTimeout(() => reject(new Error(message)), ms);
@@ -140,6 +161,9 @@ export default function AuthScreen() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [displayName, setDisplayName] = useState('');
+  // B9 din audit: pana acum contul se crea fara sa existe dovada ca utilizatorul a
+  // vazut termenii. Bifa e ceruta doar la creare de cont, nu si la autentificare.
+  const [termsAccepted, setTermsAccepted] = useState(false);
   const [resetPassword, setResetPassword] = useState('');
   const [confirmResetPassword, setConfirmResetPassword] = useState('');
   const [mode, setMode] = useState<'sign-in' | 'sign-up'>('sign-in');
@@ -198,6 +222,13 @@ export default function AuthScreen() {
       showAuthAlert(t('auth.passwordTooShortTitle'), t('auth.passwordTooShortMessage'));
       return false;
     }
+    // B9 din audit: contul se crea fara nicio dovada ca utilizatorul a citit termenii
+    // si politica de confidentialitate. Bifa e obligatorie doar la creare de cont
+    // (autentificarea unui cont existent nu poate fi conditionata de ea).
+    if (activeMode === 'sign-up' && !termsAccepted) {
+      showAuthAlert(t('auth.termsRequiredTitle'), t('auth.termsRequired'));
+      return false;
+    }
     return true;
   };
 
@@ -225,11 +256,20 @@ export default function AuthScreen() {
       }
 
       if (activeMode === 'sign-up') {
+        // Momentul acceptarii se trimite ca metadate de utilizator: e singura dovada
+        // pe care o putem pastra fara o migratie noua, iar Supabase o retine in
+        // `auth.users.raw_user_meta_data`. Versiunea documentelor e salvata o data cu
+        // momentul, ca sa se stie CE s-a acceptat.
+        const termsAcceptedAt = new Date().toISOString();
         const { data, error } = await supabase.auth.signUp({
           email: email.trim(),
           password,
           options: {
-            data: { display_name: displayName.trim() },
+            data: {
+              display_name: displayName.trim(),
+              terms_accepted_at: termsAcceptedAt,
+              terms_version: TERMS_VERSION,
+            },
             emailRedirectTo: Platform.OS === 'web' && typeof window !== 'undefined'
               ? window.location.origin + '/auth'
               : NATIVE_PASSWORD_RECOVERY_REDIRECT_URL,
@@ -243,7 +283,15 @@ export default function AuthScreen() {
           return;
         }
       } else {
-        const { error } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
+        // Bounded on purpose, like the OAuth calls above. A request that never settles
+        // used to leave the button spinning with no message at all; the timeout turns
+        // that into the visible connection-error alert. The message contains "network"
+        // so `friendlyAuthError` maps it to `auth.errorNetwork`.
+        const { error } = await withTimeout(
+          supabase.auth.signInWithPassword({ email: email.trim(), password }),
+          SIGN_IN_TIMEOUT_MS,
+          'Sign-in network request timed out.',
+        );
         if (error) throw error;
       }
 
@@ -251,6 +299,13 @@ export default function AuthScreen() {
     } catch (error) {
       showAuthAlert(t('auth.signInFailedTitle'), friendlyAuthError(error, t));
     } finally {
+      // The guard exists to stop a second tap arriving in the SAME tick (see the comment
+      // at the top of submit), not to lock the button for the rest of the screen's life.
+      // It used to be set here and released only by `sendResetEmail`, so after one failed
+      // attempt - wrong password, no network, a refused secure write - every later tap on
+      // "Autentificare" returned silently: no alert, no spinner, a form that does nothing.
+      // A user who mistyped the password once could never retry without leaving the screen.
+      submitInFlightRef.current = false;
       setLoading(false);
     }
   };
@@ -393,6 +448,27 @@ export default function AuthScreen() {
           </>
         )}
         <PrimaryButton disabled={loading} label={loading ? t('auth.processing') : activeMode === 'reset-password' ? t('auth.saveNewPassword') : activeMode === 'sign-in' ? t('auth.signInButton') : t('auth.signUpButton')} onPress={submit} />
+        {activeMode === 'sign-up' ? (
+          /*
+            B9 din audit: crearea contului nu cerea nicio dovada de acceptare a
+            termenilor. Randul e un singur Pressable (nu un checkbox nativ), cu
+            accessibilityRole="checkbox" si accessibilityState.checked, ca sa fie
+            anuntat corect de TalkBack. Textul complet e eticheta, deci atingerea
+            oriunde in rand comuta bifa.
+          */
+          <Pressable
+            accessibilityRole="checkbox"
+            accessibilityState={{ checked: termsAccepted, disabled: loading }}
+            accessibilityLabel={t('auth.termsCheckbox')}
+            disabled={loading}
+            onPress={() => setTermsAccepted((current) => !current)}
+            style={({ pressed }) => [styles.termsRow, pressed && styles.pressed]}>
+            <View style={[styles.termsBox, termsAccepted && styles.termsBoxChecked]}>
+              {termsAccepted ? <Text style={styles.termsCheck}>✓</Text> : null}
+            </View>
+            <Text style={styles.termsText}>{t('auth.termsCheckbox')}</Text>
+          </Pressable>
+        ) : null}
         {visibleResetMessage ? <Text accessibilityLiveRegion="polite" style={[styles.message, visibleResetMessage.type === 'success' ? styles.success : styles.error]}>{visibleResetMessage.text}</Text> : null}
         {activeMode === 'sign-in' ? <Pressable accessibilityRole="button" accessibilityState={{ disabled: loading }} disabled={loading} accessibilityLabel={t('auth.forgotPassword')} onPress={sendResetEmail}><Text style={styles.link}>{t('auth.forgotPassword')}</Text></Pressable> : null}
         {activeMode === 'reset-password' ? (
@@ -447,6 +523,11 @@ const styles = StyleSheet.create({
   success: { color: palette.success },
   error: { color: palette.danger },
   switchRow: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 6 },
+  termsRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 10, paddingVertical: 4 },
+  termsBox: { width: 22, height: 22, borderRadius: 6, borderWidth: 2, borderColor: palette.line, alignItems: 'center', justifyContent: 'center', marginTop: 1 },
+  termsBoxChecked: { borderColor: palette.goldDark, backgroundColor: '#FFFFFF' },
+  termsCheck: { color: palette.goldDark, fontSize: 14, fontWeight: '900', lineHeight: 18 },
+  termsText: { flex: 1, color: palette.muted, fontSize: 13, lineHeight: 19 },
   socialSection: { gap: 10, marginBottom: 4 },
   socialButton: { minHeight: 50, borderColor: palette.line, borderWidth: 1, borderRadius: 14, backgroundColor: '#FFFFFF', alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 10, paddingHorizontal: 14 },
   pressed: { opacity: 0.82 },
