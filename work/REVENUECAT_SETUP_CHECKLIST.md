@@ -26,7 +26,7 @@ Acest document separă clar ce este deja **implementat în cod** față de ce **
 
 ### 1.1 `src/lib/revenuecat.ts`
 - `PREMIUM_ENTITLEMENT_ID = 'premium'`
-- `ENTITLEMENT_PRODUCT_MAPPING`: `monthly → ro.ortodoxia.premium.monthly`, `annual → ro.ortodoxia.premium.annual`
+- pachetul unui plan se caută cu `packageForPlan()`: întâi după identificatorul `monthly` / `annual`, apoi după tipul standard de pachet RevenueCat, apoi după perioada de facturare a produsului (deci și identificatorii impliciti `$rc_monthly` / `$rc_annual` funcționează). Nu mai există un tabel plan → ID de produs: `ENTITLEMENT_PRODUCT_MAPPING` a fost șters ca nefolosit (08.10.2026).
 - `configureRevenueCat()` — inițializează SDK o singură dată; alege cheia după platformă (iOS→Apple, Android→Google); **returnează pe web** (`Platform.OS === 'web'`)
 - `identifyRevenueCatUser(userId)` — leagă utilizatorul Supabase de App User ID (`logIn`)
 - `clearRevenueCatUser()` — deconectează la sign-out (`logOut`)
