@@ -18,10 +18,18 @@
  *   A1  Every interactive element exposes a role, or an explicit label.
  *   A2  Every TextInput has an accessibilityLabel (or is label-wrapped).
  *   A3  Non-decorative images carry a label; decorative ones opt out explicitly.
- *   A4  Every interactive element reaches the 44x44pt minimum touch target.
+ *   A4  Every interactive element reaches the 48x48dp minimum touch target.
  *   A5  Text/background colour pairs meet WCAG 2.1 AA.
  *   A6  Screen and section headings are announced as headings.
  *   A7  No user-visible string is hardcoded in JSX instead of going through t().
+ *   A8  An icon-only control draws a glyph of at least 24pt inside a rounded background.
+ *   A9  A back control reaches the 56pt circle of AGENTS.md rule 28.
+ *
+ * A4 is 48, not 44: Apple's floor is 44pt but Google's is 48dp, and Play is the
+ * store this build ships to. A8 and A9 are rules 27 and 28 of AGENTS.md written
+ * as checks, so a hand-drawn icon or back arrow cannot slip under them again.
+ * The `--self-test` fixtures below pin both thresholds against the shape the rules
+ * describe, so moving either number without a reason fails the run.
  *
  * A7 is included because a hardcoded string is invisible to screen readers in
  * every locale but Romanian: the corpus holds 521 keys x 10 locales and a literal
@@ -66,7 +74,15 @@ function collect(dir, out = []) {
   return out;
 }
 
-const SOURCE_FILES = collect(join(ROOT, 'src'));
+/*
+ * The screens a real run scans. Collected lazily, inside main(), because `--self-test`
+ * must be runnable from anywhere — including a copy of this file in a temp directory,
+ * which is how `tests/accessibility-thresholds.test.mjs` proves a lowered threshold
+ * actually fails.
+ */
+function sourceFiles() {
+  return collect(join(ROOT, 'src'));
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Minimal JSX scanner
@@ -316,6 +332,115 @@ function styleRefs(text) {
   return [...text.matchAll(/styles\.([A-Za-z0-9_]+)/g)].map((m) => m[1]);
 }
 
+/**
+ * The symbol a control draws instead of words, or nothing when it draws words.
+ *
+ * Rule 27's icons are `Text` nodes holding a symbol, and the one in Bible is
+ * written as an escape (`{favorit ? '\u2665' : '\u2661'}`), so both the literal
+ * character and the `\uXXXX` form have to be understood. A `<Text>{count}</Text>`
+ * is not an icon: after unwrapping the expression there is no symbol left, only a
+ * value, and an icon rule that fires there would be noise. Whatever is left after
+ * the symbols are removed is returned in `leftover`, which the caller requires to
+ * be empty.
+ */
+function symbolsIn(text) {
+  const list = [];
+  const rest = text
+    .replace(/\\u([0-9a-fA-F]{4})/g, (_match, hex) => {
+      list.push(String.fromCodePoint(parseInt(hex, 16)));
+      return ' ';
+    })
+    .replace(/\\x([0-9a-fA-F]{2})/g, (_match, hex) => {
+      list.push(String.fromCodePoint(parseInt(hex, 16)));
+      return ' ';
+    });
+  const leftover = [];
+  for (const character of rest) {
+    if (/\s/.test(character)) continue;
+    if (DECORATIVE_CHAR.test(character) || /[,;.()|]/.test(character)) {
+      list.push(character);
+      continue;
+    }
+    leftover.push(character);
+  }
+  return { list: list.filter((character) => DECORATIVE_CHAR.test(character)), leftover: leftover.join('') };
+}
+
+/**
+ * The symbols a `Text` body renders, plus what is left over.
+ *
+ * `values` counts the expressions that render a value rather than a symbol —
+ * `{day}`, `{count}` — because a control that prints a number is not an icon, even
+ * though the source contains no letters inside the braces.
+ */
+function iconGlyphs(raw) {
+  const list = [];
+  let values = 0;
+  const content = raw.replace(/\{[^{}]*\}/g, (expression) => {
+    const literals = [...expression.matchAll(/'([^']*)'|"([^"]*)"/g)]
+      .map((match) => match[1] ?? match[2]).join(' ');
+    const inner = symbolsIn(literals);
+    if (inner.list.length === 0) values += 1;
+    list.push(...inner.list);
+    return ` ${inner.leftover} `;
+  });
+  const outside = symbolsIn(content);
+  list.push(...outside.list);
+  return { list, leftover: outside.leftover, values };
+}
+
+/**
+ * The glyph of an icon-only control, with the fontSize that glyph declares.
+ *
+ * "Icon-only" is the strict reading: the control draws exactly one symbol and no
+ * letters or digits anywhere inside it. A calendar day cell that shows the number
+ * *and* a small cross marker is a day cell, not an icon, and rule 27 does not
+ * govern it — a first version of this check reported those, which is why the
+ * `--self-test` fixtures below include one.
+ */
+function iconGlyph(element, sheets) {
+  let glyph = null;
+  for (const child of scanElements(element.children)) {
+    if (child.name !== 'Text') continue;
+    // Tags inside a Text mean nested copy, not a glyph; and when this runs over a
+    // child fragment the closing `</Text>` is part of the string, which would
+    // otherwise be read as content.
+    const raw = child.children.replace(/<[^>]*>/g, ' ').trim();
+    if (raw === '') continue;
+    const glyphs = iconGlyphs(raw);
+    if (glyphs.leftover !== '' || glyphs.values > 0) return null;
+    if (glyphs.list.length === 0) continue;
+    if (glyph !== null) return null;
+    glyph = styleRefs(child.attrs);
+  }
+  if (glyph === null) return null;
+  const sizes = glyph.map((ref) => styleNumber(sheets, ref, 'fontSize')).filter((value) => value !== null);
+  return { refs: glyph, fontSize: sizes.length === 0 ? null : Math.max(...sizes) };
+}
+
+/**
+ * A control is a back control when the source calls it one — its label's words,
+ * its style name, or the handler it runs. `\bback\b` deliberately does not match
+ * `backgroundColor`, which appears in attributes all over these screens.
+ */
+function isBackControl(element) {
+  return BACK_WORD.test(element.attrs) || styleRefs(element.attrs).some((ref) => /back/i.test(ref));
+}
+
+/** Largest declared minHeight/height/minWidth/width, or null when nothing is declared. */
+function targetSize(refs, sheets) {
+  let best = null;
+  for (const ref of refs) {
+    for (const property of ['minHeight', 'height', 'minWidth', 'width']) {
+      const value = styleNumber(sheets, ref, property);
+      if (value !== null && (property.startsWith('min') || property === 'height')) {
+        best = best === null ? value : Math.max(best, value);
+      }
+    }
+  }
+  return best;
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Colour maths (WCAG 2.1)
 // ─────────────────────────────────────────────────────────────────────────────
@@ -356,7 +481,15 @@ function readPalette() {
   return tokens;
 }
 
-const PALETTE = readPalette();
+/**
+ * The shipped palette, read on first use rather than at import: `--self-test` never
+ * checks contrast, and it must stay runnable from a copy of this file outside the repo.
+ */
+let paletteCache = null;
+function paletteTokens() {
+  if (paletteCache === null) paletteCache = readPalette();
+  return paletteCache;
+}
 
 /**
  * Text/background pairs actually shipped. Kept as an explicit list rather than
@@ -411,12 +544,24 @@ const INTERACTIVE = new Set([
 const DECORATIVE_OPT_OUT = /(accessible=\{false\}|accessibilityElementsHidden|importantForAccessibility="no(-hide-descendants)?"|aria-hidden)/;
 const HAS_LABEL = /(accessibilityLabel|aria-label|accessibilityLabelledBy|aria-labelledby)=/;
 const HAS_ROLE = /(accessibilityRole|role)=/;
-const MIN_TOUCH = 44;
+const MIN_TOUCH = 48;
+/** AGENTS.md rule 27: the important icons (cart, favourite) are at least 24pt, in a white circle. */
+const MIN_ICON = 24;
+/** AGENTS.md rule 28: the back arrow is a 56pt circle. */
+const MIN_BACK = 56;
+/** A drawn symbol, as opposed to a letter or a digit. */
+const DECORATIVE_CHAR = /[\u2000-\u27BF\u2B00-\u2BFF\uFE0F\u20E3]/;
+/** "Back" in the ten shipped locales, plus the translation keys that name the action. */
+const BACK_WORD = /(inapoi|\bback\b|\u043d\u0430\u0437\u0430\u0434|\u043d\u0430\u0442\u0440\u0430\u0433|\u10e3\u10d9\u10d0\u10dc|\u03c0\u03af\u03c3\u03c9|kthehu)/i;
 
 /** Icon-font glyphs and punctuation used as decoration, not as readable copy. */
 const DECORATIVE_TEXT = /^[\s\u2000-\u27BF\u2B00-\u2BFF\uFE0F\u20E3\u2190-\u21FF\u2300-\u23FF\u25A0-\u25FF\u2600-\u27BF·•—–…›«»|/\\+=<>()[\]{}:;,.!?"'`~*#%^&_-]*$/;
 
-function checkInteractive(file, source, elements, sheets) {
+/**
+ * @param collect  Where findings go. The self-test passes its own collector so a
+ *   threshold can be proved to fire without the real tree reporting it.
+ */
+function checkInteractive(file, source, elements, sheets, collect = report) {
   for (const element of elements) {
     if (!INTERACTIVE.has(element.name)) continue;
 
@@ -425,27 +570,17 @@ function checkInteractive(file, source, elements, sheets) {
     const hasVisibleText = /<Text[\s>]/.test(element.children) || /<[A-Z][A-Za-z]*\.Label[\s/>]/.test(element.children);
 
     if (!hasRole && !hasLabel) {
-      report('A1', file, `<${element.name}> has neither a role nor a label`,
+      collect('A1', file, `<${element.name}> has neither a role nor a label`,
         'A screen reader announces it as plain text, so the user cannot tell it is actionable.');
     }
     if (!hasVisibleText && !hasLabel && !/accessibilityElementsHidden/.test(element.attrs)) {
-      report('A1', file, `<${element.name}> renders no readable text and carries no label`,
+      collect('A1', file, `<${element.name}> renders no readable text and carries no label`,
         'Icon-only control: without accessibilityLabel it is announced as an unlabelled button.');
     }
 
     // Touch target: minHeight/height of the referenced styles, or explicit hitSlop.
     const refs = styleRefs(element.attrs);
-    let best = null;
-    for (const ref of refs) {
-      for (const property of ['minHeight', 'height', 'minWidth', 'width']) {
-        const value = styleNumber(sheets, ref, property);
-        if (value !== null) {
-          if (property.startsWith('min') || property === 'height') {
-            best = best === null ? value : Math.max(best, value);
-          }
-        }
-      }
-    }
+    const best = targetSize(refs, sheets);
     const paddingVertical = refs.reduce((acc, ref) => {
       const value = styleNumber(sheets, ref, 'paddingVertical') ?? styleNumber(sheets, ref, 'padding');
       return value === null ? acc : Math.max(acc, value);
@@ -453,8 +588,29 @@ function checkInteractive(file, source, elements, sheets) {
     const inlineHitSlop = /hitSlop=/.test(element.attrs);
 
     if (best !== null && best < MIN_TOUCH && !inlineHitSlop && paddingVertical === 0) {
-      report('A4', file, `<${element.name}> tap target is ${best}pt tall (styles.${refs.join(',')})`,
-        `Apple asks for ${MIN_TOUCH}x${MIN_TOUCH}pt and Google for 48dp; a smaller target is a miss for anyone with a tremor or a large thumb.`);
+      collect('A4', file, `<${element.name}> tap target is ${best}pt tall (styles.${refs.join(',')})`,
+        `Google asks for ${MIN_TOUCH}x${MIN_TOUCH}dp and Apple for 44pt; a smaller target is a miss for anyone with a tremor or a large thumb.`);
+    }
+
+    // Rule 27: an icon-only control draws a glyph, and the glyph has a floor.
+    const glyph = iconGlyph(element, sheets);
+    if (glyph) {
+      if (glyph.fontSize === null) {
+        collect('A8', file, `<${element.name}> draws an icon but no referenced style declares fontSize`,
+          'Unmeasurable: the size has to be declared before rule 27 (min 24) can be checked at all.');
+      } else if (glyph.fontSize < MIN_ICON) {
+        collect('A8', file, `icon glyph is ${glyph.fontSize}pt (styles.${glyph.refs.join(',')})`,
+          `AGENTS.md rule 27: the important icons (cart, favourite) are at least ${MIN_ICON} so they stay visible to a low-vision user.`);
+      }
+    }
+
+    // Rule 28: the back arrow is a 56pt circle.
+    if (isBackControl(element)) {
+      const size = targetSize(refs, sheets);
+      if (size === null || size < MIN_BACK) {
+        collect('A9', file, `<${element.name}> back control is ${size === null ? 'undimensioned' : `${size}pt`} (styles.${refs.join(',')})`,
+          `AGENTS.md rule 28: the back arrow is a ${MIN_BACK}pt circle; anything smaller is a miss for a thumb on a phone.`);
+      }
     }
   }
 }
@@ -572,6 +728,7 @@ function checkHardcodedCopy(file, source) {
 
 function checkContrast() {
   const file = join(ROOT, 'src', 'constants', 'palette.ts');
+  const PALETTE = paletteTokens();
   for (const [label, fgToken, bgToken, required] of CONTRAST_PAIRS) {
     const fg = parseHex(PALETTE.get(fgToken) ?? '');
     const bg = parseHex(PALETTE.get(bgToken) ?? '');
@@ -596,10 +753,12 @@ const RULE_TITLES = {
   A1: 'interactive control without a role/label',
   A2: 'input without a label',
   A3: 'image without a label or decorative marker',
-  A4: 'tap target below 44pt',
+  A4: 'tap target below 48dp',
   A5: 'contrast below WCAG AA',
   A6: 'heading not announced',
   A7: 'hardcoded user-visible copy',
+  A8: 'icon below 24pt or outside its circle',
+  A9: 'back control below 56pt',
 };
 
 /**
@@ -677,6 +836,55 @@ function runSelfTest() {
   expect('a style minHeight is read', styleNumber(sheets, 'big', 'minHeight'), 50);
   expect('a missing style returns null', styleNumber(sheets, 'nope', 'height'), null);
 
+  /**
+   * The A4/A8/A9 thresholds are worth having only if they fire on the exact shape
+   * rules 27 and 28 describe and stay quiet next to it — a 24pt glyph inside a
+   * circle and a number rendered in a Text are both clean. Each fixture below is
+   * the smallest source that reproduces the rule.
+   */
+  const interactiveFindings = (source) => {
+    const collected = [];
+    checkInteractive('<self-test>', source, scanElements(source), styleSheets(source),
+      (rule, _file, message) => collected.push(`${rule} ${message}`));
+    return collected;
+  };
+  const iconFixture = `<Pressable accessibilityRole="button" accessibilityLabel={t('prayers.favoriteAdd')} hitSlop={8} style={styles.iconButton}>
+  <Text style={styles.icon}>{favorit ? '\\u2665' : '\\u2661'}</Text>
+</Pressable>
+const styles = StyleSheet.create({ iconButton: { borderRadius: 999 }, icon: { fontSize: SIZE } });`;
+  const dayCellFixture = `<Pressable accessibilityRole="button" accessibilityLabel="x" hitSlop={8} style={styles.day}>
+  <Text style={styles.dayText}>{day}</Text>
+  <Text style={styles.marker}>\\u271d</Text>
+</Pressable>
+const styles = StyleSheet.create({ day: { borderRadius: 10 }, dayText: { fontSize: 13 }, marker: { fontSize: 9 } });`;
+  const backFixture = (size) => `<Pressable accessibilityRole="button" accessibilityLabel={t('common.back')} onPress={() => router.back()} style={styles.backButton}>
+  <Text style={styles.backIcon}>\\u2190</Text>
+</Pressable>
+const styles = StyleSheet.create({ backButton: { width: ${size}, height: ${size}, borderRadius: ${size / 2} }, backIcon: { fontSize: 24 } });`;
+  const targetFixture = (size) => `<Pressable accessibilityRole="button" accessibilityLabel="x" style={styles.b}><Text style={styles.t}>ok</Text></Pressable>
+const styles = StyleSheet.create({ b: { minHeight: ${size} }, t: { fontSize: 14 } });`;
+
+  const atSize = (fixture, size) => fixture.replace('SIZE', String(size));
+  const sizedIcon = (size) => atSize(iconFixture, size);
+  const undeclaredIcon = iconFixture.replace('fontSize: SIZE', "color: '#000000'");
+
+  expect('a 20pt icon is below rule 27',
+    interactiveFindings(sizedIcon(20)).filter((entry) => entry.startsWith('A8')).length, 1);
+  expect('a 24pt icon passes rule 27', interactiveFindings(sizedIcon(24)), []);
+  expect('an icon with no declared size is reported',
+    interactiveFindings(undeclaredIcon).filter((entry) => entry.startsWith('A8')).length, 1);
+  expect('a day cell with a number and a marker is not an icon',
+    interactiveFindings(dayCellFixture).filter((entry) => entry.startsWith('A8')).length, 0);
+  expect('a value in a Text is not an icon', interactiveFindings(targetFixture(48)), []);
+  expect('a 40pt back control is below rule 28',
+    interactiveFindings(backFixture(40)).filter((entry) => entry.startsWith('A9')).length, 1);
+  expect('a 56pt back control passes rule 28',
+    interactiveFindings(backFixture(56)).filter((entry) => entry.startsWith('A9')).length, 0);
+  expect('a 44pt control is below the 48dp floor',
+    interactiveFindings(targetFixture(44)).filter((entry) => entry.startsWith('A4')).length, 1);
+  expect('a 48pt control reaches the floor',
+    interactiveFindings(targetFixture(48)).filter((entry) => entry.startsWith('A4')).length, 0);
+
   const contract = checkContrastMaths();
 
   console.log('');
@@ -719,6 +927,7 @@ function main() {
     runSelfTest();
     return;
   }
+  const SOURCE_FILES = sourceFiles();
   for (const file of SOURCE_FILES) {
     const source = readFileSync(file, 'utf8');
     const elements = scanElements(source);
@@ -743,7 +952,12 @@ function main() {
 
   if (findings.length === 0) {
     console.log('No findings. Every control has a role or label, every input a label,');
-    console.log('every tap target reaches 44pt, and every shipped colour pair passes WCAG AA.');
+    console.log('every tap target reaches 48dp, every rule 27 icon clears its 24pt floor,');
+    console.log('every back control clears 56pt, and every shipped colour pair passes WCAG AA.');
+    // Rule 27 also asks for each icon to sit in a white circle. That part is a design
+    // statement, not a measurable one (a wrapper View draws the circle, and on an all
+    // white bar it would be invisible), so it is verified by eye on the store capture
+    // and by `tests/tab-icons-rule-27.test.mjs` for the tab bar — never claimed here.
     return;
   }
 
@@ -763,5 +977,18 @@ function main() {
   process.exitCode = 1;
 }
 
-export { looksLikeCopy, scanTextNodes, styleSheets, styleNumber, contrastRatio, parseHex };
+export {
+  looksLikeCopy,
+  scanTextNodes,
+  scanElements,
+  styleSheets,
+  styleNumber,
+  styleRefs,
+  iconGlyphs,
+  iconGlyph,
+  isBackControl,
+  targetSize,
+  contrastRatio,
+  parseHex,
+};
 main();

@@ -147,10 +147,12 @@ test('ecranul de chat folosește modulul, confirmă și golește conversația', 
   assert.match(chatScreen, /setReportedMessageIds\(\[\]\)/);
 });
 
-test('butonul de ștergere e o țintă accesibilă de minimum 44 de puncte', () => {
+test('butonul de ștergere e o țintă accesibilă de minimum 48 de puncte', () => {
   const style = chatScreen.slice(chatScreen.indexOf('clearHistory: {'));
   const block = style.slice(0, style.indexOf('}'));
-  assert.match(block, /minHeight: 44/);
+  // Pragul a crescut de la 44 la 48 când auditul A4 a fost aliniat la cerința Google
+  // (48x48dp): sursa s-a ridicat prima, testul cere acum aceeași valoare.
+  assert.match(block, /minHeight: 48/);
   assert.match(chatScreen, /accessibilityRole="button"[\s\S]{0,400}clearChatHistory/);
 });
 

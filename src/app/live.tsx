@@ -225,7 +225,7 @@ const styles = StyleSheet.create({
   errorCard: { borderColor: palette.danger },
   errorText: { color: palette.danger, fontSize: 14, lineHeight: 20 },
   retryButton: {
-    backgroundColor: palette.blueSoft, minHeight: 44, borderRadius: 12,
+    backgroundColor: palette.blueSoft, minHeight: 48, borderRadius: 12,
     alignItems: 'center', justifyContent: 'center', paddingHorizontal: 16, marginTop: 6,
   },
   retryText: { color: palette.blue, fontSize: 14, fontWeight: '700' },

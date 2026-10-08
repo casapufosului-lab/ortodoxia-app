@@ -794,10 +794,10 @@ const styles = StyleSheet.create({
   assistantText: { color: palette.ink, fontSize: 15, lineHeight: 21 },
   // 44 înălțime minimă: sub asta nu se mai nimerește ținta cu degetul (Apple cere 44pt, Google 48dp),
   // iar controlul e mic și lângă text, deci ușor de ratat.
-  reportLink: { minHeight: 44, justifyContent: 'center', alignSelf: 'flex-start', marginTop: 2, paddingRight: 8 },
+  reportLink: { minHeight: 48, justifyContent: 'center', alignSelf: 'flex-start', marginTop: 2, paddingRight: 8 },
   reportLinkText: { color: palette.blue, fontSize: 13, fontWeight: '700', textDecorationLine: 'underline' },
   // B2: aceeași țintă minimă de 44, din același motiv (control mic, lipit de text).
-  clearHistory: { minHeight: 44, justifyContent: 'center', alignSelf: 'flex-start' },
+  clearHistory: { minHeight: 48, justifyContent: 'center', alignSelf: 'flex-start' },
   clearHistoryText: { color: palette.muted, fontSize: 13, fontWeight: '700', textDecorationLine: 'underline' },
   composer: { flexDirection: 'row', gap: 8, alignItems: 'flex-end' },
   input: { flex: 1, minHeight: 48, maxHeight: 120, backgroundColor: palette.paper, borderWidth: 1, borderColor: palette.line, borderRadius: 14, color: palette.ink, paddingHorizontal: 14, paddingVertical: 12 },

@@ -334,7 +334,8 @@ const styles = StyleSheet.create({
   monthHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   // 44pt is the iOS minimum touch target and the Android equivalent guidance; at
   // 36pt the previous/next month arrows were a coin flip for a tremor or big thumb.
-  monthButton: { width: 44, height: 44, borderRadius: 22, backgroundColor: palette.blueSoft, alignItems: 'center', justifyContent: 'center' },
+  /* Google asks for 48x48dp tap targets; the month arrows were 44 (audit A4). */
+  monthButton: { width: 48, height: 48, borderRadius: 24, backgroundColor: palette.blueSoft, alignItems: 'center', justifyContent: 'center' },
   monthButtonDisabled: { opacity: 0.35 },
   monthButtonText: { color: palette.blue, fontSize: 26, lineHeight: 28 },
   todayLink: { color: palette.blue, textAlign: 'center', fontSize: 12, fontWeight: '700', marginBottom: 8 },

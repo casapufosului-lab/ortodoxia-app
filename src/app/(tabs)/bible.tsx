@@ -311,12 +311,13 @@ const styles = StyleSheet.create({
   bookButtonText: { color: palette.muted, fontSize: 13, fontWeight: '700', textAlign: 'center' },
   bookButtonTextSelected: { color: palette.goldDark },
   chapterRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  chapterButton: { width: 46, height: 44, borderRadius: 12, borderWidth: 1, borderColor: palette.line, backgroundColor: palette.paper, alignItems: 'center', justifyContent: 'center' },
+  /* Google asks for 48x48dp tap targets; 46x44 was two points under (audit A4). */
+  chapterButton: { width: 48, height: 48, borderRadius: 12, borderWidth: 1, borderColor: palette.line, backgroundColor: palette.paper, alignItems: 'center', justifyContent: 'center' },
   chapterButtonSelected: { borderColor: palette.blue, backgroundColor: palette.blueSoft },
   chapterText: { color: palette.muted, fontSize: 15, fontWeight: '800' },
   chapterTextSelected: { color: palette.blue },
   navigationRow: { flexDirection: 'row', gap: 10 },
-  navigationButton: { flex: 1, minHeight: 46, borderRadius: 12, backgroundColor: palette.blueSoft, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 8 },
+  navigationButton: { flex: 1, minHeight: 48, borderRadius: 12, backgroundColor: palette.blueSoft, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 8 },
   navigationButtonDisabled: { opacity: 0.4 },
   navigationText: { color: palette.blue, fontSize: 13, fontWeight: '800', textAlign: 'center' },
   searchInput: { minHeight: 50, borderWidth: 1, borderColor: palette.line, borderRadius: 14, backgroundColor: palette.paper, color: palette.ink, paddingHorizontal: 16, fontSize: 15 },
@@ -325,8 +326,14 @@ const styles = StyleSheet.create({
   verseList: { gap: 12 },
   verseRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 10 },
   verseText: { flex: 1, color: palette.ink, fontSize: 17, lineHeight: 28, fontFamily: 'serif' },
-  favoriteButton: { paddingTop: 4, paddingHorizontal: 2 },
-  favoriteIcon: { color: palette.muted, fontSize: 20 },
+  /*
+   * Regula 27: iconițele importante (inima de la favorite) se văd, minim 24. Glyfa era la
+   * 20, iar ținta nu avea dimensiune declarată. Cercul alb din regulă nu se randează aici:
+   * versetul stă pe un card alb, deci un cerc alb ar fi invizibil (aceeași rațiune ca la
+   * iconițele de tab). Cerc = ținta atinge 48x48 și e rotunjită.
+   */
+  favoriteButton: { minWidth: 48, minHeight: 48, borderRadius: 24, alignItems: 'center', justifyContent: 'center' },
+  favoriteIcon: { color: palette.muted, fontSize: 24 },
   favoriteIconActive: { color: palette.goldDark },
   verseNumber: { color: palette.goldDark, fontSize: 13, fontWeight: '800', fontFamily: undefined },
   statusBox: { gap: 14 },

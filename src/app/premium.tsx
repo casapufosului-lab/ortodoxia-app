@@ -210,6 +210,6 @@ const styles = StyleSheet.create({
   legalLink: { color: palette.blue, fontSize: 13, fontWeight: '700' },
   /* Ținta de atingere a linkului de gestionare a abonamentului: cel puțin 44 pt, ca și restul
      elementelor interactive verificate de poarta de accesibilitate. */
-  manageSubscription: { alignSelf: 'flex-start', justifyContent: 'center', minHeight: 44 },
+  manageSubscription: { alignSelf: 'flex-start', justifyContent: 'center', minHeight: 48 },
   legalDivider: { color: palette.muted, fontSize: 13 },
 });
