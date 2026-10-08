@@ -1,6 +1,13 @@
 # Account Deletion — Documentation
 
-> **LOCAL ONLY** — This implementation is not deployed to any live environment.
+> **DEPLOYED** (verified 08.10.2026): `GET /functions/v1/delete-account` answers **405 Method Not Allowed**
+> (exists, POST-only — same answer as `orthodox-chat`), so the function **is** published to the live
+> project. The line here used to say "LOCAL ONLY — not deployed to any live environment"; measured
+> live, that is no longer true.
+>
+> The table below is machine-checked against the code: `tests/account-deletion.test.mjs:85-88` reads
+> this file and fails if any table from `EXPLICITLY_DELETED_TABLES` in
+> `supabase/functions/delete-account/core.ts` is not mentioned here.
 
 ## Edge Function
 

@@ -118,6 +118,13 @@ e încă tradus în limba aleasă) și ecranul premium fără produse create în
 4. Se salvează în acest folder, cu numele din tabel.
 5. Se verifică înainte de urcare: format (JPEG / 24-bit PNG fără alpha), latura mică ≥ 320 px, latura mare
    ≤ 2 × latura mică, minim 2 capturi (ideal 4–8, toate ≥ 1080 px, 9:16).
+
+**Verificat pe disc (08.10.2026):** citind antetul IHDR al fiecărui fișier, toate cele **6** capturi sunt
+**1080×1920, 8 bit, RGB — 24-bit fără alpha**, raport 1,7778 (9:16), latura mică 1080 px, regula „latura
+mare ≤ 2 × latura mică" respectată. Adică **tabelul de la începutul documentului și regula de la punctul 5
+nu se mai contrazic** — afirmația veche din acest fișier („capturile brute ies 1080×2400 și trebuie
+decupate") descria emulatorul înainte de comutarea display-ului, iar `:123-130` de mai jos explică exact
+ce s-a schimbat.
 6. La urcare în Play Console se completează și **alt text**-ul fiecărei capturi (maximum 140 de caractere).
 
 **Cine a făcut pozele:** capturile **01–06** au fost făcute pe emulatorul Pixel_7, din aplicația reală de release

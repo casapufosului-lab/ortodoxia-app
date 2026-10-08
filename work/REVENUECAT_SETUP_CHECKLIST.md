@@ -1,6 +1,7 @@
 # RevenueCat — Checklist de integrare Premium
 
 Data raport: 2026-09-01
+**Reverificat și corectat: 2026-10-08** (poziția C10 din audit — erau trei afirmații care nu mai corespundeau codului: funcția `syncRevenueCatToSupabase`, sursa „autoritativă" a stării premium și locul unde se pune cheia)
 Branch: `master`
 Commit analizat: `6f45167`
 
@@ -16,7 +17,7 @@ Acest document separă clar ce este deja **implementat în cod** față de ce **
 | Cod integrare | Compilează fără erori; configurarea și testarea nativă sunt încă necesare |
 | Entitlement | `premium` (în cod) — trebuie creat în panoul RevenueCat |
 | Produse | `ro.ortodoxia.premium.monthly` / `ro.ortodoxia.premium.annual` (în cod) — trebuie create în RevenueCat + magazine |
-| Chei API | ❌ doar placeholder-e în `.env.example`; valorile reale lipsesc din `.env` (nu sunt afișate) |
+| Chei API | ❌ lipsește cheia reală: profilele EAS `preview` și `production` declară `EXPO_PUBLIC_REVENUECAT_GOOGLE_API_KEY`, dar cu valoare **goală**, iar `.env.example` are doar placeholder-e. Poarta de release dă FAIL pe ea |
 | Plăți web | ❌ neintegrate (SDK nu suportă web) |
 
 ---
@@ -33,19 +34,19 @@ Acest document separă clar ce este deja **implementat în cod** față de ce **
 - `purchaseRevenueCatPackage(pkg)` — cumpărare
 - `restoreRevenueCatPurchases()` — restaurare
 - `isPremiumActive(info)` — verifică entitlement `premium`
-- `customerInfoToSubscriptionRow(info)` — mapează CustomerInfo → rând abonament (plan lunar/anual, status, expirare, renew)
-- `syncRevenueCatToSupabase(userId, info)` — **upsert în tabelul `subscriptions`** (`status`, `plan`, `provider`, `current_period_end`, `cancel_at_period_end`)
+- `customerInfoToSubscriptionRow(info)` — mapează CustomerInfo → rând de abonament (plan lunar/anual, status, expirare, renew), **doar pentru afișare**
+- ⚠️ **Corectat 08.10.2026:** aici scria `syncRevenueCatToSupabase(userId, info)` — *upsert în tabelul `subscriptions`*. Funcția **nu există** (0 apariții în `src/`, `scripts/`, `supabase/functions/`), iar clientul **nu scrie** în `subscriptions`: singurele accesări din `src/` sunt două citiri (`.from('subscriptions')` în `src/hooks/use-subscription.ts:37` și `src/app/(tabs)/chat.tsx:313`). Rândul din `subscriptions` este scris **exclusiv server-side, de webhook-ul RevenueCat** (`supabase/functions/revenuecat-webhook/core.ts:290`, „Construiește rândul care se va upsert în `subscriptions`”). Un client care ar putea scrie singur `status` ar putea să-și acorde premium — de aceea nu există.
 - `isPurchaseCancelledError()` — detectează anularea cumpărării
 
 ### 1.2 `src/hooks/use-revenuecat.ts`
 - Expune `packages`, `customerInfo`, `activeRow`, `isPremium`, `loading`, `offeringsError`, `priceFor`, `buy`, `restore`, `refresh`
 - Se configurează și se abonează la `addCustomerInfoUpdateListener`
 - La autentificare → `identifyRevenueCatUser`; la sign-out → `clearRevenueCatUser`
-- După cumpărare/restaurare/update → sincronizează în `subscriptions`
+- După cumpărare/restaurare/update → reîmprospătează **afișarea**; `subscriptions` se scrie de webhook, nu de aici
 - Pe web: starea rămâne `null` (guard în configure) — nu blochează aplicația
 
 ### 1.3 `src/hooks/use-subscription.ts`
-- Sursa autoritativă: dacă RevenueCat e configurat, `activeRow` din CustomerInfo câștigă; altfel citește `subscriptions`.
+- Sursa autoritativă este **tabelul `subscriptions`** (citit cu `.select(...).eq('user_id', …).maybeSingle()`). `CustomerInfo` din RevenueCat **nu acordă acces**: e folosit doar pentru afișare imediată și pentru a declanșa o re-citire după 1,5 s (`src/hooks/use-subscription.ts:62-83`). *(Corectat 08.10.2026: textul de aici spunea invers — că `activeRow` din CustomerInfo „câștigă".)*
 - `hasPremiumAccess()` respectă status `active/trialing` și expirarea.
 
 ### 1.4 `src/app/premium.tsx`
@@ -58,7 +59,7 @@ Acest document separă clar ce este deja **implementat în cod** față de ce **
 - Conține doar placeholder-e necesare: `EXPO_PUBLIC_REVENUECAT_APPLE_API_KEY` și `EXPO_PUBLIC_REVENUECAT_GOOGLE_API_KEY` (plus placeholder-e Supabase). ✅ fără chei reale.
 
 ### 1.7 Sincronizare `subscriptions`
-- Schema `subscriptions` (migrarea `20260830000100_add_subscriptions.sql`) are coloanele folosite: `status`, `plan`, `provider` (apple/google/manual), `product_id`, `provider_subscription_id`, `current_period_end`, `cancel_at_period_end`. ✅ compatibil cu `syncRevenueCatToSupabase()`.
+- Schema `subscriptions` (migrarea `20260830000100_add_subscriptions.sql`) are coloanele folosite: `status`, `plan`, `provider` (apple/google/manual), `product_id`, `provider_subscription_id`, `current_period_end`, `cancel_at_period_end`. ✅ compatibilă cu rândul construit de webhook (`supabase/functions/revenuecat-webhook/core.ts:290`), nu de o funcție de client.
 
 ---
 
@@ -69,7 +70,7 @@ Acest document separă clar ce este deja **implementat în cod** față de ce **
 - [ ] Creează produsele `ro.ortodoxia.premium.monthly` și `ro.ortodoxia.premium.annual` și le leagă de produsele din magazine.
 - [ ] Creează offering-ul **„Premium"** cu pachetele cu identificatorii `monthly` și `annual` (aplicația caută `pkg.identifier === 'monthly'/'annual'`).
 - [ ] Activează modul Sandbox/Test pentru testare.
-- [ ] Copiază cheia publică Apple (`..._APPLE_API_KEY`) și Google (`..._GOOGLE_API_KEY`) în `.env` (EXPO_PUBLIC_…) — **nu este făcut în acest task; nu am afișat/nici adăugat valori reale**.
+- [ ] Pune cheia publică Google (`EXPO_PUBLIC_REVENUECAT_GOOGLE_API_KEY`) în **variabilele de mediu EAS** ale profilelor `preview` și `production` — nu în `.env` (care e doar pentru dezvoltarea locală) și nu în cod. *(Corectat 08.10.2026: textul de aici trimitea la `.env`.)* Cheia Apple e **DEFERRED** — lansarea de față e doar pe Google Play.
 
 ---
 

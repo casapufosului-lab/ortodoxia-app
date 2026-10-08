@@ -17,11 +17,20 @@ Ce e în acest document: exact ce se încarcă, cu ce text, ce răspunsuri se da
 | Fișier | Ce e | Cerință Play | Stare |
 |---|---|---|---|
 | `android/app/build/outputs/apk/release/app-release.apk` | aplicația pentru test pe telefon | — | construit local (`gradlew :app:assembleRelease`) |
-| `.aab` din EAS (build `03569e16`) | pachetul pentru magazin | — | **NU se folosește**: e din cod vechi, cu cheie de plăți de test |
+| `.aab` din EAS (build `03569e16`) | pachetul pentru magazin | — | **NU se folosește** — două motive măsurate, plus unul de semnare (mai jos) |
 | `assets/store/play-icon-512.png` | iconița listării | 512×512, PNG, ≤1 MB | generat: 512×512, 624 KB |
 | `assets/store/play-feature-1024x500.png` | grafica de prezentare | 1024×500, PNG/JPEG | generat: 1024×500, 205 KB |
 
 Se regenerează oricând cu: `pwsh -File scripts/make-store-assets.ps1`
+
+**De ce AAB-ul `03569e16` nu se urcă** (măsurat, nu presupus — `docs/RELEASE_CONFIG_REVIEW.md:50-55`):
+e construit din commit-ul `caed0dd`, adică înainte de reparările din `eas.json`, iar profilul de producție
+de atunci avea **cheia RevenueCat de test** în bundle. În plus, semnarea de release a șablonului Expo SDK 57
+folosea `signingConfig signingConfigs.debug` (`docs/ANDROID-HARDENING.md:26-31`, reparat abia în commit-ul
+`4b07cf4`, care introduce pluginul de hardening și face build-ul să **eșueze zgomotos** dacă lipsesc
+variabilele `ORTODOXIA_UPLOAD_*`). Nu am putut măsura direct semnătura acelui AAB — fișierul nu e pe disc
+(artefact EAS remote) — deci motivul de semnare rămâne **dedus**, nu verificat. Cert e că artefactul de
+magazin se produce de la zero, cu cheia reală de upload, de owner.
 
 **Capturi de ecran** (nu se pot genera fără aplicația pornită): se fac de pe telefon, din APK-ul de test.
 Play cere minimum 2, recomandat 4-8, format telefon (ex. 1080×1920). Ce merită pozat, în ordinea asta:
