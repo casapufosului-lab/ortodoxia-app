@@ -111,6 +111,20 @@ export default function PrivacyScreen() {
         <Text style={styles.h2}>{fillLegal(t('privacy.s10Title'))}</Text>
         <Text style={styles.p}>{fillLegal(t('privacy.s10Support'))}</Text>
         <Text style={styles.p}>{fillLegal(t('privacy.s10PublicUrl'))}</Text>
+
+        {/*
+          B7 din audit: politica din aplicatie nu acoperea toate informatiile cerute de
+          art. 13 GDPR. Sectiunile 11 si 12 adauga exact ce lipsea: temeiul legal,
+          duratele de pastrare, transferurile in afara SEE, lista completa a
+          drepturilor, retragerea consimtamantului, autoritatea de supraveghere si
+          lipsa deciziilor automatizate. Paritatea cheilor in cele 10 limbi este
+          aparata de tests/legal-gdpr.test.mjs.
+        */}
+        <Text style={styles.h2}>{fillLegal(t('privacy.s11Title'))}</Text>
+        <Text style={styles.p}>{fillLegal(t('privacy.s11Content'))}</Text>
+
+        <Text style={styles.h2}>{fillLegal(t('privacy.s12Title'))}</Text>
+        <Text style={styles.p}>{fillLegal(t('privacy.s12Content'))}</Text>
       </ScrollView>
     </SafeAreaView>
   );

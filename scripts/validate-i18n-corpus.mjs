@@ -123,6 +123,13 @@ const LATIN_ALLOWLIST = [
   // Gmail tab names that the reset-link copy tells the user to look in; these are
   // the provider's literal folder labels and must not be translated.
   'promotions',
+  // The Romanian supervisory authority's postal designation, quoted verbatim in all
+  // ten locales by privacy.s12Content (B7 / GDPR art. 13(2)(d)). A complaint sent by
+  // post has to carry the authority's own street name, and the acronym the authority
+  // itself uses is Latin: this row is data, not untranslated copy. Verified against
+  // the authority's own site (www.dataprotection.ro) and its published address
+  // (B-dul G-ral. Gheorghe Magheru 28-30, sector 1, 010336 București) on 2026-10-08.
+  'anspdcp', 'b-dul', 'g-ral', 'gheorghe', 'magheru', 'www.dataprotection.ro',
 ];
 
 const LATIN_ALLOWLIST_SET = new Set(LATIN_ALLOWLIST.map((token) => token.toLowerCase()));
