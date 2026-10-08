@@ -130,6 +130,16 @@ Poarta verifică **patru** lucruri (`scripts/release-readiness.mjs:903-938`); do
 > Această linie este o modificare de cod de o linie. Se face **împreună** cu 2.1 varianta A, altfel
 > build-ul local caută un fișier care nu există.
 
+> **Stare verificată 08.10.2026, 20:00.** Linia din `app.json` **există deja**
+> (`app.json:22` → `"googleServicesFile": "./google-services.json"`), dar fișierul nu e la locul
+> cerut: singura copie este `android/app/google-services.json` (990 bytes), iar folderul `android/`
+> este **ignorat de Git și regenerat de `expo prebuild`**. Deci exact cazul de mai sus: următorul
+> build pornit de la zero (EAS sau `prebuild --clean`) nu mai găsește fișierul.
+> **Ce ai de făcut:** copiază fișierul în rădăcină (`ortodoxia-app\google-services.json`), sau
+> încarcă-l ca variabilă EAS de tip file numită `GOOGLE_SERVICES_JSON` (2.1 varianta B).
+> Dovada că e rezolvat: `node scripts/release-readiness.mjs --release` → linia
+> `PASS [release] the push notification channel is configured` **și** fișierul există la rădăcină.
+
 ### 2.3 Cronul notificărilor (o singură dată)
 Supabase Dashboard → **Database → Extensions**: activează **`pg_cron`** și **`pg_net`**. Apoi:
 1. **Project Settings → Edge Functions → Secrets**: adaugă `NOTIFICATION_CRON_SECRET` (o parolă

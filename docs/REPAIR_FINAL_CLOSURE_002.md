@@ -275,3 +275,73 @@ overlapping catalogues (`HIGH #7`…`LOW #23` and `A-01`…`TG-01`).
 Everything in this report is derived from executable gates or from ID references present in the
 tree. To produce the mandated exclusive-PRIMARY-STATUS matrix that sums to exactly 102, the original
 finding list must be supplied; without it, any such matrix would be fabricated.
+
+---
+
+## 10. Round of 2026-10-08 — the later 49-position launch audit
+
+A second, independent read-only audit (49 positions: 11 Play blockers, 12 high, 26 medium/low)
+was reconciled against the tree and its code-only positions were repaired in this round. `HEAD`
+moved from `019940f` to `8a01197`. The already-verified state was first frozen in 13 small
+descriptive commits (explicit paths only, never `git add -A`), then one commit per position, each
+committed only on a green gate. Files modified by another writer in the shared tree (`app.json`,
+`eas.json`, `docs/LICENTE-CONTINUT.md`, `docs/STORE_SUBMISSION_KIT.md`, `google-services.json`)
+were never staged.
+
+### 10.1 Code positions closed (evidence-backed)
+
+| ID | What changed | Commit |
+| --- | --- | --- |
+| B8 | Auth callback exchanged the session token in the URL; now PKCE (`exchangeCodeForSession`) in `src/lib/supabase.ts` | `f884561` |
+| B2 | Anonymous chat history is deleted (client + migration `20260829…`); the purge function is still undeployed (10.2) | `7723809` |
+| B3 | `notification_device_claims` retention policy | `c11d0f5` |
+| B4 | `live-services-status`: per-request budget + `verify_jwt` | — |
+| B7 | In-app AI-answer reporting is in the UI, not only in `ai_reports` (§10.3 of the task report) | — |
+| PREMIUM | Webhook fallback, surfaced subscription error, "manage subscription" link, restore flow, trial wording (a–e) | `12ca183` |
+| C4 / C5 / C16 | storage fallback, `babel-plugin-react-compiler` declared, `timingSafeEqual` | `0b25fb2` / `20840c0` / `7b31bfb` |
+| C10 / C17 / C23 / C25 | as listed in the task report | `23cd6ec`, `9992abd`, `218a7e8` |
+| C8 | Accessibility: minimum tap target 44 → 48 dp, icon ≥ 24, back control ≥ 56; audit returns 0 findings over 65 files | `b753e68` |
+| C21 | Release build turns on R8 minify **and** resource shrinking, written by `plugins/with-android-hardening.js` at every prebuild (the template reads them with `findProperty(...) ?: false`, `android/app/build.gradle:69`, `:153`) | `8a01197` |
+
+### 10.2 Live probes (read-only, 2026-10-08, project `pgjabfgibdpcomegkojg`)
+
+| Probe | Result | Before |
+| --- | --- | --- |
+| `GET /rest/v1/verse_favorites` | **200** | 404 `PGRST205` |
+| `GET /rest/v1/ai_reports` | **401** `42501` for `anon` (table exists; `anon` denied by design) | 404 |
+| `GET daily_content?verse_source=eq.'NULL'` | `Content-Range: */0` | **2158** rows |
+| `GET /functions/v1/delete-account` | **405** "Metodă neacceptată" | 404 `NOT_FOUND` |
+| `GET /functions/v1/live-services-status` | **200** | 200 |
+| `/rpc/purge_guest_chat_history` | **404 `PGRST202`** — still not deployed | 404 |
+
+### 10.3 Gate (executed 2026-10-08, after the last commit)
+
+`tsc` 0 · `tsc:edge` 0 · `npm test` **813 pass / 0 fail / 7 suites** · `test:release` **PASSED**
+(31 passed / 0 failed / 3 deferred) · `test:a11y` 0 findings over 65 files · `test:safety` all PASS ·
+`lint` clean · `release-readiness --release` exit 1 with **31 passed / 0 failed / 3 deferred**
+(fail-closed; the 3 deferred are the two App Store-only variables and the 2027 calendar corpus).
+
+### 10.4 C26 — test build with R8 enabled
+
+Test-only artifact (never a store artifact): its own throwaway keystore
+(`CN=Ortodoxia Test Build, O=Worker, C=RO`), `GRADLE_EXIT=0`, `BUILD SUCCESSFUL in 13m 33s`,
+`Task :app:minifyReleaseWithR8` executed, APK 107,822,106 bytes. The owner's AAB in
+`android/app/build/outputs/bundle/release/` was left untouched (86,630,560 bytes,
+2026-10-08 19:26:05). The merged manifest of this build passes
+`scripts/verify-android-release-manifest.mjs` (0 badge permissions, no cleartext, not debuggable),
+the app starts with no crash, and the login chain is green on the minified build
+(DoD #1 and #2 both VERDE).
+
+### 10.5 Still owner-only (no code can close these)
+
+1. `google-services.json` must exist at the path `app.json:22` declares (`./google-services.json`);
+   the only copy is `android/app/google-services.json`, and `android/` is gitignored and regenerated.
+2. Apply `supabase/migrations/20261008000300_retention_guest_chat.sql` and
+   `supabase/cron/schedule-retention-purge.sql` (the purge RPC is still 404).
+3. Start `supabase/cron/schedule-daily-notifications.sql`.
+4. Confirm which upload key signed the released AAB and its Play App Signing registration; the
+   newest AAB carries a non-debug certificate with an empty subject DN
+   (SHA-256 `30:30:A0:8E:C8:E6:E0:19…`, valid 2026-09-23 → 2054-02-08) that is **not** the repo's
+   `android/app/debug.keystore` — the key's identity remains `NEVERIFICAT`.
+5. Publish the 2027 calendar corpus, or accept the `DEFERRED` (the UI already shows an explicit
+   message instead of an empty grid).
