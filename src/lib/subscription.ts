@@ -62,6 +62,91 @@ export function shouldShowPurchaseButtons(state: PremiumScreenState): boolean {
 }
 
 /**
+ * Ce poate vinde magazinul pentru un plan (OBIECTIV 1 din task-ul de paywall).
+ *
+ * De ce e nevoie de stările astea: ecranul Premium afișa prețurile din catalogul RevenueCat și ținea
+ * butonul activ chiar și atunci când magazinul nu avea ce vinde. Măsurat pe 08.10.2026: pe un build
+ * instalat cu `adb`, Google Play răspundea „The item you were attempting to purchase could not be
+ * found." — adică omul apăsa un buton care nu putea duce nicăieri. Prețul afișat atunci venea din
+ * catalogul RevenueCat, nu din produsul magazinului, deci nu era dovada că se poate cumpăra.
+ *
+ * Regula: butonul se activează **doar** pentru `purchasable`. `checking` (încă nu știm) și toate
+ * stările de mai jos înseamnă buton dezactivat, fiecare cu mesajul ei, ca omul să știe *de ce*.
+ *
+ *   'checking'           — nu am citit încă ofertele magazinului; nu promitem nimic;
+ *   'store-unavailable'  — SDK-ul magazinului nu e configurat (cheie lipsă/placeholder);
+ *   'device-cannot-pay'  — magazinul e configurat, dar dispozitivul nu poate cumpăra;
+ *   'offerings-error'    — citirea ofertelor a eșuat (rețea);
+ *   'no-offerings'       — magazinul nu a întors nicio ofertă;
+ *   'no-package'         — există oferte, dar niciuna pentru planul cerut;
+ *   'no-price'           — pachetul există, dar magazinul nu i-a dat preț;
+ *   'purchasable'        — pachet + preț de la magazin: singura stare în care se poate cumpăra.
+ */
+export type PurchaseAvailability =
+  | 'checking'
+  | 'store-unavailable'
+  | 'device-cannot-pay'
+  | 'offerings-error'
+  | 'no-offerings'
+  | 'no-package'
+  | 'no-price'
+  | 'purchasable';
+
+/** Starea citirii ofertelor: `loading` e „nu știm încă", nu „nu există". */
+export type StoreOfferingsLoad = 'loading' | 'loaded' | 'error';
+
+export function purchaseAvailability(input: {
+  storeConfigured: boolean;
+  /** `null` = încă necunoscut. Doar un `false` explicit blochează: un eșec de citire nu are voie să
+   *  ascundă un buton care ar funcționa (aceeași regulă ca la butoanele de autentificare). */
+  canMakePayments: boolean | null;
+  offeringsLoad: StoreOfferingsLoad;
+  packageCount: number;
+  hasPackageForPlan: boolean;
+  /** Prețul primit de la magazin (`priceString`). Fără el nu afișăm preț și nu activăm butonul. */
+  storePrice: string | null;
+}): PurchaseAvailability {
+  if (!input.storeConfigured) return 'store-unavailable';
+  if (input.canMakePayments === false) return 'device-cannot-pay';
+  if (input.offeringsLoad === 'loading') return 'checking';
+  if (input.offeringsLoad === 'error') return 'offerings-error';
+  if (input.packageCount <= 0) return 'no-offerings';
+  if (!input.hasPackageForPlan) return 'no-package';
+  if (!input.storePrice || input.storePrice.trim().length === 0) return 'no-price';
+  return 'purchasable';
+}
+
+/** Singura stare în care butonul de cumpărare are voie să fie activ. */
+export function isPurchasable(availability: PurchaseAvailability): boolean {
+  return availability === 'purchasable';
+}
+
+/**
+ * Mesajul care însoțește butonul dezactivat. `null` pentru stările care nu au nevoie de text:
+ * `purchasable` (se poate cumpăra) și `checking` (stare trecătoare, fără vină).
+ */
+export function purchaseAvailabilityMessageKey(
+  availability: PurchaseAvailability,
+): TranslationKey | null {
+  switch (availability) {
+    case 'store-unavailable':
+      return 'premium.storeUnavailable';
+    case 'device-cannot-pay':
+      return 'premium.deviceCannotPurchase';
+    case 'offerings-error':
+      return 'premium.offeringsError';
+    case 'no-offerings':
+      return 'premium.storeNoOfferings';
+    case 'no-package':
+      return 'premium.planUnavailable';
+    case 'no-price':
+      return 'premium.priceUnavailable';
+    default:
+      return null;
+  }
+}
+
+/**
  * Re-verificarea stării cât timp magazinul confirmă abonamentul, dar rândul din baza de date nu a
  * apărut încă. `useSubscription` re-citește o singură dată, la 1,5 s după ce se schimbă starea din
  * RevenueCat (`use-subscription.ts:69-80`); dacă webhook-ul scrie mai târziu, ecranul rămânea blocat
