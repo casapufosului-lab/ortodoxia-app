@@ -62,6 +62,10 @@ export const supabase = createClient(supabaseUrl, supabasePublishableKey, {
     autoRefreshToken: true,
     persistSession: true,
     detectSessionInUrl: Platform.OS === 'web',
+    // B8: the implicit flow delivered the session tokens inside the redirect URL, where
+    // any app registered for the `ortodoxia` scheme could read them. The PKCE flow sends
+    // a single-use code instead, which is exchanged for the session by the app itself.
+    flowType: 'pkce',
   },
 });
 

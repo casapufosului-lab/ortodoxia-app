@@ -7,7 +7,7 @@ import * as WebBrowser from 'expo-web-browser';
 import { Card, PageHeader, PrimaryButton, Screen } from '@/components/mvp-ui';
 import { palette } from '@/constants/palette';
 import type { TranslationKey } from '@/i18n/config';
-import { NATIVE_PASSWORD_RECOVERY_REDIRECT_URL } from '@/lib/native-password-recovery';
+import { markPasswordRecoveryRequested, NATIVE_PASSWORD_RECOVERY_REDIRECT_URL } from '@/lib/native-password-recovery';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/providers/auth-provider';
 import { useLocalization } from '@/providers/localization-provider';
@@ -403,6 +403,9 @@ export default function AuthScreen() {
         setResetMessage({ type: 'error', text: t('auth.sendEmailErrorPrefix') + friendlyAuthError(error, t) });
         showAuthAlert(t('auth.sendEmailErrorTitle'), friendlyAuthError(error, t));
       } else {
+        // B8: the PKCE link that comes back carries a code, not the reason it was
+        // issued. Record the intent so the returning link opens the reset form.
+        await markPasswordRecoveryRequested();
         setResetMessage({ type: 'success', text: t('auth.sendEmailSuccess') });
         // K-01: '/reset-confirmation' is a generated typed route (see
         // .expo/types/router.d.ts), so the 'as never' cast is no longer needed

@@ -19,15 +19,20 @@ test('native password recovery deep link uses the registered app scheme', () => 
   assert.ok(authScreen.includes(': NATIVE_PASSWORD_RECOVERY_REDIRECT_URL;'));
 });
 
-test('native recovery helper consumes implicit e-mail link tokens', () => {
-  // The helper accepts every auth e-mail link type, not recovery alone: an e-mail
-  // confirmation carries a valid session that must be consumed rather than ignored.
-  assert.ok(helper.includes('SUPPORTED_LINK_TYPES'));
-  assert.ok(helper.includes('isSupportedLinkType(linkType)'));
-  assert.ok(helper.includes("['recovery', 'signup', 'magiclink', 'email_change', 'invite']"));
-  assert.ok(helper.includes("getUrlParam(url, 'access_token')"));
-  assert.ok(helper.includes("getUrlParam(url, 'refresh_token')"));
-  assert.ok(helper.includes('supabase.auth.setSession({'));
+test('native recovery helper trades the PKCE code for a session instead of consuming URL tokens', () => {
+  // B8: the implicit flow put the session tokens in the URL fragment, where any app
+  // registered for the same scheme could read them. This assertion used to pin that
+  // behaviour; it now pins its removal. The link parser accepts every auth e-mail
+  // link type, not recovery alone, because a confirmation carries a session too.
+  const linkParser = readFileSync(join(root, 'src/lib/auth-link.ts'), 'utf8');
+  assert.ok(linkParser.includes('SUPPORTED_LINK_TYPES'));
+  assert.ok(linkParser.includes('isSupportedLinkType(linkType)'));
+  assert.ok(linkParser.includes("['recovery', 'signup', 'magiclink', 'email_change', 'invite']"));
+  assert.ok(linkParser.includes("'implicit_tokens'"));
+  assert.ok(helper.includes('exchangeCodeForSession'));
+  assert.ok(!helper.includes("getUrlParam(url, 'access_token')"));
+  assert.ok(!helper.includes("getUrlParam(url, 'refresh_token')"));
+  assert.ok(!helper.includes('supabase.auth.setSession('));
 });
 
 test('native recovery handles both cold-start and runtime deep links', () => {

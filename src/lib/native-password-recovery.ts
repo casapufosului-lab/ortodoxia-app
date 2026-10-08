@@ -1,33 +1,53 @@
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { Session } from '@supabase/supabase-js';
 import { Linking, Platform } from 'react-native';
 
+import { parseAuthLink, resolveLinkType, type SupportedLinkType } from '@/lib/auth-link';
 import { supabase } from '@/lib/supabase';
 
 /**
  * A single redirect target for every native auth e-mail.
  *
- * Supabase appends the result as a URL fragment, so one registered scheme handler can
- * serve password recovery AND e-mail confirmation. The `type` parameter distinguishes
- * them.
+ * Supabase appends the PKCE code to it, so one registered scheme handler can serve
+ * password recovery AND e-mail confirmation. The link parsing lives in
+ * `src/lib/auth-link.ts`, together with the reason a code is preferred over the
+ * implicit flow's session tokens.
  */
 export const NATIVE_PASSWORD_RECOVERY_REDIRECT_URL = 'ortodoxia://auth';
 
-/** Fragment/query `type` values Supabase uses for implicit-flow e-mail links. */
-const SUPPORTED_LINK_TYPES = ['recovery', 'signup', 'magiclink', 'email_change', 'invite'] as const;
-type SupportedLinkType = (typeof SUPPORTED_LINK_TYPES)[number];
+/**
+ * Set when the user asks for the reset e-mail on this device. An exchanged code does
+ * not say why it was issued, so this marker is what tells a recovery link apart from a
+ * plain confirmation and opens the reset form instead of the ordinary destination.
+ */
+const PENDING_RECOVERY_STORAGE_KEY = 'ortodoxia.auth.pending-password-recovery';
 
-function isSupportedLinkType(value: string | null): value is SupportedLinkType {
-  return value !== null && (SUPPORTED_LINK_TYPES as readonly string[]).includes(value);
+async function hasPendingPasswordRecoveryRequest(): Promise<boolean> {
+  try {
+    return (await AsyncStorage.getItem(PENDING_RECOVERY_STORAGE_KEY)) === '1';
+  } catch {
+    return false;
+  }
 }
 
-function getUrlParam(url: string, name: string) {
-  const queryIndex = url.indexOf('?');
-  const hashIndex = url.indexOf('#');
-  const query =
-    queryIndex >= 0 ? url.slice(queryIndex + 1, hashIndex >= 0 ? hashIndex : undefined) : '';
-  const hash = hashIndex >= 0 ? url.slice(hashIndex + 1) : '';
+async function clearPendingPasswordRecoveryRequest(): Promise<void> {
+  try {
+    await AsyncStorage.removeItem(PENDING_RECOVERY_STORAGE_KEY);
+  } catch {
+    // A failed cleanup does not invalidate the sign-in that just succeeded.
+  }
+}
 
-  return new URLSearchParams(hash).get(name) ?? new URLSearchParams(query).get(name);
+/**
+ * Called once the reset e-mail is on its way, so the returning link opens the reset
+ * form. Failing to store the marker only means the link behaves like a confirmation.
+ */
+export async function markPasswordRecoveryRequested(): Promise<void> {
+  try {
+    await AsyncStorage.setItem(PENDING_RECOVERY_STORAGE_KEY, '1');
+  } catch {
+    // Never surface a storage failure here: the e-mail has already been sent.
+  }
 }
 
 /**
@@ -53,27 +73,33 @@ const NO_LINK: NativeAuthLinkResult = { status: 'none' };
 export async function consumeNativePasswordRecoveryUrl(url: string | null): Promise<NativeAuthLinkResult> {
   if (Platform.OS === 'web' || !url) return NO_LINK;
 
-  const linkType = getUrlParam(url, 'type');
+  const parsed = parseAuthLink(url);
   // Not an auth e-mail link (other deep links are handled elsewhere).
-  if (!isSupportedLinkType(linkType)) return NO_LINK;
+  if (parsed.kind === 'none') return NO_LINK;
 
-  const accessToken = getUrlParam(url, 'access_token');
-  const refreshToken = getUrlParam(url, 'refresh_token');
-  if (!accessToken || !refreshToken) {
+  if (parsed.kind === 'implicit_tokens') {
+    // B8: this link carries session tokens in the clear, which is precisely what the
+    // PKCE flow removes. Refusing it is the point of the fix — accepting it would keep
+    // the hole open for anyone able to hand the app such a URL.
     return { status: 'error', reason: 'malformed_link' };
   }
 
-  const { data, error } = await supabase.auth.setSession({
-    access_token: accessToken,
-    refresh_token: refreshToken,
-  });
+  const hasPendingRecoveryRequest = await hasPendingPasswordRecoveryRequest();
+
+  const { data, error } = await supabase.auth.exchangeCodeForSession(parsed.code);
   // Supabase returns an error for an expired, already-used or otherwise rejected
-  // token. Surface it instead of discarding it.
+  // code. Surface it instead of discarding it.
   if (error || !data.session) {
     return { status: 'error', reason: 'expired_or_invalid' };
   }
 
-  return { status: 'ok', session: data.session, linkType };
+  await clearPendingPasswordRecoveryRequest();
+
+  return {
+    status: 'ok',
+    session: data.session,
+    linkType: resolveLinkType(parsed.declaredType, hasPendingRecoveryRequest),
+  };
 }
 
 export async function getInitialNativePasswordRecoverySession(): Promise<NativeAuthLinkResult> {
