@@ -316,10 +316,12 @@ were never staged.
 
 ### 10.3 Gate (executed 2026-10-08, after the last commit)
 
-`tsc` 0 · `tsc:edge` 0 · `npm test` **813 pass / 0 fail / 7 suites** · `test:release` **PASSED**
+`tsc` 0 · `tsc:edge` 0 · `npm test` **816 pass / 0 fail / 7 suites** · `test:release` **PASSED**
 (31 passed / 0 failed / 3 deferred) · `test:a11y` 0 findings over 65 files · `test:safety` all PASS ·
 `lint` clean · `release-readiness --release` exit 1 with **31 passed / 0 failed / 3 deferred**
 (fail-closed; the 3 deferred are the two App Store-only variables and the 2027 calendar corpus).
+The 816 is the 813 that closed this round plus the three tests added by
+`tests/rpc-execute-grants.test.mjs` (§10.6).
 
 ### 10.4 C26 — test build with R8 enabled
 
@@ -334,8 +336,13 @@ the app starts with no crash, and the login chain is green on the minified build
 
 ### 10.5 Still owner-only (no code can close these)
 
-1. `google-services.json` must exist at the path `app.json:22` declares (`./google-services.json`);
+1. `google-services.json` must exist at the path `app.json` declares (`./google-services.json`);
    the only copy is `android/app/google-services.json`, and `android/` is gitignored and regenerated.
+   Putting that copy at the repository root is **not** an option: the gate’s own credential scanner
+   looks for `AIza…` (`release-readiness.mjs:782`) and only skips the generated native folders
+   (`release-readiness.mjs:810`), so a root copy turns `[security]` red — measured. Use an EAS
+   file-type variable plus a dynamic app config, or an `eas.json` `prebuildCommand`; see
+   `docs/ANDROID-HARDENING.md` → “`google-services.json`: where it may live”.
 2. Apply `supabase/migrations/20261008000300_retention_guest_chat.sql` and
    `supabase/cron/schedule-retention-purge.sql` (the purge RPC is still 404).
 3. Start `supabase/cron/schedule-daily-notifications.sql`.
@@ -345,3 +352,19 @@ the app starts with no crash, and the login chain is green on the minified build
    `android/app/debug.keystore` — the key's identity remains `NEVERIFICAT`.
 5. Publish the 2027 calendar corpus, or accept the `DEFERRED` (the UI already shows an explicit
    message instead of an empty grid).
+
+### 10.6 Round 2026-10-08 (evening) — the four post-launch items on the code side
+
+The launch session handed over four items. Two are code-side and one is a rule; this is what the
+tree now records, and what it refuses to do.
+
+| Item | Verdict | Evidence |
+| --- | --- | --- |
+| (a) `google-services.json` at the repository root | **Rejected after measurement** — the copy was made, the gate went red, the copy was reverted | With the root copy: `FAIL [security] 1 possible credential(s) in source`. After removing it: `PASS [security] no hardcoded credential pattern found in the tracked tree`, 31 passed / 0 failed / 3 deferred. The file is re-created from the root path by Expo’s own default prebuild plugins (`@expo/prebuild-config/…/withDefaultPlugins.js:150,152,161`), so the root path is the only missing piece — and it has to come from EAS, not from git |
+| (b) Legal URL alignment (`ortodoxia.web.app/privacy` vs `yacplanet.ro/privacy`) | **Open — owner decision** (user-visible value) | Both answer 200 and neither carries placeholder text, but they are two different documents: `ortodoxia.web.app/privacy` names a natural person as operator (Ștefan Ștefan, Rm. Vâlcea, contact@ortodoxiaapp.anonaddy.com), while `yacplanet.ro/privacy` names YAC PLANET S.R.L. (last updated 2 Oct 2026, covers every app in section 2). The repo consistently uses `ortodoxia.web.app` in all three `eas.json` profiles, in `docs/STORE_SUBMISSION_KIT.md:88` and in `tests/release-config.test.mjs:125-126`; only the published listing uses the company domain |
+| (c) 2027 calendars | **DEFERRED, unchanged** — no published source and no invented data | `DEFERRED [calendar] calendar data covers only 2026 … BLOCKED_MISSING_SOURCE_DATA` |
+| (d) `revoke execute … from public, anon, authenticated` for RPCs that touch user data | **Rule written down and enforced by a test** | `supabase/README.md` (section “Funcții RPC care lucrează pe date de utilizator”) + `tests/rpc-execute-grants.test.mjs`: the 15 `security definer` definitions in 11 pre-08.10.2026 migrations that carry no revoke are frozen as a baseline, a new definition without a revoke fails the suite, and the detector’s own negative case is asserted so the test cannot pass through a broken regex |
+
+Live proof for (d): `POST /rest/v1/rpc/purge_guest_chat_history` with the publishable key answered
+**200** before the owner’s `20261008000400_revoke_purge_guest_chat_from_anon.sql` and **401
+`permission denied for function`** after it — `revoke … from public` alone does not touch `anon`.

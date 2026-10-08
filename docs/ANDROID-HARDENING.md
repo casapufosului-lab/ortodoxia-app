@@ -38,12 +38,14 @@ Sources of truth, in order:
    The plugin now writes `android.enableMinifyInReleaseBuilds=true` and
    `android.enableShrinkResourcesInReleaseBuilds=true` on every prebuild.
 
-   **Status: the switch is wired and tested, but a release build has not yet been smoke-tested on the
-   emulator with R8 on** (a release build was in flight in the owner's session when this landed, so
-   running a second one in the same `android/` folder was avoided deliberately). Before the next store
-   build, do one test build (a throwaway keystore is fine — the artifact is a *test* artifact, not a
-   store one) and open the app on the emulator. R8 mistakes show up as a crash on launch or as a
-   feature that silently stops working. If anything breaks, the one-line retreat is
+   **Status: wired, tested and smoke-tested with R8 on** (08.10.2026). A release *test* build was
+   produced with a throwaway keystore, R8 ran (`Task :app:minifyReleaseWithR8` in the Gradle log),
+   the APK was installed on Pixel_7 (`emulator-5554`) after an explicit `adb uninstall` of the old
+   package (a differently-signed package cannot be replaced in place), the merged manifest carried no
+   badge/storage permissions, the app started without a crash, and the login chain (sign in →
+   account visible → `am force-stop` → relaunch, still authenticated) stayed green on the minified
+   build. The artifact is a *test* artifact: it is signed with `CN=Ortodoxia Test Build, O=Worker,
+   C=RO`, not with the upload key and not with the debug key. If anything had broken, the one-line retreat is
    `android.enableMinifyInReleaseBuilds=false` in `android/gradle.properties` for that build, plus a
    `-keep` rule in `android/app/proguard-rules.pro`; tell the agent and it will be fixed in the plugin.
 
@@ -81,3 +83,72 @@ credentials, so no local variables are needed.
 * `scripts/release-readiness.mjs` → `checkAndroidNativeHardening()` fails if the plugin is
   unwired, or if a checked-out `android/` folder does not carry the plugin's output. Part of
   `npm run verify` / `npm run preflight`.
+
+## `google-services.json`: where it may live
+
+`app.json` sets `expo.android.googleServicesFile = "./google-services.json"`. That value is a **path
+relative to the project root**, and two things read it:
+
+* Expo's own prebuild plugins — `@expo/config-plugins/build/android/GoogleServices.js`: it copies the
+  file to `android/app/google-services.json` (`DEFAULT_TARGET_PATH`, line 46) and, if the source does
+  not exist, **throws** `Cannot copy google-services.json from … to …. Ensure the source and
+  destination paths exist.` (lines 88-102). The same default plugin set adds the
+  `com.google.gms:google-services` classpath and applies it (`@expo/prebuild-config/build/plugins/
+  withDefaultPlugins.js` lines 150, 152, 161).
+* `scripts/release-readiness.mjs` → `checkPushNotifications()`: it looks for the file in
+  `google-services.json` **or** `android/app/google-services.json`, and requires `app.json` to point at
+  it, `expo-notifications` to be a dependency and the cron script to exist.
+
+So the file in `android/app/` is not a hand edit to preserve: **every prebuild re-creates it from the
+root copy**, and the Gradle wiring with it. The consequence for a fresh checkout is that prebuild
+fails loudly until the root copy exists.
+
+Putting the copy at the repo root is **not** the way to satisfy that, because the release gate treats
+it as a leaked credential. Measured 08.10.2026:
+
+```
+# with google-services.json at the repo root:
+FAIL [security] 1 possible credential(s) in source   →  google-services.json: possible Google API key
+# after removing it again:
+PASS [security] no hardcoded credential pattern found in the tracked tree
+passed: 31   failed: 0   deferred: 3
+```
+
+The reason is explicit in the checker: `SECRET_PATTERNS` matches `AIza[0-9A-Za-z_-]{30,}`
+(`release-readiness.mjs:782`) and the walk deliberately skips the generated native folders —
+`if (['node_modules', '.git', '.expo', 'dist', 'work', 'android', 'ios', '.npm-cache'].includes(entry.name)) continue;`
+(`release-readiness.mjs:810`). The root is not skipped, so a Firebase config there fails the gate.
+Relaxing that check to make the file fit is forbidden — the check is right, the file is in the
+wrong place.
+
+Accepted routes, in order of preference:
+
+1. **EAS file variable (recommended).** Upload the file once as a secret environment variable of type
+   *file* named `GOOGLE_SERVICES_JSON`; EAS makes it available to the build job **as a path**, so
+   `app.json` cannot read it and the app config has to become dynamic:
+
+   ```js
+   // app.config.js — app.json is still read and handed in as `config`
+   module.exports = ({ config }) => ({
+     ...config,
+     android: {
+       ...config.android,
+       googleServicesFile: process.env.GOOGLE_SERVICES_JSON ?? './google-services.json',
+     },
+   });
+   ```
+
+   Nothing lands at the repo root, so the security gate stays green; local development keeps working
+   with a file in `android/app/` or with `EXPO_PUBLIC_*`-style local env. This touches `app.json`
+   (owned by the launch session) — it is an owner decision, and the fallback keeps the current
+   behaviour intact when the variable is unset.
+2. **Transient local copy.** For a *local* prebuild only: copy the file to the repo root, run
+   `npx expo prebuild -p android`, then delete it. The gate must not be run while it is there — it
+   would (correctly) report the FAIL above.
+3. **`eas.json` `prebuildCommand`.** Keep `app.json` static and have the build step place
+   `$GOOGLE_SERVICES_JSON` at the root before running `npx expo prebuild`. Same effect as route 1 with
+   no app-config change, at the cost of owning the prebuild command in `eas.json`.
+
+Whatever the route, the Firebase **admin** credential must never travel: `google-services.json`
+contains only the client key (restricted by package name + SHA-1), which is public by design and ends
+up inside the APK/AAB anyway.
