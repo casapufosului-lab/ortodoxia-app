@@ -316,30 +316,40 @@ Ambele sunt măsurători, nu promisiuni — trimite-mi doar „am salvat", restu
    referința biblică. Captura veche arăta id-ul intern.
 3. **Capturile 07 (premium) și 08 (cont)** lipsesc: 6 din 8 există. Nu se pot face înainte de pasul 1
    (ecranul premium fără produse create nu are ce fotografia, vezi `store/screenshots/README.md`).
-4. **AAB-ul de magazin există deja și e pe track-ul intern** (măsurat 08.10.2026):
-   `android/app/build/outputs/bundle/release/app-release.aab` (82,6 MB, `versionCode 2`), semnat cu un
-   certificat propriu (nu cu cel de debug), iar `node scripts/upload-play.mjs --dry-run` tipărește
-   `track internal: completed:2` — versiunea e publicată pentru testare internă. Build-ul de release
-   fără `ORTODOXIA_UPLOAD_*` este oprit de `android/app/build.gradle:144-152` (verificare de siguranță,
-   `docs/ANDROID-HARDENING.md:27-29`); urcarea se face cu `node scripts/upload-play.mjs --track internal`
-   (`docs/PLAY_UPLOAD.md`).
+4. **AAB-ul de magazin e pe track-ul intern, iar în Production stă ca DRAFT** (măsurat 08.10.2026, cu
+   `node scripts/upload-play.mjs --dry-run`): `android/app/build/outputs/bundle/release/app-release.aab`
+   (82,2 MB, `versionCode 3`, `versionName 1.0.0`), semnat cu un certificat propriu (nu cu cel de debug).
+   `--dry-run` tipărește `track internal: completed:3` **și** `track production: draft:3` — versiunea 3 e
+   publicată pentru testare internă și e **atribuită** în Production fără re-upload (`--promote 3`; Play
+   refuză același `versionCode` de două ori). Build-ul de release fără `ORTODOXIA_UPLOAD_*` este oprit de
+   `android/app/build.gradle:144-152` (verificare de siguranță, `docs/ANDROID-HARDENING.md:27-29`);
+   urcarea se face cu `node scripts/upload-play.mjs --track internal` (`docs/PLAY_UPLOAD.md`).
 5. **Formularul Data safety** abia după capitolul 4 (reține ferestrele de retenție de acolo: 30/180/31
    de zile). Declarațiile despre tokenul de push sunt deja pregătite (poarta verifică 9 limbi).
 6. **Ca să se poată CUMPĂRA Premium, contul trebuie să fie tester, iar aplicația trebuie instalată din
    Play.** Restul e deja pe loc (citit din Play Developer API la 08.10.2026): abonamentele există cu
-   planurile de bază **ACTIVE** (vezi nota de la 1.1), iar versiunea `versionCode 2` e `completed` pe
-   track-ul `internal`. Ce lipsește e **lista de testeri**: eroarea măsurată este „The item you were
-   attempting to purchase could not be found." (fereastra Google Play), în timp ce pagina aplicației în
-   Play Store scrie „Item not found."
-   1. Play Console → **Test and release → Testing → Internal testing → fila Testers**: adaugă
-      `casapufosului@gmail.com` și `stefanbdz1981@gmail.com` → **Save**.
+   planurile de bază **ACTIVE** (vezi nota de la 1.1), țările sunt setate în **Production**, iar versiunea
+   `versionCode 3` e `completed` pe track-ul `internal` și `draft` pe `production`. Ce lipsește e **lista
+   de testeri**: eroarea măsurată este „The item you were attempting to purchase could not be found."
+   (fereastra Google Play), în timp ce pagina aplicației în Play Store scrie „Item not found."
+
+   Cele două conturi de tester (`casapufosului@gmail.com`, `stefanbdz1981@gmail.com`) se adaugă în
+   **DOUĂ** locuri — dacă lipsește unul, testarea ori nu se vede, ori se plătește:
+   1. Play Console → **Test and release → Testing → Internal testing → fila Testers**: adaugă conturile →
+      **Save**.
    2. Apasă **Copy link** (linkul de înscriere, `https://play.google.com/apps/internaltest/…`).
    3. Deschide linkul **pe emulator, cu contul de tester** → *Become a tester* → *Download it on Google
       Play*. Instalarea prin `adb` nu poate cumpăra nimic (`installerPackageName=null`, măsurat).
-   4. Play Console → **Setup → License testing**: adaugă aceleași conturi, ca testarea să nu coste.
+   4. Play Console → **Setup → License testing**: adaugă **aceleași** conturi, ca testarea să nu coste.
+
+   > **Răbdare:** după ce accepți invitația, listarea din Play poate întârzia până la ~1 oră (măsurat:
+   > „Item not found" → butonul „Install" după ~50 de minute). Reinstalarea prin `adb` nu ajută.
 
    > **Capcană:** ecranul Premium arată 18,99 RON / 159,99 RON **și când Play nu poate vinde nimic** —
    > prețurile vin din catalogul RevenueCat, nu sunt dovadă că produsul există în Play.
+7. **Pasul final, după ce testarea internă trece:** Play Console → **Publishing overview → Send for
+   review**. Versiunea din `production` e acum `draft`, deci nu pleacă singură la verificare; țările sunt
+   deja setate în Production (vezi și `docs/STORE_SUBMISSION_KIT.md`).
 
 ---
 
