@@ -38,7 +38,12 @@
  * dublează; dacă șablonul nu seamănă nici cu varianta originală, nici cu cea modificată, pluginul
  * aruncă o eroare (mai bine un prebuild oprit decât un build pe jumătate configurat).
  */
-const { AndroidConfig, withAndroidManifest, withAppBuildGradle } = require('@expo/config-plugins');
+const {
+  AndroidConfig,
+  withAndroidManifest,
+  withAppBuildGradle,
+  withGradleProperties,
+} = require('@expo/config-plugins');
 
 /** Permisiuni de badge injectate de ShortcutBadger; aplicația nu apelează nicio API de badge. */
 const BADGE_PERMISSIONS = [
@@ -231,6 +236,52 @@ function patchAppBuildGradle(rawContents) {
   return usesCrlf ? patched.replace(/\n/g, '\r\n') : patched;
 }
 
+/**
+ * Proprietăți de build pentru release (C21).
+ *
+ * Șablonul Expo SDK 57 citește ambele praguri din `android/gradle.properties`:
+ *   `app/build.gradle:69`   `def enableMinifyInReleaseBuilds = (findProperty('android.enableMinifyInReleaseBuilds') ?: false).toBoolean()`
+ *   `app/build.gradle:153`  `def enableShrinkResources = findProperty('android.enableShrinkResourcesInReleaseBuilds') ?: 'false'`
+ *   `app/build.gradle:154-155` `shrinkResources ...` / `minifyEnabled enableMinifyInReleaseBuilds`
+ *
+ * Fără ele, release-ul iese neofuscat și cu tot arborele de resurse, deși `proguard-rules.pro` există.
+ * Se scriu în configurația versionată, nu direct în `android/` (care e Git-ignored): altfel fiecare
+ * `expo prebuild` le-ar șterge, iar pe EAS build-ul ar pleca din nou cu ele pe false.
+ *
+ * `shrinkResources` cere `minifyEnabled`; cele două merg împreună și se verifică împreună (test de fum
+ * pe emulator, vezi docs/ANDROID-HARDENING.md).
+ */
+const RELEASE_BUILD_PROPERTIES = {
+  'android.enableMinifyInReleaseBuilds': 'true',
+  'android.enableShrinkResourcesInReleaseBuilds': 'true',
+};
+
+/**
+ * Scrie proprietățile de release în lista parsată din `android/gradle.properties`.
+ *
+ * Idempotent: dacă proprietatea există, îi schimbă valoarea în loc să adauge o a doua intrare (un
+ * `gradle.properties` cu aceeași cheie de două ori este o eroare tăcută de configurare).
+ */
+function applyReleaseBuildProperties(properties) {
+  const result = properties.map((item) => ({ ...item }));
+  for (const [key, value] of Object.entries(RELEASE_BUILD_PROPERTIES)) {
+    const existing = result.findIndex((item) => item.type === 'property' && item.key === key);
+    if (existing === -1) {
+      result.push({ type: 'property', key, value });
+    } else {
+      result[existing] = { type: 'property', key, value };
+    }
+  }
+  return result;
+}
+
+function withHardenedGradleProperties(config) {
+  return withGradleProperties(config, (config) => {
+    config.modResults = applyReleaseBuildProperties(config.modResults);
+    return config;
+  });
+}
+
 function withHardenedGradle(config) {
   return withAppBuildGradle(config, (config) => {
     config.modResults.contents = patchAppBuildGradle(config.modResults.contents);
@@ -241,6 +292,7 @@ function withHardenedGradle(config) {
 module.exports = function withAndroidHardening(config) {
   config = withHardenedManifest(config);
   config = withHardenedGradle(config);
+  config = withHardenedGradleProperties(config);
   return config;
 };
 
@@ -250,3 +302,5 @@ module.exports.REMOVED_PERMISSIONS = REMOVED_PERMISSIONS;
 module.exports.TEMPLATE_DEBUG_SIGNING_CONFIG = TEMPLATE_DEBUG_SIGNING_CONFIG;
 module.exports.patchAppBuildGradle = patchAppBuildGradle;
 module.exports.HARDENING_MARKER = HARDENING_MARKER;
+module.exports.RELEASE_BUILD_PROPERTIES = RELEASE_BUILD_PROPERTIES;
+module.exports.applyReleaseBuildProperties = applyReleaseBuildProperties;

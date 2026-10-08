@@ -30,6 +30,23 @@ Sources of truth, in order:
    or the `android.injected.signing.*` properties injected by EAS Build, and stops the build with a
    clear `GradleException` if neither is present. Fail loudly, never ship a wrong-signed artifact.
 
+4. **Turns on release minification** (audit item C21). The Expo SDK 57 template reads both switches
+   from `android/gradle.properties` —
+   `app/build.gradle:69` `enableMinifyInReleaseBuilds = findProperty('android.enableMinifyInReleaseBuilds') ?: false`
+   and `app/build.gradle:153-155` `enableShrinkResources = findProperty('android.enableShrinkResourcesInReleaseBuilds') ?: 'false'`
+   — so without them a release build came out unobfuscated and with the whole resource tree.
+   The plugin now writes `android.enableMinifyInReleaseBuilds=true` and
+   `android.enableShrinkResourcesInReleaseBuilds=true` on every prebuild.
+
+   **Status: the switch is wired and tested, but a release build has not yet been smoke-tested on the
+   emulator with R8 on** (a release build was in flight in the owner's session when this landed, so
+   running a second one in the same `android/` folder was avoided deliberately). Before the next store
+   build, do one test build (a throwaway keystore is fine — the artifact is a *test* artifact, not a
+   store one) and open the app on the emulator. R8 mistakes show up as a crash on launch or as a
+   feature that silently stops working. If anything breaks, the one-line retreat is
+   `android.enableMinifyInReleaseBuilds=false` in `android/gradle.properties` for that build, plus a
+   `-keep` rule in `android/app/proguard-rules.pro`; tell the agent and it will be fixed in the plugin.
+
 The plugin is idempotent: running prebuild twice on the same folder changes nothing. If the
 upstream template changes in a way the plugin does not recognise, it throws rather than patching
 the wrong thing.
