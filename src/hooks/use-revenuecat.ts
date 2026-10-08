@@ -125,10 +125,9 @@ export function useRevenueCat() {
   // poate cumpăra primea tot buton activ, iar la apăsare vedea o eroare a magazinului, care pare
   // defect al aplicației.
   useEffect(() => {
-    if (!isRevenueCatConfigured()) {
-      setCanMakePayments(null);
-      return undefined;
-    }
+    // `canMakePayments` porneste din `null` (necunoscut), deci aici nu e nevoie de un `setState`:
+    // un `setState` sincron intr-un efect produce randari in cascada (regula react-hooks).
+    if (!isRevenueCatConfigured()) return undefined;
     let cancelled = false;
     void Purchases.canMakePayments()
       .then((value) => {
