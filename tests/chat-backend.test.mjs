@@ -30,6 +30,21 @@ vm.runInNewContext(sharedCompiled, {
 const sharedHttp = sharedModule.exports;
 assert.equal(typeof sharedHttp.corsHeaders, 'function', 'shared corsHeaders must compile');
 
+// Same trap, second module: the endpoint also imports the pure limit-identity helper (C13). It has
+// no imports of its own, and the require stub below answers every specifier, so it must be compiled
+// and dispatched by specifier — otherwise buildLimitIdentity() is undefined and every request 500s.
+const limitIdentityFile = resolve('supabase/functions/orthodox-chat/limit-identity.ts');
+const limitIdentityCompiled = ts.transpileModule(readFileSync(limitIdentityFile, 'utf8'), {
+  compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
+}).outputText;
+const limitIdentityModule = { exports: {} };
+vm.runInNewContext(limitIdentityCompiled, { exports: limitIdentityModule.exports });
+const limitIdentity = limitIdentityModule.exports;
+assert.equal(typeof limitIdentity.buildLimitIdentity, 'function', 'limit-identity must compile');
+
+/** The app always sends its per-install identifier; a harness request must not look like a bare bot. */
+const deviceId = 'aaaaaaaa-bbbb-2222-cccc-3333dddd4444';
+
 const guestId = 'guest-1234567890123456';
 const userId = '11111111-1111-4111-8111-111111111111';
 
@@ -97,7 +112,11 @@ function harness(options = {}) {
     },
   };
   vm.runInNewContext(compiled, {
-    exports: {}, require: () => ({ createClient: () => client, ...sharedHttp }), Request, Response, AbortSignal,
+    exports: {},
+    require: specifier => (String(specifier).includes('limit-identity')
+      ? limitIdentity
+      : { createClient: () => client, ...sharedHttp }),
+    Request, Response, AbortSignal,
     ...(options.noCrypto ? {} : { crypto: globalThis.crypto }),
     TextEncoder,
     Deno: {
@@ -113,7 +132,12 @@ function harness(options = {}) {
   return {
     events,
     run: (body = { guestId, message: 'question' }, method = 'POST', extraHeaders = {}) => handler(new Request('https://example.invalid', {
-      method, headers: options.user === false ? { ...extraHeaders } : { Authorization: 'Bearer test-only', ...extraHeaders },
+      method,
+      headers: {
+        ...(options.identity === false ? {} : { 'x-device-id': deviceId }),
+        ...(options.user === false ? {} : { Authorization: 'Bearer test-only' }),
+        ...extraHeaders,
+      },
       ...(method === 'POST' ? { body: typeof body === 'string' ? body : JSON.stringify(body) } : {}),
     })),
   };
@@ -130,6 +154,29 @@ test('guest ID validation rejects UUID and missing ID', async () => {
 test('methods and missing configuration fail before database access', async () => {
   const h = harness(); assert.equal((await h.run(null, 'GET')).status, 405); assert.equal((await h.run(null, 'OPTIONS')).status, 200);
   assert.equal((await harness({ missingConfig: true }).run()).status, 503); assert.equal(h.events.length, 0);
+});
+test('C13: a request with neither address nor device is refused before consuming quota', async () => {
+  const h = harness({ identity: false });
+  const response = await h.run();
+  assert.equal(response.status, 400);
+  assert.equal((await response.json()).code, 'client_unidentified');
+  assert.deepEqual(h.events, [], 'nothing was reserved and no AI call was made');
+});
+test('C13: with no address reported, two devices no longer share one brake', async () => {
+  const one = harness(); const two = harness();
+  await one.run({ guestId, message: 'question' }, 'POST', { 'x-device-id': 'device-aaaaaaaa' });
+  await two.run({ guestId, message: 'question' }, 'POST', { 'x-device-id': 'device-bbbbbbbb' });
+  const first = one.events[0].args; const second = two.events[0].args;
+  assert.notEqual(first.p_ip_hash, second.p_ip_hash, 'a shared bucket would make these equal');
+  assert.match(first.p_ip_hash, /^[0-9a-f]{64}$/);
+});
+test('C13: an implausible device value falls back to the address, never to a shared literal', async () => {
+  const h = harness();
+  const response = await h.run({ guestId, message: 'question' }, 'POST', { 'x-device-id': 'bad value', 'x-forwarded-for': '203.0.113.9' });
+  assert.equal(response.status, 200);
+  const call = h.events[0].args;
+  assert.match(call.p_ip_hash, /^[0-9a-f]{64}$/);
+  assert.notEqual(call.p_ip_hash, call.p_client_hash);
 });
 test('guest success reserves quota before AI and returns server counters', async () => {
   const h = harness(); const response = await h.run({ guestId, message: ' question ', threadId: 'foreign' });

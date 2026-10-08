@@ -1,5 +1,6 @@
 import { createClient } from 'npm:@supabase/supabase-js@2';
 import { corsHeaders as buildCorsHeaders, preflightResponse } from '../_shared/http.ts';
+import { buildLimitIdentity, normalizeAddress, normalizeDevice } from './limit-identity.ts';
 
 const ALLOWED_HEADERS = 'authorization, x-client-info, apikey, content-type';
 
@@ -41,26 +42,31 @@ async function sha256Hex(value: string) {
 /**
  * The client address as the platform reports it.
  *
- * The raw value never leaves this process: only its salted hash reaches SQL. An address that is
- * absent or implausibly long becomes 'unknown', which still yields a shared counter rather than
- * no counter at all.
+ * The raw value never leaves this process: only its salted hash reaches SQL. `null` means the
+ * platform reported nothing usable; the caller must then fall back to the device signal instead of
+ * a literal 'unknown' (a shared counter for every caller — see `./limit-identity.ts`, C13).
  */
 function clientAddress(req: Request) {
-    const forwarded = req.headers.get('x-forwarded-for')?.split(',')[0] ?? null;
-    const raw = (req.headers.get('cf-connecting-ip') ?? req.headers.get('x-real-ip') ?? forwarded ?? '').trim().toLowerCase();
-    return raw.length > 0 && raw.length <= 64 ? raw : 'unknown';
+    return normalizeAddress([
+        req.headers.get('cf-connecting-ip'),
+        req.headers.get('x-real-ip'),
+        req.headers.get('x-forwarded-for'),
+    ]);
 }
 
 /** The app-supplied device identifier, accepted only in a bounded, known-safe shape. */
 function deviceSignal(req: Request) {
-    const raw = (req.headers.get('x-device-id') ?? '').trim().toLowerCase();
-    return /^[a-z0-9._-]{8,64}$/.test(raw) ? raw : 'unknown';
+    return normalizeDevice(req.headers.get('x-device-id'));
 }
 const systemInstructions = `Ești un ghid informativ în limba română pentru o aplicație despre credința ortodoxă.
 Răspunde clar, cald și concis. Rămâi la întrebările despre rugăciune, calendar, sfinți, termeni și viață duhovnicească ortodoxă.
 Nu te prezenta drept preot și nu înlocui sfatul duhovnicului. Pentru decizii personale importante, îndrumă utilizatorul către preotul său.
 Nu inventa citate biblice, canoane, sărbători sau poziții oficiale. Dacă nu ești sigur, spune direct că informația trebuie verificată într-o sursă bisericească.
-Pentru urgențe medicale sau pericol imediat, recomandă serviciile de urgență și ajutorul unui profesionist.`;
+Pentru urgențe medicale sau pericol imediat, recomandă serviciile de urgență și ajutorul unui profesionist.
+Nu oferi sfaturi medicale: nu pune diagnostice, nu recomanda tratamente, doze sau medicamente și nu interpreta analize, simptome ori rețete. Îndrumă persoana la medicul ei sau la serviciile medicale.
+Dacă cineva vorbește despre autovătămare, sinucidere sau pericol imediat pentru sine ori pentru altcineva, răspunde scurt și empatic, fără să moralizezi și fără să ceri amănunte despre metode, și îndrumă imediat la 112 (numărul european de urgență), apoi la o persoană de încredere sau la un serviciu de sănătate mintală. Nu propune metode, nu descrie tehnici și nu da cifre despre doze.
+Nu oferi sfaturi juridice sau financiare și nu ajuta la luarea unei decizii care poate răni pe cineva.
+Refuză politicos cererile care ar produce conținut de ură, hărțuire, sexual, ilegal sau periculos și adu discuția înapoi la subiectele aplicației.`;
 type RequestBody = {
     message?: unknown;
     threadId?: unknown;
@@ -189,9 +195,19 @@ Deno.serve(async (req: Request) => {
         if (limitSalt.length === 0 || typeof globalThis.crypto?.subtle?.digest !== 'function') {
             return json({ error: 'Chatul AI nu este configurat încă.' }, 503);
         }
-        const address = clientAddress(req);
-        const clientHash = await sha256Hex(`${limitSalt}|device|${address}|${deviceSignal(req)}`);
-        const ipHash = await sha256Hex(`${limitSalt}|ip|${address}`);
+        // C13: fără adresă de client NU cădem într-un contor comun. Cheia de IP cade pe semnalul de
+        // dispozitiv; dacă lipsește și acela, cererea nu poate fi identificată și e refuzată înainte
+        // de a consuma din bugetul lunii (fail-closed), în loc să servească nelimitat sau să blocheze
+        // toți utilizatorii pe un singur contor.
+        const identity = buildLimitIdentity(clientAddress(req), deviceSignal(req));
+        if (!identity) {
+            return json({
+                error: 'Cererea nu a putut fi identificată. Reinstalează aplicația sau încearcă mai târziu.',
+                code: 'client_unidentified',
+            }, 400);
+        }
+        const clientHash = await sha256Hex(`${limitSalt}|device|${identity.client}`);
+        const ipHash = await sha256Hex(`${limitSalt}|ip|${identity.ip}`);
         const { data: reservation, error: reservationError } = await admin.rpc('reserve_ai_request', {
             p_user_id: user.id,
             p_guest_id: null,

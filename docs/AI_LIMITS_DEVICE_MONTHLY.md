@@ -29,16 +29,19 @@ because it exists to bound the provider bill.
 The Edge Function derives two SHA-256 hashes per request, salted with a server-only secret:
 
 ```
-client_hash = sha256(salt | "device" | client address | x-device-id)
-ip_hash     = sha256(salt | "ip"     | client address)
+client_hash = sha256(salt | "device" | addr:<address>|dev:<x-device-id>)
+ip_hash     = sha256(salt | "ip"     | addr:<client address>)
 ```
 
 - Salt: `AI_LIMIT_SALT` when set, otherwise the service-role key (already server-only, so the brake
   cannot silently disappear on a deployment that has not set the dedicated secret). No salt and no
   Web Crypto ⇒ **503 before any database access**.
 - The client address comes from `cf-connecting-ip` / `x-real-ip` / the first `x-forwarded-for` entry,
-  bounded and lower-cased; anything missing or implausible becomes `unknown`, which still yields a
-  shared counter instead of no counter.
+  bounded and lower-cased. When it is missing or implausible, the key falls back to the device
+  identifier (`dev:<x-device-id>`), so every installation keeps its own counter; a request carrying
+  neither signal is refused with **400 `client_unidentified`** instead of sharing one bucket with
+  every other caller (this was a launch bug: an `unknown` bucket turned the 60/day network limit into
+  one shared budget for the whole free tier — see C13 in the pre-launch audit).
 - The raw address and the device value **never reach SQL or a log line**: only the two hashes travel
   (asserted by `tests/chat-backend.test.mjs`).
 - The app's identifier is stored in the platform Keychain / Keystore (`src/lib/ai-limit-device.ts`).
@@ -118,7 +121,10 @@ CERUT, nu ce EXISTĂ — schema se verifică pe schemă.
 
 - **O versiune nouă a aplicației** (build EAS + submit): frâna pe dispozitiv are nevoie de headerul
   `x-device-id` pe care îl trimite clientul nou (`src/lib/ai-limit-device.ts`). Până atunci, în
-  producție acționează limita pe cont, cea pe IP și plafonul lunar; dispozitivul apare ca `unknown`.
+  producție acționează limita pe cont, cea pe IP și plafonul lunar; pe clienții vechi, frâna pe
+  dispozitiv cade pe adresă (nu pe un contor comun), iar o cerere fără adresă și fără dispozitiv este
+  refuzată cu `400 client_unidentified` — un client vechi fără adresă raportată nu mai consumă dintr-un
+  buget partajat cu toți ceilalți.
 - Plafonul lunar: valoarea activă e cea din migrație (20 000). Se schimbă cu
   `select public.set_ai_monthly_cap(<n>)` din SQL editor; `select * from public.ai_monthly_status()`
   arată consumul.

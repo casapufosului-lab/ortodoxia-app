@@ -16,6 +16,11 @@ import * as SecureStore from 'expo-secure-store';
  * hashes it together with the client address and a server-only salt, and the IP-only brake
  * still applies when this value is missing, rotated, or reset by reinstalling the app.
  *
+ * The reverse case is why it must always be sent: when the platform reports no client address,
+ * the server keys the brake on this identifier instead of a literal shared bucket (see C13 in
+ * `supabase/functions/orthodox-chat/limit-identity.ts`), and a request carrying neither signal is
+ * refused. Reinstalling the app therefore starts a new counter, but never a shared one.
+ *
  * The value is stored in the platform Keychain / Keystore through expo-secure-store. If that
  * storage is unavailable the identifier is still generated for the current session: a chat
  * request must not fail because a device identifier could not be written to disk.

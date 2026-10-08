@@ -20,6 +20,7 @@ import ts from 'typescript';
 const migrationName = '20260923000100_add_client_and_monthly_ai_caps';
 const migration = readFileSync(resolve(`supabase/migrations/${migrationName}.sql`), 'utf8');
 const endpoint = readFileSync(resolve('supabase/functions/orthodox-chat/index.ts'), 'utf8');
+const limitIdentity = readFileSync(resolve('supabase/functions/orthodox-chat/limit-identity.ts'), 'utf8');
 const chatScreen = readFileSync(resolve('src/app/(tabs)/chat.tsx'), 'utf8');
 const deviceLib = readFileSync(resolve('src/lib/ai-limit-device.ts'), 'utf8');
 const docs = readFileSync(resolve('docs/AI_LIMITS_DEVICE_MONTHLY.md'), 'utf8');
@@ -123,13 +124,16 @@ test('the endpoint validates the same client limit the database enforces', () =>
   assert.equal(endpointLimit, '20');
 });
 
-test('the endpoint hashes a salted (device + address) and the address alone', () => {
+test('the endpoint hashes a salted client identity and an address identity', () => {
   assert.match(endpoint, /Deno\.env\.get\('AI_LIMIT_SALT'\) \?\? serviceRoleKey/);
-  assert.match(endpoint, /sha256Hex\(`\$\{limitSalt\}\|device\|\$\{address\}\|\$\{deviceSignal\(req\)\}`\)/);
-  assert.match(endpoint, /sha256Hex\(`\$\{limitSalt\}\|ip\|\$\{address\}`\)/);
+  assert.match(endpoint, /sha256Hex\(`\$\{limitSalt\}\|device\|\$\{identity\.client\}`\)/);
+  assert.match(endpoint, /sha256Hex\(`\$\{limitSalt\}\|ip\|\$\{identity\.ip\}`\)/);
   assert.match(endpoint, /globalThis\.crypto\.subtle\.digest\('SHA-256'/);
   assert.match(endpoint, /if \(limitSalt\.length === 0 \|\| typeof globalThis\.crypto\?\.subtle\?\.digest !== 'function'\)/);
   assert.match(endpoint, /return json\(\{ error: 'Chatul AI nu este configurat încă\.' \}, 503\)/);
+  // C13: identitatea se construiește în modulul pur, iar lipsa adresei nu mai cade pe un bucket comun.
+  assert.match(endpoint, /buildLimitIdentity\(clientAddress\(req\), deviceSignal\(req\)\)/);
+  assert.equal(endpoint.includes(": 'unknown'"), false, 'nicio valoare de rezerva comuna pentru adresa/dispozitiv');
   // No request field can override the two hashes, and no raw signal is sent to SQL.
   assert.match(endpoint, /p_client_hash: clientHash,\s*\n\s*p_ip_hash: ipHash,/);
   assert.equal(endpoint.includes('p_ip: '), false);
@@ -186,8 +190,9 @@ function loadDeviceLib(options = {}) {
   return { lib: module.exports, writes };
 }
 
-// The pattern the Edge Function accepts, taken from its own source so the two cannot drift.
-const acceptedPattern = new RegExp(/\/\^\[a-z0-9\._-\]\{8,64\}\$\//u.exec(endpoint)[0].slice(1, -1), 'u');
+// The pattern the Edge Function accepts, taken from the module that actually validates (C13 moved it
+// out of the handler), so the two cannot drift.
+const acceptedPattern = new RegExp(/\/\^\[a-z0-9\._-\]\{8,64\}\$\//u.exec(limitIdentity)[0].slice(1, -1), 'u');
 
 test('the device identifier is created once, reused, and accepted by the server', async () => {
   const { lib, writes } = loadDeviceLib();
