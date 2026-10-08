@@ -36,6 +36,7 @@
     },
     "plugins": [
       "./plugins/with-android-hardening",
+      "./plugins/with-google-services",
       "expo-router",
       [
         "expo-notifications",
