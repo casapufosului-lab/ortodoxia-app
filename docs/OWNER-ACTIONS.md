@@ -48,6 +48,9 @@ verifica cu cheia publică, deci cere confirmarea ta cu două interogări (vezi 
    - `ro.ortodoxia.premium.annual` (anual).
    > ID-urile trebuie scrise exact așa; sunt deja în cod și în textele din aplicație.
 3. Activează ambele base plan-uri (un base plan în stare *Draft* nu se vinde).
+   > Verificat prin Play Developer API la 08.10.2026: ambele abonamente există
+   > (`ro.ortodoxia.premium.monthly` cu planul `monthly`, `ro.ortodoxia.premium.annual` cu planul
+   > `annual`), fiecare cu planul de bază în stare **ACTIVE** și prețuri pentru 174 de regiuni.
 
 ### 1.2 Contul de serviciu Google pentru RevenueCat
 Play Console → **Setup → API access** → creează legătura către un cont de serviciu (RevenueCat cere
@@ -313,13 +316,30 @@ Ambele sunt măsurători, nu promisiuni — trimite-mi doar „am salvat", restu
    referința biblică. Captura veche arăta id-ul intern.
 3. **Capturile 07 (premium) și 08 (cont)** lipsesc: 6 din 8 există. Nu se pot face înainte de pasul 1
    (ecranul premium fără produse create nu are ce fotografia, vezi `store/screenshots/README.md`).
-4. **AAB-ul de magazin îl faci tu, cu cheia ta de upload.** Fără `ORTODOXIA_UPLOAD_*` build-ul de
-   release **nu** iese semnat cu debug: `android/app/build.gradle:144-152` oprește build-ul cu mesaj
-   clar (o verificare de siguranță, în `docs/ANDROID-HARDENING.md:27-29`). Artefactul folosit până acum
-   pe emulator este un APK local semnat cu `debug.keystore`
-   (`docs/BUILD_RELEASE_LOCAL.md:20-21`) — bun pentru test, **nu** pentru magazin.
+4. **AAB-ul de magazin există deja și e pe track-ul intern** (măsurat 08.10.2026):
+   `android/app/build/outputs/bundle/release/app-release.aab` (82,6 MB, `versionCode 2`), semnat cu un
+   certificat propriu (nu cu cel de debug), iar `node scripts/upload-play.mjs --dry-run` tipărește
+   `track internal: completed:2` — versiunea e publicată pentru testare internă. Build-ul de release
+   fără `ORTODOXIA_UPLOAD_*` este oprit de `android/app/build.gradle:144-152` (verificare de siguranță,
+   `docs/ANDROID-HARDENING.md:27-29`); urcarea se face cu `node scripts/upload-play.mjs --track internal`
+   (`docs/PLAY_UPLOAD.md`).
 5. **Formularul Data safety** abia după capitolul 4 (reține ferestrele de retenție de acolo: 30/180/31
    de zile). Declarațiile despre tokenul de push sunt deja pregătite (poarta verifică 9 limbi).
+6. **Ca să se poată CUMPĂRA Premium, contul trebuie să fie tester, iar aplicația trebuie instalată din
+   Play.** Restul e deja pe loc (citit din Play Developer API la 08.10.2026): abonamentele există cu
+   planurile de bază **ACTIVE** (vezi nota de la 1.1), iar versiunea `versionCode 2` e `completed` pe
+   track-ul `internal`. Ce lipsește e **lista de testeri**: eroarea măsurată este „The item you were
+   attempting to purchase could not be found." (fereastra Google Play), în timp ce pagina aplicației în
+   Play Store scrie „Item not found."
+   1. Play Console → **Test and release → Testing → Internal testing → fila Testers**: adaugă
+      `casapufosului@gmail.com` și `stefanbdz1981@gmail.com` → **Save**.
+   2. Apasă **Copy link** (linkul de înscriere, `https://play.google.com/apps/internaltest/…`).
+   3. Deschide linkul **pe emulator, cu contul de tester** → *Become a tester* → *Download it on Google
+      Play*. Instalarea prin `adb` nu poate cumpăra nimic (`installerPackageName=null`, măsurat).
+   4. Play Console → **Setup → License testing**: adaugă aceleași conturi, ca testarea să nu coste.
+
+   > **Capcană:** ecranul Premium arată 18,99 RON / 159,99 RON **și când Play nu poate vinde nimic** —
+   > prețurile vin din catalogul RevenueCat, nu sunt dovadă că produsul există în Play.
 
 ---
 
