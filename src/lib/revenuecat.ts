@@ -67,11 +67,32 @@ export function configureRevenueCat() {
   // Debug logging must never be enabled in a release build: RevenueCat's DEBUG
   // output includes the app user id and purchase details, which then sit in the
   // device log and contradict the privacy policy.
+  //
+  // Poziția B10 din audit: `configureRevenueCat()` nu are voie să arunce niciodată.
+  // `setLogLevel()` și `configure()` sunt apeluri care ajung în SDK-ul nativ: pot arunca
+  // sincron (cheie respinsă, BillingClient neinițializat, SDK configurat deja de altă
+  // componentă). Un throw de aici urca în `src/app/_layout.tsx`, adică exact în calea de
+  // pornire, și oprea aplicația — simptomul „aplicația se închide" pe care l-am văzut cu o
+  // cheie de Test Store. Prins aici, aplicația pornește și rămâne în starea cunoscută
+  // „magazin indisponibil" (`isRevenueCatConfigured()` = false), pe care o afișează deja
+  // ecranul Premium.
   if (__DEV__) {
-    Purchases.setLogLevel(LOG_LEVEL.DEBUG);
+    try {
+      Purchases.setLogLevel(LOG_LEVEL.DEBUG);
+    } catch {
+      // Doar logging: un eșec aici nu are voie să împiedice configurarea magazinului.
+    }
   }
-  Purchases.configure({ apiKey });
-  configured = true;
+
+  try {
+    Purchases.configure({ apiKey });
+    configured = true;
+  } catch (error) {
+    configured = false;
+    if (__DEV__) {
+      console.warn('RevenueCat: configurarea SDK-ului a eșuat; magazinul rămâne indisponibil.', error);
+    }
+  }
 }
 
 /**
@@ -82,8 +103,18 @@ export function configureRevenueCat() {
  * with an opaque store error instead of the honest "store unavailable" path.
  */
 export function isPlaceholderRevenueCatKey(apiKey: string | undefined | null): boolean {
-  if (!apiKey) return true;
-  return /^(your_|REPLACE|CHANGEME|xxx)/i.test(apiKey.trim());
+  const trimmed = (apiKey ?? '').trim();
+  // O valoare lipsă, goală sau doar spații nu poate configura SDK-ul.
+  if (trimmed.length === 0) return true;
+  // Placeholder values shipped by `.env.example`.
+  if (/^(your_|REPLACE|CHANGEME|xxx)/i.test(trimmed)) return true;
+  // A RevenueCat *Test Store* key (`test_…`, `test-…`, `teststore…`) is not a sale
+  // key. Handed to `Purchases.configure()` in a release build, the native SDK shows
+  // "Wrong API Key … you are using a test API key … The app will close now" and kills
+  // the process, so the whole app died at startup. Treating it as "no key" makes the
+  // app start and show the honest "store unavailable" state instead.
+  if (/^(test[._-]|teststore)/i.test(trimmed)) return true;
+  return false;
 }
 
 export function isRevenueCatConfigured() {

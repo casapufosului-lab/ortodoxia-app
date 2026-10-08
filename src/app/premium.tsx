@@ -7,6 +7,14 @@ import { palette } from '@/constants/palette';
 import { type TranslationKey } from '@/i18n/config';
 import { useRevenueCat } from '@/hooks/use-revenuecat';
 import { useSubscription } from '@/hooks/use-subscription';
+import { useLegalFill } from '@/lib/legal-fields';
+import { isRevenueCatConfigured } from '@/lib/revenuecat';
+import {
+  PENDING_ACTIVATION_POLL_INTERVAL_MS,
+  premiumScreenState,
+  shouldPollPendingActivation,
+  shouldShowPurchaseButtons,
+} from '@/lib/subscription';
 import { useAuth } from '@/providers/auth-provider';
 import { useLocalization } from '@/providers/localization-provider';
 
@@ -21,10 +29,20 @@ function benefits(t: (key: TranslationKey) => string): string[] {
 export default function PremiumScreen() {
   const { user } = useAuth();
   const { t, region } = useLocalization();
-  const { dailyAiLimit, isLoading, isPremium, planLabel, revenueCatActive, subscription } = useSubscription();
+  const fillLegal = useLegalFill();
+  const { dailyAiLimit, error, isLoading, isPremium, planLabel, revenueCatActive, refresh, subscription } = useSubscription();
   const { buy, loading, offeringsError, priceFor, restore } = useRevenueCat();
   const [purchaseResult, setPurchaseResult] = useState<{ ok: boolean; message: string } | null>(null);
   const [busyPlan, setBusyPlan] = useState<'monthly' | 'annual' | 'restore' | null>(null);
+
+  // Poziția B1 din audit: magazinul poate confirma un abonament înainte ca webhook-ul RevenueCat să
+  // fi scris rândul din `subscriptions` (întârziere de câteva secunde, sau webhook oprit). În starea
+  // aceea plata e deja făcută: spunem explicit că activarea e în curs, dăm un contact de suport și
+  // NU mai oferim butoanele de cumpărare.
+  // `Boolean(...)`: `isRevenueCatConfigured()` are tipul de întoarcere `boolean | (() => Promise<boolean>)`
+  // (tiparul RevenueCat pentru `Purchases.isConfigured`), iar starea ecranului cere un boolean curat.
+  const screenState = premiumScreenState(subscription, Boolean(revenueCatActive && isRevenueCatConfigured()));
+  const showPurchaseButtons = shouldShowPurchaseButtons(screenState);
   // Guard sincron împotriva dublelor atingeri în același tick: starea React
   // `busyPlan` nu poate împiedica două apeluri înainte de re-render.
   const busyRef = useRef(false);
@@ -33,6 +51,23 @@ export default function PremiumScreen() {
   useEffect(() => {
     return () => { mountedRef.current = false; };
   }, []);
+
+  // Cât timp magazinul confirmă abonamentul, dar rândul din baza de date nu a ajuns (webhook
+  // întârziat), re-verificăm periodic — mărginit, vezi `shouldPollPendingActivation`. Fără asta,
+  // plătitorul rămânea pe „plan gratuit" până la repornirea aplicației.
+  useEffect(() => {
+    if (screenState !== 'activation-pending') return undefined;
+    let attempts = 0;
+    const timer = setInterval(() => {
+      attempts += 1;
+      if (!shouldPollPendingActivation(screenState, attempts)) {
+        clearInterval(timer);
+        return;
+      }
+      void refresh();
+    }, PENDING_ACTIVATION_POLL_INTERVAL_MS);
+    return () => clearInterval(timer);
+  }, [refresh, screenState]);
 
   const monthlyPrice = priceFor('monthly');
   const annualPrice = priceFor('annual');
@@ -81,6 +116,18 @@ export default function PremiumScreen() {
         <Text style={styles.statusBody}>{isPremium ? t('premium.aiLimitBody').replace('{count}', String(dailyAiLimit)) : revenueCatActive ? t('premium.syncingBody') : t('premium.freeBody')}</Text>
         {subscription?.current_period_end && isPremium ? <Text style={styles.expiry}>{t('premium.expiryLabel').replace('{date}', new Date(subscription.current_period_end).toLocaleDateString(region.locale))}</Text> : null}
         {offeringsError ? <Text style={styles.error}>{offeringsError}</Text> : null}
+        {/* Eroarea citirii stării de abonament nu are voie să rămână invizibilă: fără ea, plătitorul
+            vedea „Plan Gratuit" fără nicio explicație (poziția B1 din audit). */}
+        {error ? <Text accessibilityLiveRegion="polite" style={styles.error}>{error}</Text> : null}
+        {/* Fără cheie validă, SDK-ul nu poate fi configurat: spunem explicit că magazinul nu e
+            disponibil, în loc să lăsăm doar prețul-lipsă („Preț în magazin") să sugereze altceva.
+            Același text pe care `buy`/`restore` îl întorc la apăsare (use-revenuecat.ts). */}
+        {!isRevenueCatConfigured() ? <Text style={styles.error}>{t('premium.storeUnavailable')}</Text> : null}
+        {screenState === 'activation-pending' ? (
+          <Text accessibilityLiveRegion="polite" style={styles.successMessage}>
+            {fillLegal(t('premium.activationPending'))}
+          </Text>
+        ) : null}
         {purchaseResult ? <Text accessibilityLiveRegion="polite" style={purchaseResult.ok ? styles.successMessage : styles.errorMessage}>{purchaseResult.message}</Text> : null}
       </Card>
       <Card style={styles.hero}>
@@ -91,13 +138,13 @@ export default function PremiumScreen() {
         <Text style={styles.plan}>{t('premium.planMonthly')}</Text>
         <Text style={styles.introPrice}>{monthlyPrice ?? t('premium.priceInStore')}</Text>
         <Text style={styles.price}>{t('premium.renewsAutomatically')}</Text>
-        <PrimaryButton disabled={busyPlan !== null} label={user ? (busyPlan === 'monthly' ? t('premium.processing') : t('premium.activateMonthly')) : t('premium.loginToSubscribe')} onPress={() => void purchase('monthly')} />
+        {showPurchaseButtons ? <PrimaryButton disabled={busyPlan !== null} label={user ? (busyPlan === 'monthly' ? t('premium.processing') : t('premium.activateMonthly')) : t('premium.loginToSubscribe')} onPress={() => void purchase('monthly')} /> : null}
       </Card>
       <Card>
         <Text style={styles.plan}>{t('premium.planAnnual')}</Text>
         <Text style={styles.introPrice}>{annualPrice ?? t('premium.priceInStore')}</Text>
         <Text style={styles.price}>{t('premium.renewsAutomatically')}</Text>
-        <PrimaryButton disabled={busyPlan !== null} label={user ? (busyPlan === 'annual' ? t('premium.processing') : t('premium.activateAnnual')) : t('premium.loginToSubscribe')} onPress={() => void purchase('annual')} />
+        {showPurchaseButtons ? <PrimaryButton disabled={busyPlan !== null} label={user ? (busyPlan === 'annual' ? t('premium.processing') : t('premium.activateAnnual')) : t('premium.loginToSubscribe')} onPress={() => void purchase('annual')} /> : null}
       </Card>
       <Card style={styles.disclosure}>
         <Text style={styles.disclosureTitle}>{t('premium.disclosureTitle')}</Text>

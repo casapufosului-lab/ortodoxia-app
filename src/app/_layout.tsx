@@ -53,7 +53,16 @@ export default function RootLayout() {
   // Initializăm RevenueCat la pornirea aplicației, cât mai devreme posibil,
   // astfel încât cumpărările să fie disponibile din prima ecran Premium.
   useEffect(() => {
-    configureRevenueCat();
+    // Pornirea aplicatiei nu are voie sa depinda de magazin: daca SDK-ul nu poate fi
+    // configurat (cheie lipsa/invalida, modul nativ indisponibil), ecranele trebuie sa
+    // se incarce in continuare si sa arate "magazinul nu este disponibil".
+    try {
+      configureRevenueCat();
+    } catch (error) {
+      if (__DEV__) {
+        console.warn('RevenueCat: configurarea a esuat; magazinul rămâne indisponibil.', error);
+      }
+    }
   }, []);
 
   return (
