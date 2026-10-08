@@ -11,8 +11,10 @@ import { useLegalFill } from '@/lib/legal-fields';
 import { isRevenueCatConfigured } from '@/lib/revenuecat';
 import { manageSubscriptionUrl } from '@/lib/store-links';
 import {
+  isPurchasable,
   PENDING_ACTIVATION_POLL_INTERVAL_MS,
   premiumScreenState,
+  purchaseAvailabilityMessageKey,
   shouldPollPendingActivation,
   shouldShowPurchaseButtons,
 } from '@/lib/subscription';
@@ -32,7 +34,7 @@ export default function PremiumScreen() {
   const { t, region } = useLocalization();
   const fillLegal = useLegalFill();
   const { dailyAiLimit, error, isLoading, isPremium, planLabel, revenueCatActive, refresh, subscription } = useSubscription();
-  const { buy, loading, offeringsError, priceFor, restore } = useRevenueCat();
+  const { availabilityFor, buy, loading, offeringsError, priceFor, restore } = useRevenueCat();
   const [purchaseResult, setPurchaseResult] = useState<{ ok: boolean; message: string } | null>(null);
   const [busyPlan, setBusyPlan] = useState<'monthly' | 'annual' | 'restore' | null>(null);
 
@@ -75,6 +77,19 @@ export default function PremiumScreen() {
 
   const monthlyPrice = priceFor('monthly');
   const annualPrice = priceFor('annual');
+
+  // OBIECTIV 1 (paywall): butonul de cumpărare are voie să fie activ doar când magazinul poate vinde
+  // planul — offering curent + pachetul planului + preț primit de la magazin (vezi `purchaseAvailability`).
+  // Prețul afișat vine tot din magazin (`priceString`), prin `priceFor`; fără el nu inventăm un preț.
+  const monthlyAvailability = availabilityFor('monthly');
+  const annualAvailability = availabilityFor('annual');
+  // Un vizitator neautentificat are butonul activ: rolul lui e să ducă la autentificare, nu să cumpere.
+  const monthlyBlocked = Boolean(user) && !isPurchasable(monthlyAvailability);
+  const annualBlocked = Boolean(user) && !isPurchasable(annualAvailability);
+  // Mesajul care explică butonul dezactivat. `store-unavailable` e deja scris în cardul de stare,
+  // deci nu îl repetăm sub fiecare plan.
+  const monthlyNoticeKey = monthlyAvailability === 'store-unavailable' ? null : purchaseAvailabilityMessageKey(monthlyAvailability);
+  const annualNoticeKey = annualAvailability === 'store-unavailable' ? null : purchaseAvailabilityMessageKey(annualAvailability);
 
   const requireUser = () => {
     if (!user) { router.push('/auth?returnTo=/premium'); return true; }
@@ -142,13 +157,23 @@ export default function PremiumScreen() {
         <Text style={styles.plan}>{t('premium.planMonthly')}</Text>
         <Text style={styles.introPrice}>{monthlyPrice ?? t('premium.priceInStore')}</Text>
         <Text style={styles.price}>{t('premium.renewsAutomatically')}</Text>
-        {showPurchaseButtons ? <PrimaryButton disabled={busyPlan !== null} label={user ? (busyPlan === 'monthly' ? t('premium.processing') : t('premium.activateMonthly')) : t('premium.loginToSubscribe')} onPress={() => void purchase('monthly')} /> : null}
+        {showPurchaseButtons ? (
+          <>
+            <PrimaryButton disabled={busyPlan !== null || monthlyBlocked} label={user ? (busyPlan === 'monthly' ? t('premium.processing') : t('premium.activateMonthly')) : t('premium.loginToSubscribe')} onPress={() => void purchase('monthly')} />
+            {monthlyNoticeKey ? <Text accessibilityLiveRegion="polite" style={styles.storeNotice}>{t(monthlyNoticeKey)}</Text> : null}
+          </>
+        ) : null}
       </Card>
       <Card>
         <Text style={styles.plan}>{t('premium.planAnnual')}</Text>
         <Text style={styles.introPrice}>{annualPrice ?? t('premium.priceInStore')}</Text>
         <Text style={styles.price}>{t('premium.renewsAutomatically')}</Text>
-        {showPurchaseButtons ? <PrimaryButton disabled={busyPlan !== null} label={user ? (busyPlan === 'annual' ? t('premium.processing') : t('premium.activateAnnual')) : t('premium.loginToSubscribe')} onPress={() => void purchase('annual')} /> : null}
+        {showPurchaseButtons ? (
+          <>
+            <PrimaryButton disabled={busyPlan !== null || annualBlocked} label={user ? (busyPlan === 'annual' ? t('premium.processing') : t('premium.activateAnnual')) : t('premium.loginToSubscribe')} onPress={() => void purchase('annual')} />
+            {annualNoticeKey ? <Text accessibilityLiveRegion="polite" style={styles.storeNotice}>{t(annualNoticeKey)}</Text> : null}
+          </>
+        ) : null}
       </Card>
       <Card style={styles.disclosure}>
         <Text style={styles.disclosureTitle}>{t('premium.disclosureTitle')}</Text>
@@ -192,6 +217,7 @@ const styles = StyleSheet.create({
   expiry: { color: palette.blue, fontSize: 13, fontWeight: '700' },
   error: { color: palette.danger, fontSize: 13, textAlign: 'center' },
   errorMessage: { color: palette.danger, fontSize: 14, fontWeight: '700', lineHeight: 20, textAlign: 'center' },
+  storeNotice: { color: palette.muted, fontSize: 12, lineHeight: 17, textAlign: 'center' },
   successMessage: { color: palette.success, fontSize: 14, fontWeight: '700', lineHeight: 20, textAlign: 'center' },
   cross: { color: palette.gold, fontSize: 34, textAlign: 'center', marginBottom: 4 },
   benefitRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
