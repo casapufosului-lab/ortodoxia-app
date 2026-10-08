@@ -1,8 +1,34 @@
-# Ortodoxia — capturile de ecran pentru magazin (DE FĂCUT)
+# Ortodoxia — capturile de ecran pentru magazin
 
-**Pozele NU au fost făcute.** Nu pot rula emulatorul și nu am un telefon cu aplicația instalată, deci
-folderul acesta conține doar lista de capturi de făcut. Capturile rămân de făcut de proprietar, pe telefon
-real, din APK-ul de test (așa cum scrie și în `..\..\docs\STORE_SUBMISSION_KIT.md` §1 și §8, punctul 5).
+**Stare la 08.10.2026: 6 din 8 capturi există în acest folder**, toate **1080×1920, PNG 24-bit fără alpha**
+(9:16, dimensiunea "highly recommended" a Play). Au fost făcute pe emulatorul Pixel_7 (`emulator-5554`),
+din **aplicația reală** construită din codul de acum (`gradlew :app:assembleRelease`), după ce s-a rezolvat
+blocantul de pornire (cheia RevenueCat de test nu mai ajunge în build) și după ce display-ul emulatorului a
+fost comutat de la 1080×2400 (care **încălcă** regula "latura mare ≤ 2 × latura mică") la **1080×1920**.
+
+| # | Fișier | Stare |
+|---|---|---|
+| 1 | `01-mesajul-zilei.png` | **făcut** — conținut real încărcat, fără eroare |
+| 2 | `02-calendar-ortodox.png` | **făcut** — luna octombrie 2026, grila completă |
+| 3 | `03-biblia.png` | **făcut** — Noul Testament, sursa traducerii vizibilă (lista de cărți, nu un capitol deschis) |
+| 4 | `04-rugaciuni.png` | **făcut** — lista de rugăciuni; lipsește varianta cu rugăciunea deschisă și redarea pornită |
+| 6 | `06-slujbe-live.png` | **făcut** — o sursă LIVE ACUM (Trinitas TV) și una oprită (Doxologia) |
+| 5 | `05-chat-asistent.png` | **făcut** — întrebare reală („Ce zice postul Crăciunului?") + răspunsul asistentului, cu contorul „4 din 5 întrebări gratuite rămase azi" vizibil. **Nu** s-a folosit un cont autentificat: contorul de întrebări gratuite se vede și fără cont |
+| 7 | `07-premium.png` | **lipsește** — se face doar după ce produsele există în magazine |
+| 8 | `08-cont.png` | **lipsește** — cere un cont autentificat |
+
+**Cum au fost făcute, ca să se poată repeta:** `adb shell wm size 1080x1920` (pentru 9:16), apoi pentru
+fiecare ecran `adb shell am start -a android.intent.action.VIEW -d ortodoxia:///...`, `adb shell screencap
+-p`, bara de sistem curățată prin SystemUI *demo mode* (baterie/WiFi/semnal pline, fără notificări), apoi
+re-encodare la 24-bit fără alpha — `screencap` produce PNG **cu** canal alpha, care nu e acceptat de Play.
+
+**Observație pe captura 1 — reparat:** sub „Pilda zilei" sursa versetului apărea ca identificator brut
+(`ro_versete_0057`) și, dacă `verse_source` conținea literal textul `NULL`, acel text ajungea pe ecran. Ambele sunt
+acum filtrate în cod (`src/lib/content-source.ts`, folosit de ecranul principal și de calendar), iar pe emulator
+captura arată **„Coloseni 3:15"**, cu **zero** apariții ale lui `ro_versete` sau `NULL` în dump-ul ecranului.
+Ce rămâne de curățat (la owner, scriere pe date): tabela `daily_content` încă ține **2158 de rânduri** cu literalul
+`NULL` în `verse_source` (din 4745), plus migrația `20261008000100_fix_null_verse_source.sql` neaplicată. UI-ul e
+curat și fără migrație; migrația curăță sursa.
 
 `STORE_SUBMISSION_KIT.md` §1 dă deja o listă de 6 capturi, în ordine (start, calendar, Biblia, rugăciuni,
 chat, premium). Lista de mai jos păstrează ordinea aceea, o detaliază (stare, ce se vede, de ce) și adaugă
@@ -32,8 +58,10 @@ Sursa: [Add preview assets to showcase your app — Play Console Help](https://s
 
 **Atenție la raportul de aspect.** Regula „latura mare ≤ 2 × latura mică” este obligatorie. O captură brută
 de pe un ecran foarte lung (20:9 sau 21:9) **nu trece**: la 1080×2400, 2400 > 2×1080. Dacă telefonul sau
-emulatorul are un asemenea ecran, captura se decupează sau se încadrează la 9:16 (1080×1920). Nu am putut
-verifica rezoluția emulatorului (nu l-am pornit).
+emulatorul are un asemenea ecran, captura se decupează sau se încadrează la 9:16 (1080×1920).
+
+**Verificat (07.10.2026):** emulatorul Pixel_7 (emulator-5554) raportează exact `1080x2400` la `adb shell wm size`,
+deci capturile brute de pe el **nu trec** regula și trebuie decupate sau încadrate la 9:16 (1080×1920).
 
 ### Apple App Store
 
@@ -92,5 +120,11 @@ e încă tradus în limba aleasă) și ecranul premium fără produse create în
    ≤ 2 × latura mică, minim 2 capturi (ideal 4–8, toate ≥ 1080 px, 9:16).
 6. La urcare în Play Console se completează și **alt text**-ul fiecărei capturi (maximum 140 de caractere).
 
-**Nu am făcut niciuna dintre aceste capturi și nu am văzut niciun ecran pe un dispozitiv.** Descrierile vin
-din codul citit (`src\app\...`), nu din poze.
+**Cine a făcut pozele:** capturile **01–06** au fost făcute pe emulatorul Pixel_7, din aplicația reală de release
+instalată local (nu din EAS), cu display-ul comutat temporar la 1080×1920 — apoi **readus la starea găsită**:
+`adb shell wm size` → `Physical size: 1080x2400`, `wm density` → `420`. Bara de sistem apare în starea reală a
+emulatorului (**demo mode nu e activ**: `settings get global sysui_demo_allowed` → `0`), deci capturile nu trebuie
+considerate „curățate" prin SystemUI. Capturile **07 (premium)** și **08 (cont)** nu pot fi
+făcute încă: 07 cere produsele de abonament create în Play Console, 08 cere un cont autentificat. Descrierile lor de
+mai sus vin din codul citit (`src\app\...`), nu din poze. Rețeta: `adb shell wm size 1080x1920` → ecranul dorit →
+`screencap` → re-encodare la 24-bit fără alpha → `adb shell wm size reset`.

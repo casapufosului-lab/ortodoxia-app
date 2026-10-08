@@ -1,8 +1,10 @@
 # Kit de publicare în magazine (gata de folosit în ziua în care conturile sunt plătite)
 
-> **Atenție (27.09.2026):** textul de listare promite favorite la versete și psalmi, dar în cod
-> favoritele există **doar la rugăciuni** (tabela `favorites` are doar `prayer_id`). Ori se
-> implementează, ori promisiunea se scoate din listare. Restul stării reale:
+> **Actualizat (07.10.2026):** textul de listare promitea favorite la versete **și psalmi**. Favoritele la
+> versete există acum în cod (`src/lib/verse-favorites.ts` + migrarea `20260927000100_add_verse_favorites.sql`),
+> dar favoritele la **psalmi** nu se pot implementa: corpusul biblic din aplicație este doar **Noul
+> Testament** (`bible.tsx` listează Matei → Apocalipsa), iar Psalmii sunt în Vechiul Testament. De aceea
+> promisiunea „psalmi" a fost scoasă din §2 (07.10.2026). Restul stării reale:
 > [STARE-REALA.md](./STARE-REALA.md).
 
 Ce e în acest document: exact ce se încarcă, cu ce text, ce răspunsuri se dau la formularele magazinelor
@@ -34,10 +36,15 @@ Play cere minimum 2, recomandat 4-8, format telefon (ex. 1080×1920). Ce merită
 
 ## 2. Textele listării (RO — limba principală)
 
-**Titlu** (max 30 caractere): `Ortodoxia — calendar și rugăciuni`
+**Titlu** (max 30 caractere): `Ortodoxia: calendar ortodox`
+
+*(Titlul anterior — „Ortodoxia — calendar și rugăciuni" — avea 33 de caractere, peste limita de 30
+a Play Console, care refuza salvarea. Verificat automat de `tests/store-listing-text.test.mjs`.)*
 
 **Descriere scurtă** (max 80 caractere):
-`Calendar ortodox, rugăciuni, Biblia și un asistent AI, într-o aplicație luminoasă.`
+`Calendar ortodox, rugăciuni, Biblia și asistent AI.`
+
+*(Descrierea scurtă anterioară avea 82 de caractere, peste limita de 80.)*
 
 **Descriere completă** (max 4000 caractere):
 
@@ -54,7 +61,7 @@ CE GĂSEȘTI ÎN APLICAȚIE
   duhovnicească. Răspunsurile sunt informative și nu înlocuiesc sfatul preotului.
 • Slujbe live: unde poți urmări o slujbă transmisă online.
 • Notificări la ora pe care o alegi, ca să nu ratezi mesajul zilei.
-• Favorite: versete, psalmi și rugăciuni salvate pentru mai târziu.
+• Favorite: versete și rugăciuni salvate pentru mai târziu.
 
 PENTRU CINE
 Pentru oricine vrea să țină aproape credința, calendarul și rugăciunea, fără să caute prin zeci de
@@ -97,18 +104,42 @@ Codul folosește exact aceste ID-uri (`src/lib/revenuecat.ts`), deci nu se schim
 
 ## 4. Formularul „Data safety" (Play) — răspunsuri
 
-Pe baza politicii publicate (`https://ortodoxia.web.app/privacy`):
+Pe baza politicii publicate (`https://ortodoxia.web.app/privacy`) și a textului din aplicație
+(secțiunea `privacy` din `src/i18n/config.ts`, afișată de `src/app/privacy.tsx`). Cele două trebuie
+să spună același lucru: dacă se schimbă unul, se schimbă și celălalt — poarta de release verifică
+potrivirea înainte de build.
 
 | Întrebare | Răspuns |
 |---|---|
-| Colectează sau partajează date? | **Da** (cont, preferințe, conținut salvat, conversații AI) |
+| Colectează sau partajează date? | **Da** (cont, preferințe, conținut salvat, conversații AI, token de notificare) |
 | Date criptate în tranzit? | **Da** (HTTPS) |
 | Utilizatorul poate cere ștergerea datelor? | **Da** → `https://ortodoxia.web.app/delete-account` |
 | Tipuri colectate | Adresă de email; nume (opțional); preferințe în aplicație; conținut salvat (versete, rugăciuni); mesaje în chat (textul întrebărilor) |
-| Scop | Funcționarea aplicației, autentificare, limite de utilizare, suport |
-| Partajate cu terți? | Doar procesatori tehnici (găzduire, bază de date, autentificare, notificări, furnizor AI) — nu pentru publicitate |
+| ID-uri de dispozitiv sau alte ID-uri | **Da** — Expo Push Token, transmis și stocat server-side **doar** dacă utilizatorul activează notificările (opțional, se poate opri oricând; tokenul nu conține date personale) |
+| Scop | Funcționarea aplicației, autentificare, limite de utilizare, livrarea notificărilor, suport |
+| Datele sunt partajate cu terți? | Doar procesatori tehnici (găzduire, bază de date, autentificare, notificări, furnizor AI) — nu pentru publicitate |
+| Folosite pentru publicitate sau urmărire? | **Nu** |
 | Locație colectată? | **Nu** |
 | Cookie-uri de publicitate? | **Nu** |
+
+### 4.1 Ce trebuie adăugat pe pagina publicată (singura copie rămasă în urmă)
+
+Politica din aplicație și formularul de mai sus spun acum același lucru. Pagina publicată
+`https://ortodoxia.web.app/privacy` a fost citită pe 8 octombrie 2026 (HTTP 200) și are 8 secțiuni:
+operator, ce date colectăm, ce NU facem, cât timp păstrăm, ștergerea contului, servicii folosite,
+drepturile tale, modificări. Îi lipsesc, față de textul din aplicație (secțiunile 11 și 12):
+
+- temeiul legal pentru fiecare prelucrare (art. 6 GDPR: contract, consimțământ, interes legitim);
+- duratele de păstrare pe categorii de date;
+- transferurile în afara SEE și garanțiile lor (clauze contractuale standard);
+- dreptul de a retrage consimțământul oricând și dreptul de a depune plângere la ANSPDCP,
+  cu adresa autorității (B-dul G-ral. Gheorghe Magheru 28-30, sector 1, București);
+- precizarea că nu se iau decizii automatizate cu efecte semnificative;
+- tokenul de notificare (Expo Push Token), colectat doar dacă utilizatorul activează notificările.
+
+Textul de copiat este chiar cel din aplicație: aceleași propoziții sunt în `src/i18n/config.ts`
+(secțiunea `privacy`, cheile `s11*` și `s12*`), iar limba română este cea de referință. După
+actualizarea paginii, data intrării în vigoare se schimbă în ambele locuri.
 
 ---
 

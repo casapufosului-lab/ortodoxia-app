@@ -43,7 +43,9 @@ $icon.Dispose()
 
 # ── 2. grafica de prezentare 1024×500 ─────────────────────────────────────────
 $width = 1024; $height = 500
-$feature = New-Object System.Drawing.Bitmap $width, $height
+# Play cere grafica de prezentare ca JPEG sau PNG de 24 de biți, FĂRĂ canal alpha. Un Bitmap implicit
+# iese pe 32bppArgb (are canal alpha chiar dacă pixelii sunt opaci), deci se cere explicit 24bppRgb.
+$feature = New-Object System.Drawing.Bitmap $width, $height, ([System.Drawing.Imaging.PixelFormat]::Format24bppRgb)
 $graphics = [System.Drawing.Graphics]::FromImage($feature)
 $graphics.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::AntiAlias
 $graphics.TextRenderingHint = [System.Drawing.Text.TextRenderingHint]::AntiAliasGridFit
