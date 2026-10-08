@@ -34,17 +34,14 @@ export interface LiveStatusResult {
 }
 
 /**
- * Raw payload returned by the Edge Function. The optional `budget` field reports
- * how much YouTube discovery allowance the invocation consumed, which is what
- * keeps the endpoint within the daily API quota.
+ * Raw payload returned by the Edge Function.
+ *
+ * The discovery allowance the invocation consumed is logged server-side and is
+ * deliberately NOT part of the response: anonymous callers have no business
+ * knowing how much YouTube quota is left (pre-launch audit, item B4).
  */
 export interface LiveStatusResponse {
   sources: unknown;
-  budget?: {
-    remainingSearches: number | null;
-    skippedForBudget: number;
-    maxSearchesPerInvocation: number;
-  };
 }
 
 // ─── Validation ────────────────────────────────────────────────────────────

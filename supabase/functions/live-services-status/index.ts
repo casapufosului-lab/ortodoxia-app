@@ -17,13 +17,18 @@ import type { CacheStore, CachedStatusRow, SanitizedResponse } from './status.ts
 import {
   computeAllSourceStatuses,
   computeSourceStatus,
-  createDiscoveryBudget,
+  createDayScopedDiscoveryBudget,
   discoveryBudgetSummary,
 } from './status.ts';
+import { clientAddress, createWindowRateLimiter } from './rate-limit.ts';
 
 import { corsHeaders as buildCorsHeaders, preflightResponse } from '../_shared/http.ts';
 
 const ALLOWED_HEADERS = 'authorization, x-client-info, apikey, content-type, x-country-code';
+
+/** One throttle and one discovery budget per deployed instance (see the headers of both modules). */
+const statusLimiter = createWindowRateLimiter();
+const discoveryBudget = createDayScopedDiscoveryBudget();
 
 /** CORS headers for this request; the origin comes from the ALLOWED_ORIGINS secret. */
 function corsHeaders(req: Request) {
@@ -40,18 +45,22 @@ function corsHeaders(req: Request) {
  */
 let activeRequest: Request | null = null;
 
-function json(body: Record<string, unknown>, status = 200) {
+function json(
+  body: Record<string, unknown>,
+  status = 200,
+  extraHeaders: Record<string, string> = {},
+) {
   const req = activeRequest;
   if (!req) {
     // Defensive: never emit CORS headers for an unknown origin.
     return new Response(JSON.stringify(body), {
       status,
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...extraHeaders },
     });
   }
   return new Response(JSON.stringify(body), {
     status,
-    headers: { ...corsHeaders(req), 'Content-Type': 'application/json' },
+    headers: { ...corsHeaders(req), 'Content-Type': 'application/json', ...extraHeaders },
   });
 }
 
@@ -169,9 +178,33 @@ Deno.serve(async (req: Request) => {
   // by anyone, the request surface is kept deliberately narrow:
   //   * the country header is validated against the known source registry, so an
   //     arbitrary value cannot influence work performed;
-  //   * discovery is bounded by a per-invocation search budget (see status.ts), so
-  //     repeated or hostile calls cannot consume the daily API quota;
+  //   * one client gets a bounded number of requests per window and is then told
+  //     429 with Retry-After (rate-limit.ts); other clients are unaffected;
+  //   * discovery is bounded by a budget scoped to the UTC day, not to the request
+  //     (createDayScopedDiscoveryBudget), so repeating the call cannot restart it;
+  //   * the remaining allowance is logged server-side, never returned to callers;
   //   * `?id=` still accepts only a canonical source id.
+  const client = clientAddress(req.headers);
+  if (client) {
+    const decision = statusLimiter.check(client, nowMs);
+    if (!decision.allowed) {
+      console.warn('live-status rate limited', {
+        limit: decision.limit,
+        retryAfterSeconds: decision.retryAfterSeconds,
+      });
+      return json(
+        {
+          error: 'Prea multe cereri. Încearcă din nou peste puțin timp.',
+          code: 'status_rate_limited',
+        },
+        429,
+        { 'Retry-After': String(decision.retryAfterSeconds) },
+      );
+    }
+  } else {
+    console.warn('live-status: no client address in request headers, per-client throttle skipped');
+  }
+
   const requestedCountryCode = (req.headers.get('x-country-code') ?? 'RO').trim().toUpperCase();
   const knownCountryCodes = new Set(LIVE_SOURCES.map((source) => source.countryCode));
   if (!knownCountryCodes.has(requestedCountryCode)) {
@@ -180,7 +213,7 @@ Deno.serve(async (req: Request) => {
 
   // Optional single-source filter: ?id=trinitas-tv (must be a known canonical ID)
   const requestedId = new URL(req.url).searchParams.get('id');
-  const budget = createDiscoveryBudget();
+  const budget = discoveryBudget.forNow(nowMs);
 
   if (requestedId) {
     const source = getSourceById(requestedId);
@@ -196,11 +229,13 @@ Deno.serve(async (req: Request) => {
       });
     }
     const result = await computeSourceStatus(source, youtube, cache, nowMs, apiKeyPresent, budget);
-    return json({ sources: [result], budget: discoveryBudgetSummary(budget) });
+    console.log('live-status budget', { day: discoveryBudget.dayKey(), ...discoveryBudgetSummary(budget) });
+    return json({ sources: [result] });
   }
 
   const eligible = getEligibleSources(requestedCountryCode);
   const results = await computeAllSourceStatuses(eligible, youtube, cache, nowMs, apiKeyPresent, budget);
 
-  return json({ sources: results, budget: discoveryBudgetSummary(budget) });
+  console.log('live-status budget', { day: discoveryBudget.dayKey(), ...discoveryBudgetSummary(budget) });
+  return json({ sources: results });
 });

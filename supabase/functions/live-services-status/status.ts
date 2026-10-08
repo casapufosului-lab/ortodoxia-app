@@ -169,11 +169,16 @@ function unknownResponse(sourceId: string, nowMs: number): SanitizedResponse {
  * (~44,800 units) against a default quota of 10,000, so discovery would fail for
  * most of the day and every source would sit at UNKNOWN.
  *
- * Rather than raising the interval (which only moves the problem) the function now
- * enforces a per-invocation ceiling on searches. Cache rows carry `next_refresh_at`,
- * so a source that is skipped this invocation is picked up by a later one; the
- * ceiling therefore bounds the worst case — including repeated or hostile calls —
- * without changing the freshness of sources that are refreshed within budget.
+ * Rather than raising the interval (which only moves the problem) the function
+ * enforces a ceiling on searches. Cache rows carry `next_refresh_at`, so a source
+ * that is skipped now is picked up by a later run.
+ *
+ * The ceiling is scoped to the DAY, not to the invocation. It used to be created
+ * inside the handler, so every request started again with the full allowance and a
+ * caller could burn the whole daily quota alone while the comment here claimed the
+ * opposite (pre-launch audit, item B4). `createDayScopedDiscoveryBudget` keeps one
+ * budget per deployed instance per UTC day, and the endpoint throttles a single
+ * client before it can get that far (`rate-limit.ts`).
  */
 export const DISCOVERY_SEARCH_COST_UNITS = 100;
 export const YOUTUBE_DAILY_QUOTA_UNITS = 10_000;
@@ -194,6 +199,48 @@ export type DiscoveryBudget = {
 
 export function createDiscoveryBudget(maxSearches = DISCOVERY_MAX_SEARCHES_PER_DAY): DiscoveryBudget {
   return { remainingSearches: maxSearches, skippedForBudget: 0 };
+}
+
+/** UTC day key (`YYYY-MM-DD`) the discovery budget is scoped to. */
+export function discoveryBudgetDayKey(nowMs: number): string {
+  return new Date(nowMs).toISOString().slice(0, 10);
+}
+
+export type DayScopedDiscoveryBudget = {
+  /** The budget for the day `nowMs` falls in; the same object while the day lasts. */
+  forNow(nowMs: number): DiscoveryBudget;
+  /** The day the current budget belongs to (`''` before the first call). */
+  dayKey(): string;
+};
+
+/**
+ * One discovery budget per deployed instance per UTC day.
+ *
+ * Deno keeps a warm instance between requests, so a module-level budget means
+ * repeated calls share the allowance instead of restarting it. Cold starts and
+ * extra instances still each get their own budget — this bounds accidental and
+ * repeated use, while the per-client limiter in `rate-limit.ts` bounds a hostile
+ * single caller. A global counter would need a table and is deliberately left to
+ * the owner (see docs/LIVE_SERVICES_STATUS.md).
+ */
+export function createDayScopedDiscoveryBudget(
+  maxSearches = DISCOVERY_MAX_SEARCHES_PER_DAY,
+): DayScopedDiscoveryBudget {
+  let currentDay = '';
+  let budget: DiscoveryBudget | null = null;
+  return {
+    forNow(nowMs: number): DiscoveryBudget {
+      const day = discoveryBudgetDayKey(nowMs);
+      if (!budget || currentDay !== day) {
+        currentDay = day;
+        budget = createDiscoveryBudget(maxSearches);
+      }
+      return budget;
+    },
+    dayKey(): string {
+      return currentDay;
+    },
+  };
 }
 
 function consumeDiscoveryBudget(budget: DiscoveryBudget | undefined): boolean {
@@ -393,6 +440,6 @@ export function discoveryBudgetSummary(budget: DiscoveryBudget) {
   return {
     remainingSearches: Number.isFinite(budget.remainingSearches) ? budget.remainingSearches : null,
     skippedForBudget: budget.skippedForBudget,
-    maxSearchesPerInvocation: DISCOVERY_MAX_SEARCHES_PER_DAY,
+    maxSearchesPerDay: DISCOVERY_MAX_SEARCHES_PER_DAY,
   };
 }
