@@ -142,6 +142,17 @@ Accepted routes, in order of preference:
    with a file in `android/app/` or with `EXPO_PUBLIC_*`-style local env. This touches `app.json`
    (owned by the launch session) — it is an owner decision, and the fallback keeps the current
    behaviour intact when the variable is unset.
+
+   **Implemented on 08.10.2026:** this route is in the tree. `app.config.js` reads
+   `GOOGLE_SERVICES_JSON_PATH` or `GOOGLE_SERVICES_JSON` (the name EAS Build gives a file-type
+   variable) and falls back to `./google-services.json` when neither points at an existing file —
+   warning on stderr, so a missing file cannot pass unnoticed. The Gradle wiring no longer depends on
+   a hand edit either: `plugins/with-google-services.js` (registered in `app.json`) adds the
+   `com.google.gms:google-services` classpath to `android/build.gradle` and the `apply plugin` line
+   that activates it in `android/app/build.gradle`, at prebuild time, idempotently.
+   Covered by `tests/google-services-plugin.test.mjs` (a mutant that drops the `apply plugin` line
+   makes it fail). Nothing was relaxed in the credential scanner.
+
 2. **Transient local copy.** For a *local* prebuild only: copy the file to the repo root, run
    `npx expo prebuild -p android`, then delete it. The gate must not be run while it is there — it
    would (correctly) report the FAIL above.
