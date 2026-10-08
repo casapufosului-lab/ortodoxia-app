@@ -21,6 +21,12 @@
  * runtime, no bundler and no network. This script is that exercise, wired to `npm run
  * safety` so a change to either parser cannot quietly make a gate meaningless.
  *
+ *   3. The AI assistant's own safety rules live in one template string inside the Edge
+ *      Function. A shorter rewrite of that prompt (or a deleted line) changes what the
+ *      assistant does, and nothing else would notice. That suite checks the rules are
+ *      present, that the prompt is really the one sent to OpenAI, that the reporting path
+ *      exists end to end — and that the check itself fails when a rule is removed.
+ *
  * It does not replace the real gates (`test:a11y`, `test:startup`); it checks that the
  * gates can still see.
  *
@@ -49,6 +55,11 @@ const SUITES = [
     name: 'accessibility scanner',
     script: join(ROOT, 'scripts', 'accessibility-audit.mjs'),
     why: 'decides whether every control, label, tap target and colour pair is usable',
+  },
+  {
+    name: 'chat safety rules',
+    script: join(ROOT, 'scripts', 'chat-safety-rules.mjs'),
+    why: 'decides whether the AI still refuses medical advice and routes self-harm to 112, and whether a reported answer can reach a human',
   },
 ];
 
@@ -80,5 +91,5 @@ if (failures > 0) {
   console.log(`SAFETY GATE: FAILED (${failures} suite(s)).`);
   process.exitCode = 1;
 } else {
-  console.log('SAFETY GATE: OK — both gate parsers still read their input correctly.');
+  console.log('SAFETY GATE: OK — all ${SUITES.length} gate suites still read their input correctly.');
 }

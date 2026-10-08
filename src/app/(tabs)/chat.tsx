@@ -2,7 +2,7 @@ import { FunctionsHttpError } from '@supabase/supabase-js';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { router, useFocusEffect } from 'expo-router';
 import { SymbolView } from 'expo-symbols';
-import { ActivityIndicator, AppState, KeyboardAvoidingView, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Alert, AppState, KeyboardAvoidingView, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { Card, PageHeader, PrimaryButton, Screen } from '@/components/mvp-ui';
 import { palette } from '@/constants/palette';
@@ -188,6 +188,9 @@ function ChatConversation() {
   const [remaining, setRemaining] = useState(FREE_DAILY_AI_LIMIT);
   const [isLoading, setIsLoading] = useState(true);
   const [isSending, setIsSending] = useState(false);
+  // A7: identificatorii răspunsurilor deja raportate în această sesiune de ecran. Butonul dispare
+  // după o raportare reușită, ca omul să nu trimită același raport de mai multe ori.
+  const [reportedMessageIds, setReportedMessageIds] = useState<string[]>([]);
   const isSendingRef = useRef(false);
   const dictationActiveRef = useRef(false);
   const dictationReloadPauseUntilRef = useRef(0);
@@ -532,7 +535,7 @@ function ChatConversation() {
             if (typeof details?.dailyLimit === 'number') setDailyLimit(details.dailyLimit);
             if (isQuotaExhausted(details?.code)) setRemaining(0);
           } catch {
-            // PÃ„Æ’strÃ„Æ’m mesajul simplu de mai sus.
+            // Păstrăm mesajul simplu de mai sus.
           }
         }
 
@@ -563,6 +566,50 @@ function ChatConversation() {
         setIsSending(false);
       }
     }
+  };
+
+  /**
+   * A7 — raportarea unui răspuns al asistentului.
+   *
+   * Google Play cere, pentru conținutul generat de AI, o cale prin care utilizatorul să semnaleze un
+   * răspuns ofensator sau periculos, iar AGENTS.md (regula 36) cere același lucru la nivel de produs.
+   * Până acum singurul canal era adresa de suport din Setări.
+   *
+   * Raportul se scrie cu ACEAȘI sesiune care a pus întrebarea (`supabase` când există cont, clientul
+   * de vizitator altfel). `ai_reports.user_id` are `default auth.uid()`, iar clientul nu trimite
+   * identificatorul deloc, deci nu poate scrie în numele altcuiva — vezi migrația
+   * `20261008000200_add_ai_reports.sql`. Ce se întâmplă cu raportul e descris în
+   * `docs/MODERARE-CONTINUT-AI.md`.
+   */
+  const reportAnswer = (message: Message) => {
+    if (reportedMessageIds.includes(message.id)) return;
+
+    const submit = async (reason: 'offensive' | 'harmful') => {
+      try {
+        const client = user ? supabase : chatGuestSupabase;
+        const { error } = await client.from('ai_reports').insert({
+          reason,
+          message_text: message.text.slice(0, 4000),
+          thread_id: threadId,
+          app_language: languageCode,
+        });
+        // 23505 = același om a raportat deja exact acest text (indexul unic anti-spam). Rezultatul
+        // dorit de utilizator există deja, deci nu i se afișează o eroare pentru un duplicat.
+        if (error && error.code !== '23505') throw error;
+        setReportedMessageIds((current) => (current.includes(message.id) ? current : [...current, message.id]));
+        Alert.alert(t('chat.reportButton'), t('chat.reportSent'));
+      } catch {
+        // Raportarea care nu ajunge nicăieri trebuie SPUSĂ. Un eșec tăcut ar lăsa omul cu impresia
+        // că a semnalat ceva, iar coada de moderare ar rămâne goală.
+        Alert.alert(t('chat.reportButton'), t('chat.reportFailed'));
+      }
+    };
+
+    Alert.alert(t('chat.reportButton'), t('chat.reportMessage'), [
+      { text: t('chat.reportReasonOffensive'), onPress: () => void submit('offensive') },
+      { text: t('chat.reportReasonWrong'), onPress: () => void submit('harmful') },
+      { text: t('chat.reportCancel'), style: 'cancel' },
+    ]);
   };
 
   return (
@@ -615,6 +662,18 @@ function ChatConversation() {
             {messages.map((message) => (
               <View key={message.id} style={[styles.message, message.role === 'user' ? styles.userMessage : styles.assistantMessage]}>
                 <Text style={message.role === 'user' ? styles.userText : styles.assistantText}>{message.text}</Text>
+                {/* A7: raportarea se oferă DOAR la răspunsurile asistentului și dispare după ce
+                    raportul a fost trimis (vezi `reportAnswer`). Textul de pe buton este eticheta
+                    accesibilă, deci nu e nevoie de un `accessibilityLabel` separat. */}
+                {message.role === 'assistant' && !reportedMessageIds.includes(message.id) ? (
+                  <Pressable
+                    accessibilityRole="button"
+                    onPress={() => reportAnswer(message)}
+                    style={styles.reportLink}
+                  >
+                    <Text style={styles.reportLinkText}>{t('chat.reportButton')}</Text>
+                  </Pressable>
+                ) : null}
               </View>
             ))}
             {isSending ? (
@@ -687,6 +746,10 @@ const styles = StyleSheet.create({
   thinking: { flexDirection: 'row', gap: 8, alignItems: 'center' },
   userText: { color: '#FFFFFF', fontSize: 15, lineHeight: 21 },
   assistantText: { color: palette.ink, fontSize: 15, lineHeight: 21 },
+  // 44 înălțime minimă: sub asta nu se mai nimerește ținta cu degetul (Apple cere 44pt, Google 48dp),
+  // iar controlul e mic și lângă text, deci ușor de ratat.
+  reportLink: { minHeight: 44, justifyContent: 'center', alignSelf: 'flex-start', marginTop: 2, paddingRight: 8 },
+  reportLinkText: { color: palette.blue, fontSize: 13, fontWeight: '700', textDecorationLine: 'underline' },
   composer: { flexDirection: 'row', gap: 8, alignItems: 'flex-end' },
   input: { flex: 1, minHeight: 48, maxHeight: 120, backgroundColor: palette.paper, borderWidth: 1, borderColor: palette.line, borderRadius: 14, color: palette.ink, paddingHorizontal: 14, paddingVertical: 12 },
   mic: { width: 48, height: 48, borderRadius: 14, backgroundColor: palette.paper, borderColor: palette.line, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
