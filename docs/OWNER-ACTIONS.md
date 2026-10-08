@@ -1,11 +1,12 @@
 # Ce are de făcut ownerul — pași exacți, fără CLI și fără token
 
 > **Stare măsurată de mine, read-only, pe 08.10.2026** (proiectul `pgjabfgibdpcomegkojg`).
-> Poarta de lansare: **27 PASS / 4 FAIL / 3 DEFERRED → `RELEASE GATE: NOT READY`**
+> Poarta de lansare: **31 PASS / 0 FAIL / 3 DEFERRED → `RELEASE GATE: NOT READY`**
 > (`node scripts/release-readiness.mjs --release`).
 >
-> **Cele 4 FAIL sunt exact capitolele 1–3 de mai jos** (capitolul 1 produce două FAIL-uri, din aceeași
-> cheie). Nu există alt FAIL de cod rămas. Fiecare pas spune **ce dovadă îl închide**.
+> **Nu mai există niciun FAIL.** Cele 3 DEFERRED sunt intrări externe — cheia de App Store, care se emite în
+> contul App Store Connect, și calendarul 2027, încă nepublicat — nu restanțe de cod. Capitolele 1–3 de mai
+> jos sunt deci **închise**. Fiecare pas spune **ce dovadă îl închide**.
 >
 > Nimic din documentul acesta nu cere linia de comandă, un token sau o parolă. Totul se face din
 > dashboarduri, prin copiere–lipire.
@@ -250,7 +251,59 @@ Prima trebuie să întoarcă un rând cu `active = true`; a doua, funcția. Potr
 
 ---
 
-## 5. Magazinul — în ordinea asta, după 1–4
+## 5. Autentificarea (Google / Apple) — „URL Configuration" în Supabase
+
+**Nu închide niciun FAIL din poartă** (poarta nu citeşte dashboardul), dar închide două lucruri pe care le
+simte un om real: butonul „Continuă cu Google" şi linkul din emailul „Ai uitat parola?". Amândouă merg azi
+pe **aceeaşi** adresă greşită, deci se repară cu aceeaşi două câmpuri.
+
+### 5.1 Ce e greşit acum (măsurat, 08.10.2026)
+Supabase → proiectul `pgjabfgibdpcomegkojg` → **Authentication → URL Configuration**:
+
+- `Site URL` este `http://127.0.0.1:8081` — valoarea implicită de development;
+- lista `Redirect URLs` **nu** conţine `ortodoxia://auth`.
+
+Când `redirect_to` nu e în lista albă, Supabase **îl ignoră fără să dea eroare** şi foloseşte `Site URL`.
+De aceea autentificarea cu Google **chiar reuşeşte** (contul se creează), dar sesiunea e trimisă la o adresă
+moartă (`http://127.0.0.1:8081`, unde nu ascultă nimic pe telefon), iar aplicaţia afişează „Autentificare
+anulată". Exact acelaşi lucru se întâmplă cu linkul de resetare a parolei: **un om care îşi uită parola
+rămâne blocat**.
+
+### 5.2 Ce se apasă şi ce se lipeşte (2 minute)
+Tot în **Authentication → URL Configuration**:
+
+1. **Site URL** — schimbă `http://127.0.0.1:8081` în `https://ortodoxia.web.app` (domeniul canonic al
+   aplicaţiei; e live şi răspunde 200). Nu lăsa `127.0.0.1` acolo nici ca „a doua variantă".
+2. **Redirect URLs** — adaugă, **una pe linie** (butonul *Add URL* de fiecare dată):
+   - `ortodoxia://**` ← patternul documentat de Supabase pentru scheme proprii; acoperă `ortodoxia://auth`
+     folosit de aplicaţie (şi de linkul de parolă, şi de OAuth);
+   - `https://ortodoxia.web.app/**` — pentru varianta web;
+   - `http://localhost:8081/**` — opţional, doar pentru development local pe calculator.
+3. **Save**. Fără pasul acesta, cele două câmpuri nu se aplică.
+
+### 5.3 Apple — butonul se ascunde singur, nu-l „repara" manual
+`GET /auth/v1/settings` răspunde azi **`"apple": false`** (providerul nu e activat), deci butonul „Continuă
+cu Apple" **nu se mai afişează** în aplicaţie — un buton care duce garantat la eroare nu are ce căuta pe
+ecran. Nu ai nimic de făcut aici.
+
+În ziua în care vrei Apple pornit (pe Android nu e cerut de Google Play; e o cerinţă Apple pentru iOS):
+**Authentication → Providers → Apple** → activează şi completează `Services ID`, `Team ID`, `Key ID` şi
+cheia `.p8`. Butonul **reapare singur**, fără nicio modificare de cod — codul întreabă aceeaşi listă de
+provideri la fiecare pornire.
+
+### 5.4 Dovada care închide pasul (o aduc eu, fără credenţiale)
+1. **Proba `303`** — `GET https://pgjabfgibdpcomegkojg.supabase.co/auth/v1/callback` cu cheia publicabilă:
+   - *înainte:* `303` → `http://127.0.0.1:8081?error=…`;
+   - *după:* `303` → `https://ortodoxia.web.app…`, **fără** `127.0.0.1` în adresă.
+2. **Pe emulator, cu un cont real:** apeşi „Continuă cu Google" → se deschide Google → **fila se închide
+   singură**, fără `127.0.0.1` în bara de adrese; ecranul **Cont** arată adresa contului; după
+   `am force-stop` şi repornire, contul e **încă** autentificat.
+
+Ambele sunt măsurători, nu promisiuni — trimite-mi doar „am salvat", restul verific eu.
+
+---
+
+## 6. Magazinul — în ordinea asta, după 1–5
 
 1. **Textele de listare** sunt deja în limite (`docs/STORE_SUBMISSION_KIT.md`): titlul
    „Ortodoxia: calendar ortodox" = **27** caractere (max 30), descrierea scurtă are **51** caractere
@@ -270,7 +323,7 @@ Prima trebuie să întoarcă un rând cu `active = true`; a doua, funcția. Potr
 
 ---
 
-## 6. Când e gata
+## 7. Când e gata
 
 După capitolele 1, 2 și 3, poarta trebuie să întoarcă **`RELEASE GATE: READY`** (0 FAIL).
 Atunci rulează, în ordine:
