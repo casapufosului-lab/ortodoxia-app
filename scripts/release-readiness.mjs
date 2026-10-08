@@ -395,8 +395,10 @@ function checkContentReadiness() {
   // daily_content: numără zilele acoperite din TOATE migrările care seamănă conținut zilnic
   // (nu doar fișierul inițial): generatorul din Jaguar scrie migrări separate, pe zile.
   const migrationsDir = 'supabase/migrations';
-  const seedFiles = existsSync(migrationsDir)
-    ? readdirSync(migrationsDir).filter((name) => /daily_content/i.test(name) && name.endsWith('.sql'))
+  // Rezolvat față de ROOT, nu față de directorul din care e rulată poarta: rulată din altă parte,
+  // verificarea vedea zero migrări și raporta un FAIL fals („acoperă doar 0 zile din 365").
+  const seedFiles = existsSync(join(ROOT, migrationsDir))
+    ? readdirSync(join(ROOT, migrationsDir)).filter((name) => /daily_content/i.test(name) && name.endsWith('.sql'))
     : [];
   const seededDays = new Set();
   for (const name of seedFiles) {
@@ -445,10 +447,11 @@ function checkContentReadiness() {
   // prayer audio: the app must not claim an MP3 exists unless a path is set. Any migration that seeds
   // audio_path counts — the check used to look at one hard-coded filename, so a corpus seed that does
   // exactly the right thing was reported as missing.
-  // `migrationsDir` este deja declarat mai sus, în aceeași funcție (verificarea de daily_content).
-  const hasAudioMigrations = existsSync(migrationsDir);
+  // `migrationsDir` este deja declarat mai sus, în aceeași funcție (verificarea de daily_content);
+  // ambele accesări sunt ancorate în ROOT, ca poarta să nu depindă de directorul de lucru.
+  const hasAudioMigrations = existsSync(join(ROOT, migrationsDir));
   const audioSeeders = hasAudioMigrations
-    ? readdirSync(migrationsDir).filter((name) => /\.sql$/i.test(name)).filter((name) => {
+    ? readdirSync(join(ROOT, migrationsDir)).filter((name) => /\.sql$/i.test(name)).filter((name) => {
       const sql = readIfExists(join('supabase', 'migrations', name)) ?? '';
       return /audio_path/i.test(sql) && /(insert\s+into\s+public\.prayers|update\s+public\.prayers)/i.test(sql);
     })
