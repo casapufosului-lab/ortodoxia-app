@@ -6,14 +6,27 @@ import { parseAuthLink, resolveLinkType, type SupportedLinkType } from '@/lib/au
 import { supabase } from '@/lib/supabase';
 
 /**
- * A single redirect target for every native auth e-mail.
+ * A single redirect target for every native auth flow.
  *
  * Supabase appends the PKCE code to it, so one registered scheme handler can serve
- * password recovery AND e-mail confirmation. The link parsing lives in
- * `src/lib/auth-link.ts`, together with the reason a code is preferred over the
- * implicit flow's session tokens.
+ * password recovery AND e-mail confirmation — and it is the same address the OAuth
+ * sign-in must return to. The link parsing lives in `src/lib/auth-link.ts`, together
+ * with the reason a code is preferred over the implicit flow's session tokens.
  */
 export const NATIVE_PASSWORD_RECOVERY_REDIRECT_URL = 'ortodoxia://auth';
+
+/**
+ * The same value under the name the whole native auth surface uses.
+ *
+ * WHY THIS ALIAS EXISTS
+ * ---------------------
+ * `NATIVE_PASSWORD_RECOVERY_REDIRECT_URL` stopped being recovery-specific: the very
+ * same constant is already passed as `emailRedirectTo` for a sign-up confirmation
+ * (src/app/auth.tsx) and, since this change, as the OAuth `redirectTo`. A single
+ * literal, reused under one honest name, is what stops the OAuth flow and the e-mail
+ * links from quietly drifting apart.
+ */
+export const NATIVE_AUTH_REDIRECT_URL = NATIVE_PASSWORD_RECOVERY_REDIRECT_URL;
 
 /**
  * Set when the user asks for the reset e-mail on this device. An exchanged code does

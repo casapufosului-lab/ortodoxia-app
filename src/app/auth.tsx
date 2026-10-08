@@ -1,13 +1,21 @@
 import { useEffect, useRef, useState } from 'react';
 import { Alert, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
-import * as Linking from 'expo-linking';
 import { router, useLocalSearchParams } from 'expo-router';
 import * as WebBrowser from 'expo-web-browser';
 
 import { Card, PageHeader, PrimaryButton, Screen } from '@/components/mvp-ui';
 import { palette } from '@/constants/palette';
 import type { TranslationKey } from '@/i18n/config';
-import { markPasswordRecoveryRequested, NATIVE_PASSWORD_RECOVERY_REDIRECT_URL } from '@/lib/native-password-recovery';
+import {
+  isProviderEnabled,
+  loadAuthProviderAvailability,
+  type AuthProviderAvailability,
+} from '@/lib/auth-providers';
+import {
+  markPasswordRecoveryRequested,
+  NATIVE_AUTH_REDIRECT_URL,
+  NATIVE_PASSWORD_RECOVERY_REDIRECT_URL,
+} from '@/lib/native-password-recovery';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/providers/auth-provider';
 import { useLocalization } from '@/providers/localization-provider';
@@ -113,7 +121,14 @@ function getAuthRedirectUrl() {
     return `${window.location.origin}/auth`;
   }
 
-  return Linking.createURL('auth');
+  // B2: the native return address is the constant, not `Linking.createURL('auth')`.
+  //
+  // `createURL` resolves to `ortodoxia://auth` only in a production build; under Expo
+  // Go or a development build it returns `exp://…`, which is not a scheme registered
+  // in the manifest and therefore never a target Supabase can redirect to. Pinning the
+  // constant removes that difference and gives the OAuth flow and the auth e-mails one
+  // source of truth (see src/lib/native-password-recovery.ts).
+  return NATIVE_AUTH_REDIRECT_URL;
 }
 
 function authErrorFromUrl(url: string) {
@@ -168,6 +183,8 @@ export default function AuthScreen() {
   const [confirmResetPassword, setConfirmResetPassword] = useState('');
   const [mode, setMode] = useState<'sign-in' | 'sign-up'>('sign-in');
   const [loading, setLoading] = useState(false);
+  // B1: `null` cât timp verificarea nu a răspuns → butoanele se afișează (fail-open).
+  const [providerAvailability, setProviderAvailability] = useState<AuthProviderAvailability>(null);
   // Synchronous in-flight guard shared by submit() and sendResetEmail(). React state
   // cannot prevent a second dispatch that arrives before the re-render.
   const submitInFlightRef = useRef(false);
@@ -200,6 +217,18 @@ export default function AuthScreen() {
     // Altfel, autentificarea deschisă din cont rămâne pe pagina Contul meu.
     router.replace(destination);
   }, [destination, isPasswordRecovery, recoveryRedirect, user]);
+
+  // B1: un singur GET /auth/v1/settings pe rulare de aplicație (memorat în modul).
+  // Rezultatul e doar informativ pentru randare: dacă verificarea pică, starea rămâne
+  // `null`, iar `isProviderEnabled` întoarce `true` — un buton care funcționează nu are
+  // voie să dispară din cauza unui hop de rețea.
+  useEffect(() => {
+    let active = true;
+    void loadAuthProviderAvailability().then((availability) => {
+      if (active) setProviderAvailability(availability);
+    });
+    return () => { active = false; };
+  }, []);
 
   const validate = () => {
     if (activeMode === 'reset-password') {
@@ -502,14 +531,20 @@ export default function AuthScreen() {
               <Text style={styles.socialIcon}>G</Text>
               <Text style={styles.socialButtonText}>{t('auth.continueWithGoogle')}</Text>
             </Pressable>
-            <Pressable
-              accessibilityRole="button"
-              disabled={loading}
-              onPress={() => signInWithOAuth('apple')}
-              style={({ pressed }) => [styles.socialButton, pressed && styles.pressed, loading && styles.disabledButton]}>
-              <Text style={styles.socialIcon}></Text>
-              <Text style={styles.socialButtonText}>{t('auth.continueWithApple')}</Text>
-            </Pressable>
+            {/* B1: butonul Apple apare doar daca providerul e activat in Supabase.
+                Azi GET /auth/v1/settings raspunde "apple": false, deci butonul dispare;
+                in ziua in care providerul e pornit, reapare singur. Fara verificare
+                (stare null) butonul ramane vizibil - fail-open. */}
+            {isProviderEnabled(providerAvailability, 'apple') ? (
+              <Pressable
+                accessibilityRole="button"
+                disabled={loading}
+                onPress={() => signInWithOAuth('apple')}
+                style={({ pressed }) => [styles.socialButton, pressed && styles.pressed, loading && styles.disabledButton]}>
+                <Text style={styles.socialIcon}></Text>
+                <Text style={styles.socialButtonText}>{t('auth.continueWithApple')}</Text>
+              </Pressable>
+            ) : null}
           </View>
         ) : null}
       </Card>
