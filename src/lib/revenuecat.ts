@@ -23,10 +23,6 @@ export const PREMIUM_ENTITLEMENT_ID = 'premium';
  */
 export type RevenueCatPlan = 'monthly' | 'annual';
 
-export const ENTITLEMENT_PRODUCT_MAPPING: Record<RevenueCatPlan, string> = {
-  monthly: 'ro.ortodoxia.premium.monthly',
-  annual: 'ro.ortodoxia.premium.annual',
-};
 
 let configured = false;
 let revenueCatOperationTail: Promise<void> = Promise.resolve();
@@ -218,13 +214,16 @@ export function packageForPlan(
 
 /**
  * Generează textul de preț pentru un pachet, folosind datele din magazin
- * (produsul de bază). Returnează string-ul cu simbolul monedei și prețul.
+ * (produsul de bază): `priceString`, adică prețul localizat, cu simbolul monedei.
+ *
+ * OBIECTIV 1 (paywall): NU ne mai întoarcem la `product.price`, un număr fără monedă. Un preț
+ * afișat fără monedă este un preț pe care omul nu-l poate verifica în magazin, iar ecranul Premium
+ * îl folosea ca dovadă că se poate cumpăra. Fără `priceString` întoarcem `null`, iar ecranul
+ * dezactivează butonul (`no-price`) în loc să inventeze un preț.
  */
 export function packagePriceText(pkg: PurchasesPackage): string | null {
-  const product = pkg.product;
-  if (product?.priceString) return product.priceString;
-  if (product?.price != null) return `${product.price}`;
-  return null;
+  const priceString = pkg.product?.priceString?.trim();
+  return priceString ? priceString : null;
 }
 
 /**
