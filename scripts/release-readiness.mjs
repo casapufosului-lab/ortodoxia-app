@@ -36,8 +36,11 @@
 
 import { readFileSync, existsSync, readdirSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
-import { dirname, join, relative } from 'node:path';
+import { tmpdir } from 'node:os';
+import { dirname, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
+
+import { evaluateStoreKeys } from './lib/store-keys.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(HERE, '..');
@@ -212,10 +215,18 @@ const REQUIRED_PUBLIC_ENV = [
   'EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY',
 ];
 
+// Variabilele care trebuie să existe înainte de un build de lansare pentru Google Play.
 const RELEASE_PUBLIC_ENV = [
   ...REQUIRED_PUBLIC_ENV,
-  'EXPO_PUBLIC_REVENUECAT_APPLE_API_KEY',
   'EXPO_PUBLIC_REVENUECAT_GOOGLE_API_KEY',
+];
+
+// Variabilele care țin exclusiv de App Store. Lansarea de față este pentru Google Play, deci lipsa lor
+// se raportează ca DEFERRED, nu ca FAIL: altfel poarta ar rămâne roșie pentru o cheie care nu poate
+// exista încă, iar cineva ar fi tenta să slăbească verificarea (poziția B6 din audit cere tocmai
+// contrariul — un FAIL clar pe cheia de magazin goală).
+const IOS_ONLY_PUBLIC_ENV = [
+  'EXPO_PUBLIC_REVENUECAT_APPLE_API_KEY',
 ];
 
 const PLACEHOLDER_VALUE_PATTERN = /^(your_|REPLACE|PROJECT_REF|sb_publishable_REPLACE)/i;
@@ -270,6 +281,18 @@ function checkEnvVariables() {
       }
     } else {
       record('PASS', 'config', 'all client variables including RevenueCat keys are present');
+    }
+
+    // Cheile care țin doar de App Store nu blochează lansarea Google Play; rămân vizibile ca DEFERRED.
+    const missingIosOnly = IOS_ONLY_PUBLIC_ENV.filter((name) => !vars.get(name));
+    if (missingIosOnly.length > 0) {
+      record(
+        'DEFERRED',
+        'config',
+        `App Store-only variables not set locally: ${missingIosOnly.join(', ')}`,
+        'Lansarea de față este pentru Google Play; cheia App Store se emite în contul App Store Connect '
+        + 'și se completează înainte de primul build pentru iOS.',
+      );
     }
   }
 }
@@ -464,8 +487,40 @@ function checkContentReadiness() {
  *     and the second upload is rejected by Play Console / App Store Connect).
  * The legal values and the Supabase publishable key are public by design and are checked for presence.
  */
+/**
+ * Path to the EAS configuration the gate reads.
+ *
+ * By default that is `eas.json` in the repository. The proof harness
+ * (`scripts/prove-store-key-gate-fails.mjs`) needs to run the gate against a *mutated*
+ * copy without ever touching the real file, so it may point `ORTODOXIA_EAS_JSON` at a
+ * copy inside the system temp folder. Any other path is refused: the override must not
+ * become a way to hide a missing store key from the gate.
+ */
+function easConfigPath() {
+  const override = process.env.ORTODOXIA_EAS_JSON;
+  if (!override) return join(ROOT, 'eas.json');
+  const candidate = resolve(override);
+  const tempRoot = resolve(tmpdir());
+  if (!candidate.toLowerCase().startsWith(`${tempRoot.toLowerCase()}${sep}`)) {
+    record('FAIL', 'release', 'ORTODOXIA_EAS_JSON must point inside the system temp folder', `${candidate}`);
+    return null;
+  }
+  if (!existsSync(candidate)) {
+    record('FAIL', 'release', 'ORTODOXIA_EAS_JSON points at a file that does not exist', candidate);
+    return null;
+  }
+  return candidate;
+}
+
 function checkEasConfiguration() {
-  const raw = readIfExists('eas.json');
+  const easPath = easConfigPath();
+  if (easPath === null) return;
+  let raw = null;
+  try {
+    raw = readFileSync(easPath, 'utf8');
+  } catch {
+    raw = null;
+  }
   if (raw === null) {
     record('FAIL', 'release', 'eas.json is missing — no build profile exists');
     return;
@@ -505,6 +560,9 @@ function checkEasConfiguration() {
     record('DEFERRED', 'release', `production profile is missing: ${missing.join(', ')}`);
   }
 
+  // Cheile de Test Store (`test_…`) omoară procesul în build-ul de release („Wrong API Key … The app
+  // will close now"), deci sunt raportate separat și tare. Cazul „cheie declarată, dar goală sau
+  // placeholder" este tratat imediat mai jos (poziția B6), cu decizia din scripts/lib/store-keys.mjs.
   const testKeys = Object.entries(env)
     .filter(([name, value]) => /REVENUECAT/.test(name) && typeof value === 'string' && value.startsWith('test_'))
     .map(([name]) => name);
@@ -518,6 +576,52 @@ function checkEasConfiguration() {
       `production profile still ships a RevenueCat TEST key: ${testKeys.join(', ')}`,
       'BLOCKED_MISSING_SOURCE_DATA: the platform keys are issued per store account. Replace them with the live '
       + 'public SDK keys (EAS environment variables) before building for the stores.',
+    );
+  }
+
+  // Poziția A4 + B6 din audit.
+  //
+  // Golul era cel mai scump caz și singurul pe care poarta nu îl prindea: `eas.json` declara
+  // `EXPO_PUBLIC_REVENUECAT_GOOGLE_API_KEY: ""`, iar verificarea de mai sus reacționează doar la
+  // cheile care încep cu `test_`. Rezultatul: un build care pornește, afișează „prețul se vede în
+  // magazin" și în care nimeni nu poate cumpăra nimic — iar poarta spunea PASS.
+  //
+  // De ce o cheie goală chiar strică build-ul: `env` din profilul EAS are prioritate față de
+  // variabilele de mediu EAS, deci un șir gol aici NU poate fi completat din exterior.
+  //
+  // Decizia „poate vinde sau nu" stă în `scripts/lib/store-keys.mjs` (funcție pură, testată
+  // executând codul — vezi tests/release-store-keys.test.mjs), ca poarta să nu aibă o a doua
+  // regulă paralelă care poate rămâne în urmă.
+  const storeKeys = evaluateStoreKeys(env);
+  const requiredStoreKeys = storeKeys.filter((entry) => entry.requiredForThisLaunch);
+  const unusableRequired = requiredStoreKeys.filter((entry) => !entry.usable);
+
+  if (unusableRequired.length === 0) {
+    const platforms = requiredStoreKeys.map((entry) => entry.store).join(', ');
+    record('PASS', 'release', `the production profile carries a usable store key (${platforms})`);
+  } else {
+    const names = unusableRequired.map((entry) => entry.name).join(', ');
+    const detail = 'Cheia publică a magazinului lipsește, e goală sau e un placeholder — un build cu ea '
+      + 'așa nu poate lua nicio plată. Frânghia de salvare: un șir gol pus aici are prioritate '
+      + 'față de variabilele de mediu EAS și ajunge exact așa în bundle. '
+      + 'Este o cheie PUBLICĂ (goog_…), nu un secret: se completează în profilul production din eas.json '
+      + '(poarta citește doar fișierele din depozit, nu variabilele de mediu EAS ale proiectului). '
+      + 'BLOCKED_MISSING_SOURCE_DATA: cheia se emite în contul de Play Console, deci o pune ownerul.';
+    record(RELEASE_MODE ? 'FAIL' : 'DEFERRED', 'release', `the production profile cannot sell anything: ${names}`, detail);
+  }
+
+  // Magazinul care nu face parte din lansarea de față (App Store) rămâne vizibil, dar nu blochează
+  // build-ul Android: un FAIL pentru o cheie care nu poate exista încă ar face poarta imposibil de
+  // trecut și ar împinge la slăbirea altor verificări.
+  const unusableOptional = storeKeys.filter((entry) => !entry.requiredForThisLaunch && !entry.usable);
+  if (unusableOptional.length > 0) {
+    const names = unusableOptional.map((entry) => `${entry.name} (${entry.store})`).join(', ');
+    record(
+      'DEFERRED',
+      'release',
+      `store key(s) outside this launch are still unset: ${names}`,
+      'Lansarea de față este pentru Google Play. Cheia App Store se emite în contul App Store Connect '
+      + 'și se completează înainte de primul build pentru iOS. Nu blochează build-ul Android.',
     );
   }
 
@@ -785,6 +889,53 @@ function checkI18n() {
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
+ * Poziția A8 din audit: listarea promite „Notificări la ora pe care o alegi", dar pe Android
+ * canalul nu poate exista fără configurația Firebase.
+ *
+ * Ce se verifică aici, din depozit: există un `google-services.json` și îl indică `app.json`;
+ * există scriptul de cron; `expo-notifications` e declarat. Ce NU se poate verifica din depozit —
+ * că scriptul de cron chiar a fost rulat pe proiect — rămâne treaba ownerului și e scris în
+ * docs/CRON-NOTIFICARI.md.
+ */
+function checkPushNotifications() {
+  const candidates = ['google-services.json', 'android/app/google-services.json'];
+  const present = candidates.find((relPath) => existsSync(join(ROOT, relPath)));
+
+  const appJson = readIfExists('app.json');
+  let configuredPath = null;
+  if (appJson !== null) {
+    try {
+      configuredPath = JSON.parse(appJson)?.expo?.android?.googleServicesFile ?? null;
+    } catch {
+      configuredPath = null;
+    }
+  }
+
+  const cronScript = existsSync(join(ROOT, 'supabase', 'cron', 'schedule-daily-notifications.sql'));
+  const dependency = readIfExists('package.json')?.includes('"expo-notifications"') ?? false;
+
+  if (!present || !configuredPath || !cronScript || !dependency) {
+    const missing = [];
+    if (!dependency) missing.push('expo-notifications is not a dependency');
+    if (!present) missing.push('no google-services.json in the project');
+    if (!configuredPath) missing.push('app.json does not set expo.android.googleServicesFile');
+    if (!cronScript) missing.push('supabase/cron/schedule-daily-notifications.sql is missing');
+    record(
+      RELEASE_MODE ? 'FAIL' : 'DEFERRED',
+      'release',
+      `the listing promises notifications, but the push channel cannot work: ${missing.join('; ')}`,
+      'Pune google-services.json (Firebase → aplicația Android ro.ortodoxia.app), indică-l în app.json '
+      + 'și pornește cron-ul din supabase/cron/schedule-daily-notifications.sql — pașii sunt în '
+      + 'docs/CRON-NOTIFICARI.md. Alternativa, dacă notificările nu se lansează acum: scoate promisiunea '
+      + 'din descrierea listării (docs/STORE_SUBMISSION_KIT.md).',
+    );
+    return;
+  }
+
+  record('PASS', 'release', 'the push notification channel is configured (Firebase file, app.json, cron script)');
+}
+
+/**
  * Accessibility is the one quality item on the improvement list that is entirely
  * decidable from the source, so it is a gate rather than a checklist entry. The check
  * shells out to the audit script instead of re-implementing its rules: two copies of
@@ -821,6 +972,165 @@ function checkAccessibility() {
 // Report
 // ─────────────────────────────────────────────────────────────────────────────
 
+/**
+ * A9 + A10 (audit): native hardening must survive `expo prebuild`.
+ *
+ * `android/` is git-ignored, so every badge-permission removal, the cleartext switch, the
+ * notification icon and the release signing config live in `app.json` + `plugins/` only. If the
+ * plugin stops being wired, the next prebuild (local or EAS) silently restores the template
+ * manifest and a debug-signed release build. This check fails loudly instead.
+ */
+function checkAndroidNativeHardening() {
+  const pluginPath = join(ROOT, 'plugins', 'with-android-hardening.js');
+  if (!existsSync(pluginPath)) {
+    record('FAIL', 'android', 'plugins/with-android-hardening.js is missing — prebuild would lose the native hardening');
+    return;
+  }
+
+  const appJson = readIfExists('app.json');
+  if (!appJson || !appJson.includes('./plugins/with-android-hardening')) {
+    record('FAIL', 'android', 'app.json does not load ./plugins/with-android-hardening');
+    return;
+  }
+
+  const gradle = readIfExists('android/app/build.gradle');
+  const manifest = readIfExists('android/app/src/main/AndroidManifest.xml');
+  if (gradle === null && manifest === null) {
+    record('PASS', 'android', 'hardening plugin is wired (no android/ folder present — EAS regenerates it)');
+    return;
+  }
+
+  const stale = [];
+  if (gradle !== null && !gradle.includes('A9: NICIODATĂ keystore-ul de debug')) {
+    stale.push('android/app/build.gradle still allows the debug keystore for release');
+  }
+  if (manifest !== null && !/android:usesCleartextTraffic="false"/.test(manifest)) {
+    stale.push('android/app/src/main/AndroidManifest.xml does not disable cleartext traffic');
+  }
+  if (manifest !== null && !/READ_APP_BADGE"[^>]*tools:node="remove"/.test(manifest)) {
+    stale.push('android/app/src/main/AndroidManifest.xml no longer removes the badge permissions');
+  }
+
+  if (stale.length > 0) {
+    record(
+      'FAIL',
+      'android',
+      `native folder is stale: ${stale.join('; ')}`,
+      'run `npx expo prebuild -p android --no-install` to regenerate it from app.json',
+    );
+    return;
+  }
+  record('PASS', 'android', 'native folder carries the hardening plugin output (badge permissions, cleartext, release signing)');
+}
+
+/**
+ * B11 (audit): the app publishes prayer texts, generated audio and Bible text with no written
+ * record of the rights to do so. `docs/LICENTE-CONTINUT.md` is that record; this check keeps it
+ * from being quietly emptied before a paid launch.
+ *
+ * The document is data, not prose: the registry table must still carry every content class, and
+ * the status column must be one of the two declared values. A class still marked NEVERIFICAT, or
+ * an unchecked owner declaration, is a release blocker (a deferred item outside release mode, so
+ * the everyday gate stays green while the gap stays visible).
+ */
+function checkContentLicences() {
+  const doc = readIfExists('docs/LICENTE-CONTINUT.md');
+  if (doc === null) {
+    record('FAIL', 'licences', 'docs/LICENTE-CONTINUT.md is missing — no written basis for the published content');
+    return;
+  }
+
+  const REQUIRED_CLASSES = ['biblie', 'rugaciuni-text', 'rugaciuni-audio', 'ai-chat', 'live-youtube', 'imagini-marci'];
+  const rows = new Map();
+  for (const line of doc.split(/\r?\n/)) {
+    const match = /^\|\s*`([a-z-]+)`\s*\|/.exec(line);
+    if (!match) continue;
+    const status = /DOCUMENTAT/.test(line) ? 'DOCUMENTAT' : /NEVERIFICAT/.test(line) ? 'NEVERIFICAT' : null;
+    rows.set(match[1], status);
+  }
+
+  const missing = REQUIRED_CLASSES.filter((name) => !rows.has(name));
+  const malformed = REQUIRED_CLASSES.filter((name) => rows.get(name) === null);
+  const unverified = REQUIRED_CLASSES.filter((name) => rows.get(name) === 'NEVERIFICAT');
+  const openDeclarations = doc.split(/\r?\n/).filter((line) => /^-\s*\[ \]/.test(line.trim())).length;
+
+  if (missing.length > 0 || malformed.length > 0) {
+    record(
+      'FAIL',
+      'licences',
+      `docs/LICENTE-CONTINUT.md is incomplete: ${[
+        missing.length > 0 ? `missing class(es) ${missing.join(', ')}` : '',
+        malformed.length > 0 ? `status is neither DOCUMENTAT nor NEVERIFICAT for ${malformed.join(', ')}` : '',
+      ].filter(Boolean).join('; ')}`,
+    );
+    return;
+  }
+
+  if (unverified.length > 0 || openDeclarations > 0) {
+    record(
+      RELEASE_MODE ? 'FAIL' : 'DEFERRED',
+      'licences',
+      `content rights are only partly documented: ${unverified.length} class(es) NEVERIFICAT`
+      + `${unverified.length > 0 ? ` (${unverified.join(', ')})` : ''}, ${openDeclarations} owner declaration(s) unanswered`,
+      'Complete the registry table and the "Declaratii necesare de la owner" list in docs/LICENTE-CONTINUT.md.',
+    );
+    return;
+  }
+
+  record('PASS', 'licences', `every content class has a documented rights basis (${REQUIRED_CLASSES.length} classes)`);
+}
+
+/**
+ * A11: the same processing is described in three places — the store's Data safety form, the
+ * in-app policy and the published page — and the audit found the push token declared in the
+ * app but missing from the submission form. One copy is outside this repository, so this check
+ * pins the two that are inside it (the submission kit table and the in-app policy text) and the
+ * remedy names the page that must be regenerated from them.
+ *
+ * Measured 2026-10-08: the string `privacy.s2_5Content` mentions the token in 9 of the 10
+ * locales; Ukrainian names it in Cyrillic, which is why the floor is 9 and not 10.
+ */
+function checkDataSafetyAlignment() {
+  const kit = readIfExists('docs/STORE_SUBMISSION_KIT.md');
+  const i18nText = readIfExists('src/i18n/config.ts');
+
+  if (kit === null || i18nText === null) {
+    record('FAIL', 'legal', 'the text that describes data collection is missing (submission kit or i18n corpus)');
+    return;
+  }
+
+  const sectionStart = kit.indexOf('## 4.');
+  const sectionEnd = kit.indexOf('## 5.');
+  const dataSafety = sectionStart === -1 ? kit : kit.slice(sectionStart, sectionEnd === -1 ? undefined : sectionEnd);
+
+  const MIN_PUSH_TOKEN_LOCALES = 9;
+  const pushMentions = (i18nText.match(/Push Token/gi) ?? []).length;
+
+  const gaps = [];
+  if (!/Expo Push Token/i.test(dataSafety)) gaps.push('the Data safety table does not declare the Expo Push Token');
+  if (!/livrarea notific/i.test(dataSafety)) gaps.push('the Data safety table does not list notifications as a purpose');
+  if (pushMentions < MIN_PUSH_TOKEN_LOCALES) {
+    gaps.push(`the in-app policy declares the token in only ${pushMentions} locale(s)`);
+  }
+
+  if (gaps.length > 0) {
+    record(
+      RELEASE_MODE ? 'FAIL' : 'DEFERRED',
+      'legal',
+      `the app collects a notification token, but a declaration misses it: ${gaps.join('; ')}`,
+      'Actualizează ambele texte, apoi regenerează pagina publicată https://ortodoxia.web.app/privacy '
+      + '(proiectul de site), ca toate trei să spună același lucru.',
+    );
+    return;
+  }
+
+  record(
+    'PASS',
+    'legal',
+    `the Data safety form and the in-app policy both declare the push token and the notification purpose (${pushMentions} locales)`,
+  );
+}
+
 function main() {
   console.log(`Ortodoxia release readiness — ${RELEASE_MODE ? 'RELEASE mode' : 'CI mode'}`);
   console.log(RELEASE_MODE
@@ -840,6 +1150,10 @@ function main() {
   checkSecretHygiene();
   checkI18n();
   checkAccessibility();
+  checkPushNotifications();
+  checkAndroidNativeHardening();
+  checkContentLicences();
+  checkDataSafetyAlignment();
 
   const order = { FAIL: 0, DEFERRED: 1, PASS: 2 };
   results.sort((a, b) => order[a.level] - order[b.level]);
