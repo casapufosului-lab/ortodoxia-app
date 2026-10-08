@@ -7,7 +7,11 @@ import {
 
 // ─── CORS ───────────────────────────────────────────────────────────────────
 
-import { corsHeaders as buildCorsHeaders, preflightResponse } from '../_shared/http.ts';
+import {
+  corsHeaders as buildCorsHeaders,
+  preflightResponse,
+  timingSafeEqual,
+} from '../_shared/http.ts';
 
 const ALLOWED_HEADERS = 'content-type, x-cron-secret';
 
@@ -295,8 +299,11 @@ Deno.serve(async (req: Request) => {
   if (req.method !== 'POST') return json({ error: 'Metodă neacceptată.' }, 405);
 
   // ── Authorization: cron secret ──
+  // C16 (registru): comparatie in timp constant. `!==` iese din functie la primul caracter
+  // diferit, deci durata comparatiei scurta cand prefixul se potriveste; un atacator care
+  // cronometreaza raspunsul putea reconstrui secretul caracter cu caracter.
   const cronSecret = Deno.env.get('NOTIFICATION_CRON_SECRET');
-  if (!cronSecret || req.headers.get('x-cron-secret') !== cronSecret) {
+  if (!cronSecret || !timingSafeEqual(req.headers.get('x-cron-secret'), cronSecret)) {
     return json({ error: 'Acces neautorizat.' }, 401);
   }
 

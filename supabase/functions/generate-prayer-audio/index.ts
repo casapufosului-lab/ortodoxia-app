@@ -1,6 +1,10 @@
 import { createClient } from 'npm:@supabase/supabase-js@2';
 
-import { corsHeaders as buildCorsHeaders, preflightResponse } from '../_shared/http.ts';
+import {
+  corsHeaders as buildCorsHeaders,
+  preflightResponse,
+  timingSafeEqual,
+} from '../_shared/http.ts';
 
 const ALLOWED_HEADERS = 'content-type, x-generation-token';
 
@@ -60,9 +64,11 @@ Deno.serve(async (req: Request) => {
   if (req.method === 'OPTIONS') return preflightResponse(req, ALLOWED_HEADERS);
   if (req.method !== 'POST') return json({ error: 'Metodă neacceptată.' }, 405);
 
+  // C16 (registru): comparatie in timp constant, ca la `send-daily-notifications`.
+  // `!==` iese la primul caracter diferit si lasa durata comparatiei sa depinda de prefix.
   const generationToken = Deno.env.get('PRAYER_AUDIO_GENERATION_TOKEN');
   const requestToken = req.headers.get('x-generation-token');
-  if (!generationToken || requestToken !== generationToken) {
+  if (!generationToken || !timingSafeEqual(requestToken, generationToken)) {
     return json({ error: 'Acces neautorizat.' }, 401);
   }
 
