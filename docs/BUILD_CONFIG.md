@@ -88,6 +88,7 @@ This enables `Linking.openURL('ortodoxia://...')` calls and Supabase Auth redire
 | `EXPO_PUBLIC_REVENUECAT_APPLE_API_KEY` | RevenueCat Dashboard -> Project Settings -> API Keys -> Platform API Key (iOS) |
 | `EXPO_PUBLIC_REVENUECAT_GOOGLE_API_KEY` | RevenueCat Dashboard -> Project Settings -> API Keys -> Platform API Key (Android) |
 | `REVENUECAT_WEBHOOK_AUTH_TOKEN` | RevenueCat -> Project Settings -> Webhooks (server-side only) |
+| `REVENUECAT_API_KEY` | RevenueCat -> Project Settings -> API Keys -> Secret keys (`sk_…`, server-side only; the webhook reads `GET api.revenuecat.com/v1/subscribers/<id>` with it, `supabase/functions/revenuecat-webhook/core.ts:485`) |
 
 ### OpenAI
 | Credential | Where to set |
@@ -116,6 +117,7 @@ This enables `Linking.openURL('ortodoxia://...')` calls and Supabase Auth redire
 ### Server-side only — Supabase Dashboard -> Edge Functions -> Secrets
 - `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`
 - `REVENUECAT_WEBHOOK_AUTH_TOKEN`
+- `REVENUECAT_API_KEY`
 - `OPENAI_API_KEY`
 - `YOUTUBE_DATA_API_KEY`
 - `NOTIFICATION_CRON_SECRET`

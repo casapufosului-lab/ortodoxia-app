@@ -45,5 +45,9 @@ conține `NEVERIFICAT`.
 ```
 node scripts/release-readiness.mjs            # raportul de stare: DEFERRED dacă mai există poziții deschise
 node scripts/release-readiness.mjs --release  # poarta de lansare: FAIL cât timp există NEVERIFICAT sau bife nefăcute
-node --test tests/content-licences.test.mjs   # forma documentului, verificată independent
 ```
+
+Verificarea o face `checkContentLicences` din `scripts/release-readiness.mjs` (`:1039`), care citește
+acest document: numără clasele de conținut rămase `NEVERIFICAT` și bif\u0103rile nefăcute din sec\u021biunea de
+mai sus. **Nu există un fi\u0219ier de test separat** — o versiune anterioar\u0103 a acestei sec\u021biuni trimitea la
+`tests/content-licences.test.mjs`, care nu exist\u0103 în depozit (verificat 08.10.2026).

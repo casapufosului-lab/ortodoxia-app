@@ -101,8 +101,18 @@ Any additional empty verse outside these exact five must be considered an integr
 
 - Bible wording was NOT modified during CONTENT-A2.
 - Live Supabase was READ-ONLY during the audit.
-- No local Bible data file (JSON/CSV) exists in the repository. Verse content lives only in the remote Supabase table.
-- The only repository files referencing Bible content are `src/data/bible-source.ts`, `src/app/(tabs)/bible.tsx`, and `supabase/migrations/20260831000800_create_bible_verses.sql`.
+- ~~No local Bible data file (JSON/CSV) exists in the repository.~~ **Corectat 08.10.2026 (poziția C15):**
+  există **un** fișier JSON local — `assets/bible/bible-verses.json`, 2 943 383 B (2,81 MB), 79 587 de linii,
+  obiect cu cheile `exportedAt`, `total`, `verses`, exportat la `2026-09-22T22:48:52.384Z` (cu o zi înainte de
+  corpusul SQL). **Nu este referit de nimic** din `src/`, `scripts/` sau `supabase/`; `app.json` nu declară
+  `assetBundlePatterns`, iar Metro împachetează doar fișierele importate, deci JSON-ul **nu ajunge în
+  aplicație** și nu are efect la rulare. Sursa de adevăr rămasă (și testată) este corpusul SQL de mai jos;
+  fișierul orfan e candidat de șters — **decizie a ownerului**, nu s-a șters nimic.
+- ~~The only repository files referencing Bible content are `src/data/bible-source.ts`, `src/app/(tabs)/bible.tsx`,
+  and `supabase/migrations/20260831000800_create_bible_verses.sql`.~~ **Corectat 08.10.2026:** lista era
+  incompletă — mai există `src/lib/verse-favorites.ts` (citește `verse_favorites`), iar conținutul biblic e
+  seedat și de `supabase/migrations/20260923000300_seed_bible_verses_corpus.sql` (1,28 MB), nu doar de
+  migrația care creează tabela.
 
 ---
 
