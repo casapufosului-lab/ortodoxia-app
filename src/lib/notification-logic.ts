@@ -7,6 +7,7 @@
  * Separation: deciding WHAT notification is due
  *   from performing actual network send.
  */
+import { displayableSource, stripEmptyParentheses } from '@/lib/content-source';
 
 // ─── Constants ──────────────────────────────────────────────────────────────
 
@@ -119,17 +120,23 @@ export function buildNotificationBody(
   editorialBodyTemplate?: string | null,
 ): string {
   if (editorialBodyTemplate) {
-    return editorialBodyTemplate.replace(/\{([a-z_]+)\}/g, (match, key) => {
-      const values: Record<string, string> = {
-        feast_title: calendar?.title ?? '',
-        verse_source: content.verse_source,
-        verse_text: content.verse_text,
-      };
-      return values[key] ?? match;
-    }).replace(/\s+/g, ' ').trim();
+    return stripEmptyParentheses(
+      editorialBodyTemplate.replace(/\{([a-z_]+)\}/g, (match, key) => {
+        const values: Record<string, string> = {
+          feast_title: calendar?.title ?? '',
+          // „NULL" (text literal în 2 158 de rânduri) și id-urile interne nu se trimit omului nici
+          // pe canalul de notificări — vezi src/lib/content-source.ts. Fără sursă, șablonul rămâne
+          // cu un „()" gol, scos de stripEmptyParentheses.
+          verse_source: displayableSource(content.verse_source) ?? '',
+          verse_text: content.verse_text,
+        };
+        return values[key] ?? match;
+      }),
+    );
   }
 
-  const parts = [`${content.verse_text} (${content.verse_source})`];
+  const sourceLabel = displayableSource(content.verse_source);
+  const parts = [sourceLabel ? `${content.verse_text} (${sourceLabel})` : content.verse_text];
   if (calendar?.title) parts.push(calendar.title);
   if (type === 'red_cross') parts.push('Astăzi este zi cu cruce roșie.');
   parts.push('Deschide aplicația pentru mesajul zilei.');

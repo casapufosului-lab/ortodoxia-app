@@ -13,6 +13,7 @@ import {
   resolveFeastRankCode,
 } from '@/lib/feast-rank';
 import { calendarDisplayDescription, calendarDisplayName } from '@/lib/calendar-labels';
+import { verseSourceLabel } from '@/lib/content-source';
 import { localizeLocation } from '@/lib/i18n-locations';
 import { getMoldovaCalendarFallbackDay, hasMoldovaCalendarFallback } from '@/lib/moldova-calendar-fallback';
 import { supabase } from '@/lib/supabase';
@@ -57,6 +58,10 @@ export default function HomeScreen() {
   const [calendarDay, setCalendarDay] = useState<CalendarDay | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState('');
+
+  // Sursa de sub pildă: referința biblică atunci când e citibilă, altfel nimic. Fără „NULL"
+  // (text literal în 2 158 de rânduri) și fără id-ul intern de material (pozițiile A1/A2/B12).
+  const parableSourceLabel = verseSourceLabel(dailyContent?.verse_source, dailyContent?.editorial_source);
   // Localized rank label for the day's commemoration (canonical code → i18n key).
   const calendarDayRankLabelKey = calendarDay
     ? feastRankLabelKey(resolveFeastRankCode(calendarDay.feast_rank_code, calendarDay.feast_rank))
@@ -240,7 +245,7 @@ export default function HomeScreen() {
           <Card style={styles.compactCard}>
             <Text style={styles.cardTitle}>{dailyContent?.parable_title ?? t('home.parableTitleFallback')}</Text>
             <Text style={styles.body}>{dailyContent?.parable_text ?? t('home.parableBodyFallback')}</Text>
-            {dailyContent?.editorial_source ? <Text style={styles.editorialSource}>{dailyContent.editorial_source}</Text> : null}
+            {parableSourceLabel ? <Text style={styles.editorialSource}>{parableSourceLabel}</Text> : null}
           </Card>
           <SectionTitle>{t('home.calendarSectionTitle')}</SectionTitle>
           <Card style={styles.compactCard}>

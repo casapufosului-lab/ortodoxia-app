@@ -14,9 +14,13 @@
 
 /**
  * Coloanele de care depinde backendul, grupate pe tabel. Lista se ține lângă codul care le folosește:
- * `supabase/functions/orthodox-chat/index.ts` (chat + rezervarea de cotă) și migrațiile de abonamente.
+ * `supabase/functions/orthodox-chat/index.ts` (chat + rezervarea de cotă), migrațiile de abonamente
+ * și, pentru `ai_reports`, inserarea făcută de ecranul de chat (`src/app/(tabs)/chat.tsx`).
  */
 export const REQUIRED_COLUMNS = {
+  // Raportările răspunsurilor AI (migrația 20261008000200). Ecranul de chat scrie direct în tabel,
+  // deci o coloană lipsă în baza reală înseamnă un buton "Raportează" care eșuează la fiecare apăsare.
+  ai_reports: ['user_id', 'reason', 'message_text', 'thread_id', 'app_language', 'status', 'created_at'],
   usage_daily: ['user_id', 'usage_date', 'ai_messages', 'last_request_at', 'updated_at'],
   guest_usage_daily: ['guest_id', 'usage_date', 'ai_messages', 'last_request_at', 'updated_at'],
   ai_client_usage_daily: ['scope', 'client_hash', 'usage_date', 'ai_messages', 'last_request_at', 'updated_at'],

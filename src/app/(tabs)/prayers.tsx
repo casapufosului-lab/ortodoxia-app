@@ -6,6 +6,7 @@ import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput, View } from 
 
 import { Card, PageHeader, PrimaryButton, Screen } from '@/components/mvp-ui';
 import { palette } from '@/constants/palette';
+import { displayableSource } from '@/lib/content-source';
 import { useLocalization } from '@/providers/localization-provider';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/providers/auth-provider';
@@ -309,7 +310,9 @@ export default function PrayersScreen() {
                     <Text style={styles.category}>{prayer.category}</Text>
                     <Text style={styles.title}>{prayer.title}</Text>
                     <Text style={styles.preview}>{isExpanded ? prayer.body : preview}</Text>
-                    {prayer.editorial_source && isExpanded ? <Text style={styles.source}>{prayer.editorial_source}</Text> : null}
+                    {isExpanded && displayableSource(prayer.editorial_source) ? (
+                      <Text style={styles.source}>{displayableSource(prayer.editorial_source)}</Text>
+                    ) : null}
                     <Pressable accessibilityRole="button" onPress={() => setExpandedId(isExpanded ? null : prayer.id)}>
                       <Text style={styles.readButton}>{isExpanded ? t('prayers.close') : t('prayers.read')}</Text>
                     </Pressable>

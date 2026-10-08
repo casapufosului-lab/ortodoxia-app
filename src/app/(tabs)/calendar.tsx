@@ -14,6 +14,7 @@ import {
   resolveFeastRankCode,
 } from '@/lib/feast-rank';
 import { calendarDisplayName } from '@/lib/calendar-labels';
+import { displayableSource } from '@/lib/content-source';
 import { getMoldovaCalendarFallbackRange, hasMoldovaCalendarFallback } from '@/lib/moldova-calendar-fallback';
 import { supabase } from '@/lib/supabase';
 import { useLocalization } from '@/providers/localization-provider';
@@ -316,7 +317,9 @@ export default function CalendarScreen() {
             {selectedEntry.saints.length > 0 ? <Text style={styles.saints}>{selectedEntry.saints.join('\n')}</Text> : null}
             {selectedEntry.details ? <Text style={styles.note}>{selectedEntry.details}</Text> : null}
             {selectedEntry.fasting_note ? <Text style={styles.fasting}>{selectedEntry.fasting_note}</Text> : null}
-            {selectedEntry.editorial_source ? <Text style={styles.source}>{selectedEntry.editorial_source}</Text> : null}
+            {displayableSource(selectedEntry.editorial_source) ? (
+              <Text style={styles.source}>{displayableSource(selectedEntry.editorial_source)}</Text>
+            ) : null}
           </>
         ) : (
           <Text style={styles.note}>{t('calendar.emptyDay')}</Text>
