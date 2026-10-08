@@ -1,5 +1,5 @@
 import { router } from 'expo-router';
-import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Linking, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useRef, useState, useEffect } from 'react';
 
 import { Card, PageHeader, PrimaryButton, Screen, SecondaryButton } from '@/components/mvp-ui';
@@ -9,6 +9,7 @@ import { useRevenueCat } from '@/hooks/use-revenuecat';
 import { useSubscription } from '@/hooks/use-subscription';
 import { useLegalFill } from '@/lib/legal-fields';
 import { isRevenueCatConfigured } from '@/lib/revenuecat';
+import { manageSubscriptionUrl } from '@/lib/store-links';
 import {
   PENDING_ACTIVATION_POLL_INTERVAL_MS,
   premiumScreenState,
@@ -43,6 +44,9 @@ export default function PremiumScreen() {
   // (tiparul RevenueCat pentru `Purchases.isConfigured`), iar starea ecranului cere un boolean curat.
   const screenState = premiumScreenState(subscription, Boolean(revenueCatActive && isRevenueCatConfigured()));
   const showPurchaseButtons = shouldShowPurchaseButtons(screenState);
+  // Linkul „Gestionează abonamentul": pe Android duce direct în pagina de abonamente a Google Play,
+  // pe iOS în cea a App Store. Pe platformele fără magazin nu se randează nimic (adresa e `null`).
+  const manageSubscriptionHref = manageSubscriptionUrl(Platform.OS);
   // Guard sincron împotriva dublelor atingeri în același tick: starea React
   // `busyPlan` nu poate împiedica două apeluri înainte de re-render.
   const busyRef = useRef(false);
@@ -153,6 +157,15 @@ export default function PremiumScreen() {
         <Text style={styles.disclosureText}>{t('premium.disclosureUninstall')}</Text>
         <Text style={styles.disclosureText}>{t('premium.disclosureAfterCancel')}</Text>
         <Text style={styles.disclosureText}>{t('premium.disclosureRefunds')}</Text>
+        {manageSubscriptionHref ? (
+          <Pressable
+            accessibilityRole="link"
+            onPress={() => void Linking.openURL(manageSubscriptionHref)}
+            style={styles.manageSubscription}
+          >
+            <Text style={styles.legalLink}>{t('premium.manageSubscription')}</Text>
+          </Pressable>
+        ) : null}
       </Card>
       <SecondaryButton disabled={busyPlan !== null} label={busyPlan === 'restore' ? t('premium.restoring') : t('premium.restorePurchases')} onPress={() => void handleRestore()} />
       {loading ? <View style={styles.loadingRow}><ActivityIndicator color={palette.blue} size="small" /><Text style={styles.loadingText}>{t('premium.processingPayment')}</Text></View> : null}
@@ -195,5 +208,8 @@ const styles = StyleSheet.create({
   disclosureText: { color: palette.ink, fontSize: 13, lineHeight: 19 },
   legalLinks: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingTop: 4 },
   legalLink: { color: palette.blue, fontSize: 13, fontWeight: '700' },
+  /* Ținta de atingere a linkului de gestionare a abonamentului: cel puțin 44 pt, ca și restul
+     elementelor interactive verificate de poarta de accesibilitate. */
+  manageSubscription: { alignSelf: 'flex-start', justifyContent: 'center', minHeight: 44 },
   legalDivider: { color: palette.muted, fontSize: 13 },
 });
