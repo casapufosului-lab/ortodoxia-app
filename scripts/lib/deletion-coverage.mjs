@@ -5,8 +5,9 @@
  * deci ar fi trecut și dacă ștergerea ar fi existat doar într-un comentariu, și NU puteau prinde o
  * linie de cod ștearsă. Aici:
  *
- *   1. lista tabelelor deținute de utilizator se extrage din MIGRAȚII (`references auth.users`) —
- *      sursă independentă de codul funcției;
+ *   1. lista tabelelor deținute de utilizator se extrage din MIGRAȚII (`references auth.users`) — sursă
+ *      independentă de codul funcției; a doua listă (`scanUserAuditTables`) acoperă tabelele care țin
+ *      UUID de utilizator fără cheie externă (jurnale de audit — poziția B3 din registru);
  *   2. comportamentul se obține prin EXECUTAREA `deleteOwnedData` cu un client fals care înregistrează
  *      fiecare apel (`from(table).delete().eq(...)`, `.in(...)`, `select().eq(...)`);
  *   3. fiecare tabelă din (1) trebuie să fie ștearsă explicit în (2) sau să fie declarată
@@ -51,6 +52,63 @@ export function scanUserOwnedTables(migrationsDir) {
       if (!/on delete cascade/i.test(line)) entry.withoutCascade.push(`${path.basename(file)}:${index + 1}`);
       tables.set(current, entry);
     });
+  }
+  return tables;
+}
+
+/**
+ * Tabele care țin UUID de utilizator FĂRĂ cheie externă (`user_id` / `*_user_id` declarate simplu uuid).
+ *
+ * De ce e nevoie de a doua sursă de adevăr (poziția B3 din registru): `scanUserOwnedTables` se uită doar
+ * după `references auth.users`, deci o tabelă-jurnal ca `notification_device_claims` (care leagă
+ * utilizatorul prin `previous_user_id` / `new_user_id`, fără FK) era INVIZIBILĂ pentru poartă și putea
+ * păstra urme la infinit fără ca vreun test să observe. Aici tabela e descoperită din MIGRAȚII, independent
+ * de codul funcției, iar `checkDeletionCoverage` cere ca fiecare astfel de tabelă să fie ștearsă explicit
+ * sau declarată exceptată cu motiv.
+ *
+ * Nu se cere `on delete cascade`: fără cheie externă nu există cascadă posibilă, deci exigența ar fi falsă.
+ *
+ * @returns {Map<string, { columns: string[]; evidence: string[] }>}
+ */
+export function scanUserAuditTables(migrationsDir) {
+  const tables = new Map();
+  const flush = (state) => {
+    if (state.current && !state.hasForeignKey && state.columns.length > 0) {
+      const entry = tables.get(state.current) ?? { columns: [], evidence: [] };
+      for (const column of state.columns) if (!entry.columns.includes(column)) entry.columns.push(column);
+      entry.evidence.push(...state.evidence);
+      tables.set(state.current, entry);
+    }
+    state.current = null;
+    state.hasForeignKey = false;
+    state.columns = [];
+    state.evidence = [];
+  };
+
+  for (const file of listSqlFiles(migrationsDir)) {
+    const lines = readFileSync(file, 'utf8').split(/\r?\n/);
+    const state = { current: null, hasForeignKey: false, columns: [], evidence: [] };
+    lines.forEach((line, index) => {
+      const create = /create table(?: if not exists)?\s+([a-z0-9_."]+)/i.exec(line);
+      if (create) {
+        flush(state);
+        state.current = create[1].replace(/^public\./, '').replace(/"/g, '');
+        return;
+      }
+      if (!state.current) return;
+      // Sfârșitul blocului `create table (...)`: doar o linie care începe cu paranteză închisă.
+      if (/^\s*\)/.test(line)) {
+        flush(state);
+        return;
+      }
+      if (/references\s+auth\.users/i.test(line)) state.hasForeignKey = true;
+      const column = /^\s*"?([a-z0-9_]*user_id)"?\s+uuid\b/i.exec(line);
+      if (column) {
+        state.columns.push(column[1]);
+        state.evidence.push(`${path.basename(file)}:${index + 1}`);
+      }
+    });
+    flush(state);
   }
   return tables;
 }
@@ -106,16 +164,21 @@ export async function runDeletion(corePath, options = {}) {
 
 /**
  * Verificarea completă: fiecare tabelă cu `references auth.users` e ștearsă explicit sau declarată
- * cascade-only; ordinea `chat_messages` înainte de `chat_threads`; nicio ștergere din tabele care nu
- * aparțin utilizatorului.
+ * cascade-only; fiecare tabelă cu UUID de utilizator fără cheie externă (jurnale de audit, poziția B3) e
+ * ștearsă explicit sau exceptată cu motiv; ordinea `chat_messages` înainte de `chat_threads`; nicio
+ * ștergere din tabele care nu aparțin utilizatorului.
  */
-export async function checkDeletionCoverage({ root, corePath }) {
+export async function checkDeletionCoverage({ root, corePath, migrationsDir }) {
   const absoluteCore = corePath ?? path.join(root, DEFAULT_CORE_RELATIVE);
-  const userOwnedTables = scanUserOwnedTables(path.join(root, 'supabase/migrations'));
+  const resolvedMigrations = migrationsDir ?? path.join(root, 'supabase/migrations');
+  const userOwnedTables = scanUserOwnedTables(resolvedMigrations);
+  const auditTables = scanUserAuditTables(resolvedMigrations);
   const { module, calls, outcome } = await runDeletion(absoluteCore);
 
   const deletedTables = calls.filter((call) => call.op === 'delete').map((call) => call.table);
   const cascadeOnly = (module.CASCADE_ONLY_TABLES ?? []).map((entry) => entry.table);
+  /** Tabele-jurnal pe care funcția le exclude deliberat, fiecare cu motiv scris în cod. */
+  const auditExempt = (module.AUDIT_EXEMPT_TABLES ?? []).map((entry) => entry.table);
 
   const missing = [];
   for (const [table, info] of userOwnedTables) {
@@ -123,7 +186,19 @@ export async function checkDeletionCoverage({ root, corePath }) {
     missing.push(`${table} (${info.references.join(', ')})`);
   }
 
-  const unknownExplicit = deletedTables.filter((table) => !userOwnedTables.has(table));
+  const auditMissing = [];
+  for (const [table, info] of auditTables) {
+    if (deletedTables.includes(table) || auditExempt.includes(table)) continue;
+    auditMissing.push(`${table} (${info.evidence.join(', ')})`);
+  }
+
+  const wronglyExempt = (module.AUDIT_EXEMPT_TABLES ?? [])
+    .filter((entry) => !auditTables.has(entry.table) || !entry.reason || entry.reason.length < 20)
+    .map((entry) => entry.table);
+
+  const unknownExplicit = deletedTables.filter(
+    (table) => !userOwnedTables.has(table) && !auditTables.has(table) && !auditExempt.includes(table),
+  );
 
   const deleteOrder = calls.filter((call) => call.op === 'delete').map((call) => call.table);
   const messagesAt = deleteOrder.indexOf('chat_messages');
@@ -135,12 +210,16 @@ export async function checkDeletionCoverage({ root, corePath }) {
 
   return {
     userOwnedTables: [...userOwnedTables.keys()],
+    auditTables: [...auditTables.keys()],
     cascadesWithoutClause: [...userOwnedTables.entries()]
       .filter(([, info]) => info.withoutCascade.length > 0)
       .map(([table, info]) => `${table} (${info.withoutCascade.join(', ')})`),
     deletedTables,
     cascadeOnly,
+    auditExempt,
     missing,
+    auditMissing,
+    wronglyExempt,
     unknownExplicit,
     orderViolation,
     errors: outcome.errors,

@@ -15,6 +15,8 @@
 2. Create service-role client (bypasses RLS) for server-side deletions
 3. Delete user-owned data in dependency order:
    - `notification_devices` (cascades to `notification_deliveries`)
+   - `notification_device_claims` (audit trail of push-device hand-overs; no foreign key, so it does not
+     cascade — deleted in both directions: `previous_user_id = caller` and `new_user_id = caller`)
    - `notification_preferences`
    - `chat_messages` (fetched via owned threads first)
    - `chat_threads`
@@ -39,6 +41,7 @@
 | `chat_messages` | Explicit DELETE by thread_id (via owned threads) | AI conversation messages |
 | `usage_daily` | Explicit DELETE by user_id | Daily AI usage counters |
 | `notification_devices` | Explicit DELETE by user_id (cascades to notification_deliveries) | Push token registrations |
+| `notification_device_claims` | Explicit DELETE by `previous_user_id` **and** `new_user_id` | Push-device hand-over audit trail (user UUID + device UUID) |
 | `notification_deliveries` | Cascade via notification_devices | Delivery history |
 | `notification_preferences` | Explicit DELETE by user_id | Notification settings |
 | `auth.users` | `admin.auth.admin.deleteUser()` — final step | Auth account |
@@ -46,8 +49,12 @@
 | `ai_reports` | Cascade via auth.users DELETE | AI content reports (free text written by the user) |
 
 The code list is authoritative and machine-checked: `supabase/functions/delete-account/core.ts`
-(`EXPLICITLY_DELETED_TABLES`, `CASCADE_ONLY_TABLES`) is asserted against the migrations by
-`tests/account-deletion.test.mjs`, so a user-owned table added later cannot be forgotten here.
+(`EXPLICITLY_DELETED_TABLES`, `CASCADE_ONLY_TABLES`, `AUDIT_EXEMPT_TABLES`) is asserted against the
+migrations by `tests/account-deletion.test.mjs` and `tests/notification-device-claims-deletion.test.mjs`, so
+a user-owned table added later cannot be forgotten here. Tables that hold a user UUID **without** a foreign
+key (invisible to the cascade rule) are discovered from the migrations by
+`scanUserAuditTables()` in `scripts/lib/deletion-coverage.mjs` and must be deleted explicitly or exempted
+with a written reason.
 
 ## Retained Data
 

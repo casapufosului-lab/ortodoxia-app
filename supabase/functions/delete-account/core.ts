@@ -50,6 +50,7 @@ export const TABLE_MISSING_CODES: readonly string[] = ['42P01', 'PGRST205'];
 /** Tabelele șterse EXPLICIT de funcție, în ordinea dependențelor (copiii înaintea părinților). */
 export const EXPLICITLY_DELETED_TABLES: readonly string[] = [
   'notification_devices',
+  'notification_device_claims',
   'notification_preferences',
   'chat_messages',
   'chat_threads',
@@ -79,6 +80,14 @@ export const CASCADE_ONLY_TABLES: ReadonlyArray<{ table: string; reason: string 
   },
 ];
 
+/**
+ * Tabele-jurnal care țin UUID de utilizator FĂRĂ cheie externă și pe care funcția le exclude deliberat
+ * de la ștergere. Gol azi: `notification_device_claims` se șterge explicit (poziția B3). Orice intrare
+ * viitoare are nevoie de un motiv scris aici; `scripts/lib/deletion-coverage.mjs` verifică programatic
+ * că lista nu conține tabele inexistente și nici motive goale.
+ */
+export const AUDIT_EXEMPT_TABLES: ReadonlyArray<{ table: string; reason: string }> = [];
+
 function classify(table: string, operation: string, error: DeleteAdminError): { error: string | null; skipped: string | null } {
   if (!error) return { error: null, skipped: null };
   const label = `${table}${operation ? `(${operation})` : ''}: ${error.message}`;
@@ -103,10 +112,25 @@ export async function deleteOwnedData(admin: DeleteAdmin, userId: string): Promi
   // 1. notification_devices (cascadă către notification_deliveries)
   record('notification_devices', '', (await admin.from('notification_devices').delete().eq('user_id', userId)).error);
 
-  // 2. notification_preferences
+  // 2. notification_device_claims (B3) — jurnal de audit al predărilor de dispozitiv. NU are cheie
+  // externă către auth.users (coloanele `previous_user_id` / `new_user_id` sunt uuid simplu), deci nu
+  // dispare prin cascadă și, până acum, rămânea cu urme de utilizator + dispozitiv la infinit. Se șterg
+  // ambele direcții: am fost proprietarul anterior (am dat telefonul) sau proprietarul nou.
+  record(
+    'notification_device_claims',
+    'previous',
+    (await admin.from('notification_device_claims').delete().eq('previous_user_id', userId)).error,
+  );
+  record(
+    'notification_device_claims',
+    'new',
+    (await admin.from('notification_device_claims').delete().eq('new_user_id', userId)).error,
+  );
+
+  // 3. notification_preferences
   record('notification_preferences', '', (await admin.from('notification_preferences').delete().eq('user_id', userId)).error);
 
-  // 3. chat_messages — se șterg pe thread_id, deci avem nevoie întâi de thread-urile utilizatorului.
+  // 4. chat_messages — se șterg pe thread_id, deci avem nevoie întâi de thread-urile utilizatorului.
   const { data: threads, error: threadListErr } = await admin.from('chat_threads').select('id').eq('user_id', userId);
   if (threadListErr) {
     // C11: eroarea de listare era ÎNGHIȚITĂ (`if (!threadListErr && ...)`), iar mesajele rămâneau pe
@@ -118,19 +142,19 @@ export async function deleteOwnedData(admin: DeleteAdmin, userId: string): Promi
     record('chat_messages', '', (await admin.from('chat_messages').delete().in('thread_id', threadIds)).error);
   }
 
-  // 4. chat_threads
+  // 5. chat_threads
   record('chat_threads', '', (await admin.from('chat_threads').delete().eq('user_id', userId)).error);
 
-  // 5. favorites (rugăciuni salvate)
+  // 6. favorites (rugăciuni salvate)
   record('favorites', '', (await admin.from('favorites').delete().eq('user_id', userId)).error);
 
-  // 6. verse_favorites (favorite pe versete)
+  // 7. verse_favorites (favorite pe versete)
   record('verse_favorites', '', (await admin.from('verse_favorites').delete().eq('user_id', userId)).error);
 
-  // 7. usage_daily (contorul zilnic de AI)
+  // 8. usage_daily (contorul zilnic de AI)
   record('usage_daily', '', (await admin.from('usage_daily').delete().eq('user_id', userId)).error);
 
-  // 8. profiles (cheia e `id`, nu `user_id`)
+  // 9. profiles (cheia e `id`, nu `user_id`)
   record('profiles', '', (await admin.from('profiles').delete().eq('id', userId)).error);
 
   return { errors, skipped };
