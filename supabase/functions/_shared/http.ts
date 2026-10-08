@@ -72,6 +72,34 @@ export function preflightResponse(req: Request, allowedHeaders: string): Respons
 }
 
 /**
+ * Per-request JSON responder.
+ *
+ * WHY THIS EXISTS (registrul C17)
+ * ------------------------------
+ * Every function used to keep the incoming request in a module-level variable
+ * (`activeRequest`) and read it back inside its own `json()` helper. Within one isolate a
+ * second request can start while the first is still awaiting the database, so the first
+ * response could be built from the *second* request's `Origin`. The responder below binds
+ * the request in a closure instead: it can only ever see the request it was created for.
+ *
+ * `Access-Control-Allow-Origin` and `Vary: Origin` are computed once, at creation, and
+ * spread into every response this responder builds. `extraHeaders` exists because
+ * `live-services-status` adds cache headers on some of its responses.
+ */
+export function createJsonResponder(
+  req: Request,
+  allowedHeaders: string,
+): (
+  body: Record<string, unknown>,
+  status?: number,
+  extraHeaders?: Record<string, string>,
+) => Response {
+  const base = { ...corsHeaders(req, allowedHeaders), 'Content-Type': 'application/json' };
+  return (body, status = 200, extraHeaders = {}) =>
+    new Response(JSON.stringify(body), { status, headers: { ...base, ...extraHeaders } });
+}
+
+/**
  * Constant-time string comparison.
  *
  * Length may short-circuit (for these fixed-size tokens the length is not usefully

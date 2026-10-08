@@ -22,7 +22,7 @@ import {
 } from './status.ts';
 import { clientAddress, createWindowRateLimiter } from './rate-limit.ts';
 
-import { corsHeaders as buildCorsHeaders, preflightResponse } from '../_shared/http.ts';
+import { createJsonResponder, preflightResponse } from '../_shared/http.ts';
 
 const ALLOWED_HEADERS = 'authorization, x-client-info, apikey, content-type, x-country-code';
 
@@ -30,39 +30,11 @@ const ALLOWED_HEADERS = 'authorization, x-client-info, apikey, content-type, x-c
 const statusLimiter = createWindowRateLimiter();
 const discoveryBudget = createDayScopedDiscoveryBudget();
 
-/** CORS headers for this request; the origin comes from the ALLOWED_ORIGINS secret. */
-function corsHeaders(req: Request) {
-  return buildCorsHeaders(req, ALLOWED_HEADERS);
-}
-
 /**
- * The request currently being handled.
- *
- * json() is called ~60 times across the functions and cannot take the request as a
- * parameter without editing every call site. Deno serves each request in its own task,
- * and the value is assigned synchronously at the top of the handler and read before the
- * handler returns, so a module-level marker is not observable across requests.
+ * C17: `json` se construiește în handler, legat de cererea curentă (`createJsonResponder`
+ * din `../_shared/http.ts`). Nu mai există nicio stare la nivel de modul, deci o cerere
+ * concurentă nu poate împrumuta `Origin`-ul alteia.
  */
-let activeRequest: Request | null = null;
-
-function json(
-  body: Record<string, unknown>,
-  status = 200,
-  extraHeaders: Record<string, string> = {},
-) {
-  const req = activeRequest;
-  if (!req) {
-    // Defensive: never emit CORS headers for an unknown origin.
-    return new Response(JSON.stringify(body), {
-      status,
-      headers: { 'Content-Type': 'application/json', ...extraHeaders },
-    });
-  }
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: { ...corsHeaders(req), 'Content-Type': 'application/json', ...extraHeaders },
-  });
-}
 
 // ─── Supabase cache adapter ────────────────────────────────────────────────
 
@@ -150,7 +122,8 @@ function createSupacheCacheAdapter(
 // ─── Entry point ────────────────────────────────────────────────────────────
 
 Deno.serve(async (req: Request) => {
-  activeRequest = req;
+  // C17: responderul e legat de această cerere, nu de o variabilă de modul.
+  const json = createJsonResponder(req, ALLOWED_HEADERS);
   if (req.method === 'OPTIONS') return preflightResponse(req, ALLOWED_HEADERS);
   if (req.method !== 'GET') return json({ error: 'Metodă neacceptată.' }, 405);
 

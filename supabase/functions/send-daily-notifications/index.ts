@@ -8,17 +8,12 @@ import {
 // ─── CORS ───────────────────────────────────────────────────────────────────
 
 import {
-  corsHeaders as buildCorsHeaders,
+  createJsonResponder,
   preflightResponse,
   timingSafeEqual,
 } from '../_shared/http.ts';
 
 const ALLOWED_HEADERS = 'content-type, x-cron-secret';
-
-/** CORS headers for this request; the origin comes from the ALLOWED_ORIGINS secret. */
-function corsHeaders(req: Request) {
-  return buildCorsHeaders(req, ALLOWED_HEADERS);
-}
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -269,32 +264,14 @@ function isSafeCalendarCode(value: string | null) {
 // ─── Response helper ────────────────────────────────────────────────────────
 
 /**
- * The request currently being handled.
- *
- * json() is called ~60 times across the functions and cannot take the request as a
- * parameter without editing every call site. Deno serves each request in its own task,
- * and the value is assigned synchronously at the top of the handler and read before the
- * handler returns, so a module-level marker is not observable across requests.
+ * C17: `json` se construiește în handler, legat de cererea curentă (`createJsonResponder`
+ * din `../_shared/http.ts`). Nu mai există nicio stare la nivel de modul, deci o cerere
+ * concurentă nu poate împrumuta `Origin`-ul alteia.
  */
-let activeRequest: Request | null = null;
-
-function json(body: Record<string, unknown>, status = 200) {
-  const req = activeRequest;
-  if (!req) {
-    // Defensive: never emit CORS headers for an unknown origin.
-    return new Response(JSON.stringify(body), {
-      status,
-      headers: { 'Content-Type': 'application/json' },
-    });
-  }
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: { ...corsHeaders(req), 'Content-Type': 'application/json' },
-  });
-}
 
 Deno.serve(async (req: Request) => {
-  activeRequest = req;
+  // C17: responderul e legat de această cerere, nu de o variabilă de modul.
+  const json = createJsonResponder(req, ALLOWED_HEADERS);
   if (req.method === 'OPTIONS') return preflightResponse(req, ALLOWED_HEADERS);
   if (req.method !== 'POST') return json({ error: 'Metodă neacceptată.' }, 405);
 
