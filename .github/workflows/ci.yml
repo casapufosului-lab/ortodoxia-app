@@ -27,7 +27,19 @@
 # fails until the paid store accounts and the real content corpus exist. That gate
 # is run by hand immediately before a production build.
 #
-# It does not build, deploy or publish anything.
+# The `verify` job does not build, deploy or publish anything.
+#
+# The second job, `android-artifact`, exists because of C23 in the audit: nothing in CI ever
+# produced or inspected a release ARTIFACT, so the two Android findings that only show up in a
+# BUILT manifest could not be caught automatically:
+#   - A9: the ShortcutBadger badge/storage permissions come back if the hardening plugin is
+#     lost when `android/` is regenerated at prebuild (it is gitignored — see B8);
+#   - A10: cleartext traffic re-enabled.
+# It produces the merged release manifest with Gradle and diffs it with
+# `scripts/verify-android-release-manifest.mjs`. It needs the Android SDK and takes several
+# minutes, so it never runs on push: only on `workflow_dispatch` with `android_artifact: true`.
+# It does NOT sign and does NOT upload anything — the store artifact stays with the owner,
+# because the upload key is known only after Play App Signing.
 
 name: CI
 
@@ -36,6 +48,11 @@ on:
     branches: ['**']
   pull_request:
   workflow_dispatch:
+    inputs:
+      android_artifact:
+        description: 'Verifică manifestul MERGED al unui build de release (SDK Android, ~10 min)'
+        type: boolean
+        default: false
 
 concurrency:
   group: ci-${{ github.ref }}
@@ -86,3 +103,41 @@ jobs:
 
       - name: Release readiness (current-code invariants)
         run: npm run test:release
+
+  android-artifact:
+    name: merged release manifest (manual only)
+    if: github.event_name == 'workflow_dispatch' && inputs.android_artifact
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22.x'
+          cache: npm
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Generate the android project (the way EAS does at prebuild)
+        run: npx expo prebuild --platform android --no-install
+
+      - name: Produce the merged release manifest (no signing, no upload)
+        working-directory: android
+        run: ./gradlew :app:processReleaseManifest --no-daemon
+
+      - name: Diff the merged manifest (A9 + A10)
+        run: node scripts/verify-android-release-manifest.mjs android/app/build/intermediates
