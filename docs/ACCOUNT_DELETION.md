@@ -61,8 +61,37 @@ with a written reason.
 | Table | Reason |
 |-------|--------|
 | `prayers`, `daily_content`, `calendar_days`, `bible_verses` | Global content, not user-owned |
-| `guest_usage_daily` | Anonymous usage (no user_id) |
+| `guest_usage_daily` | Anonymous usage (no user_id) — purged after **31 days** (see below) |
 | `live_service_status_cache` | System cache, not user-owned |
+
+## Server-side Retention (B2 + B3)
+
+Deleting an account is a **user action**. Two kinds of rows belong to somebody who never presses a
+button — an anonymous (guest) session created by `signInAnonymously`, and the push-device audit
+trail — so they need a **scheduled** cleanup. Without it, a guest's transcript stays under a real
+`auth.users.id` forever, which is exactly the audit finding B2.
+
+- **Function:** `public.purge_guest_chat_history(p_days integer default 30, p_claim_days integer default 180, p_usage_days integer default 31)`
+- **Migration:** `supabase/migrations/20261008000300_retention_guest_chat.sql` (not applied live yet)
+- **Schedule:** `supabase/cron/schedule-retention-purge.sql` — daily 03:30 UTC, run once by the owner
+  from the SQL Editor after enabling `pg_cron`
+
+| Window | What it removes | Why this number |
+|--------|-----------------|-----------------|
+| **30 days** | `chat_threads` of anonymous users idle for 30 days (messages follow via `on delete cascade`) | A guest who has not opened the app in a month has no live conversation; the transcript is the sensitive part |
+| **180 days** | `notification_device_claims` older than 180 days | Append-only audit trail of device hand-overs (B3); long enough to investigate a dispute, short enough not to be a permanent device-id log |
+| **31 days** | `guest_usage_daily` rows (installation counters, no user_id) | The daily AI limit is a same-day guard; one day of slack prevents an off-by-one at midnight |
+| **30 days** | abandoned anonymous `auth.users` rows (no threads left, no `favorites`, no `subscriptions`) | Retires the empty identity itself. The `favorites`/`subscriptions` guards are deliberate: a guest who saved a prayer or paid for Premium keeps the account |
+
+The numbers above are repeated in the migration (as defaults, validated so a bad call cannot wipe
+everything), in the cron file, and here — they are the promise behind the Data safety form, so they
+are asserted by `tests/retention-guest-chat.test.mjs`.
+
+**Client-side counterpart:** `src/lib/chat-history.ts` (`deleteChatHistoryForSession`) lets the
+current session — guest or account — erase its own conversation on demand. It deletes only
+`chat_threads` rows filtered by the **session's own** id (messages cascade), because
+`chat_messages` has no client DELETE policy. `src/app/(tabs)/chat.tsx` renders the "clear history"
+action with a confirmation and a localized result message in all 10 languages.
 
 ## Retention Note — Subscriptions
 

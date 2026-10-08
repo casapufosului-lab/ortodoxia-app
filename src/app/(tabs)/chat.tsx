@@ -8,6 +8,7 @@ import { Card, PageHeader, PrimaryButton, Screen } from '@/components/mvp-ui';
 import { palette } from '@/constants/palette';
 import { type TranslationKey, translatePlural } from '@/i18n/config';
 import { getAiLimitDeviceId } from '@/lib/ai-limit-device';
+import { deleteChatHistoryForSession, shouldOfferChatHistoryDeletion } from '@/lib/chat-history';
 import { chatGuestSupabase, ensureGuestChatSession, supabase } from '@/lib/supabase';
 import { FREE_DAILY_AI_LIMIT, hasPremiumAccess, PREMIUM_DAILY_AI_LIMIT, type SubscriptionRow } from '@/lib/subscription';
 import { useRevenueCat } from '@/hooks/use-revenuecat';
@@ -612,6 +613,40 @@ function ChatConversation() {
     ]);
   };
 
+  /**
+   * B2 — ștergerea istoricului conversației, chiar din aplicație.
+   *
+   * Un oaspete are o sesiune anonimă reală (`signInAnonymously`), deci transcrierea lui stă sub un
+   * `auth.users.id` adevărat. Până acum singura cale de ștergere era ștergerea contului — care
+   * pentru un oaspete nu există. Aici omul își poate lua înapoi conversația fără să-și facă cont.
+   *
+   * Se șterg firele, nu mesajele: `chat_messages` nu are politică de DELETE, dar are
+   * `on delete cascade` pe fir (vezi `src/lib/chat-history.ts`).
+   */
+  const performClearChatHistory = async () => {
+    try {
+      // Oaspetele trebuie să aibă o sesiune înainte de ștergere, altfel RLS nu are cui să dea voie.
+      if (!user) await ensureGuestChatSession();
+      const client = user ? supabase : chatGuestSupabase;
+      await deleteChatHistoryForSession(client);
+      // Conversația se golește și în memorie, nu doar în bază: altfel textul rămâne pe ecran.
+      setMessages([welcomeMessage(t)]);
+      setThreadId(null);
+      setReportedMessageIds([]);
+      Alert.alert(t('chat.clearHistoryTitle'), t('chat.clearHistoryDone'));
+    } catch {
+      // Un eșec tăcut ar lăsa omul cu impresia că a șters ceva ce încă există în bază.
+      Alert.alert(t('chat.clearHistoryTitle'), t('chat.clearHistoryFailed'));
+    }
+  };
+
+  const clearChatHistory = () => {
+    Alert.alert(t('chat.clearHistoryTitle'), t('chat.clearHistoryMessage'), [
+      { text: t('chat.clearHistoryConfirm'), style: 'destructive', onPress: () => void performClearChatHistory() },
+      { text: t('chat.reportCancel'), style: 'cancel' },
+    ]);
+  };
+
   return (
     <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       <Screen style={styles.chatScreen}>
@@ -630,6 +665,17 @@ function ChatConversation() {
               limit: dailyLimit,
             })}</Text>
         </Card>
+        {/* B2: ștergerea istoricului, pe cerere, disponibilă și fără cont. Butonul apare doar când
+            există o conversație de șters, ca omul să nu apese pe un buton care nu face nimic. */}
+        {!isLoading && shouldOfferChatHistoryDeletion(messages, threadId) ? (
+          <Pressable
+            accessibilityRole="button"
+            onPress={clearChatHistory}
+            style={styles.clearHistory}
+          >
+            <Text style={styles.clearHistoryText}>{t('chat.clearHistoryButton')}</Text>
+          </Pressable>
+        ) : null}
         {remaining <= 0 ? (
           <Card style={styles.errorCard}>
             <Text style={styles.errorText}>{t('chat.noMessagesLeft').replace('{limit}', String(dailyLimit))}</Text>
@@ -750,6 +796,9 @@ const styles = StyleSheet.create({
   // iar controlul e mic și lângă text, deci ușor de ratat.
   reportLink: { minHeight: 44, justifyContent: 'center', alignSelf: 'flex-start', marginTop: 2, paddingRight: 8 },
   reportLinkText: { color: palette.blue, fontSize: 13, fontWeight: '700', textDecorationLine: 'underline' },
+  // B2: aceeași țintă minimă de 44, din același motiv (control mic, lipit de text).
+  clearHistory: { minHeight: 44, justifyContent: 'center', alignSelf: 'flex-start' },
+  clearHistoryText: { color: palette.muted, fontSize: 13, fontWeight: '700', textDecorationLine: 'underline' },
   composer: { flexDirection: 'row', gap: 8, alignItems: 'flex-end' },
   input: { flex: 1, minHeight: 48, maxHeight: 120, backgroundColor: palette.paper, borderWidth: 1, borderColor: palette.line, borderRadius: 14, color: palette.ink, paddingHorizontal: 14, paddingVertical: 12 },
   mic: { width: 48, height: 48, borderRadius: 14, backgroundColor: palette.paper, borderColor: palette.line, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
