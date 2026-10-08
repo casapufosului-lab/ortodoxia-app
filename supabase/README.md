@@ -37,6 +37,37 @@ Nu folosi cheia `service_role` și nu o introduce în aplicație.
   service role). Se aplică local până la deploy; nu este aplicată live.
 - Teste mock: `npm run test:live-backend` (nu apelează YouTube real).
 
+## Funcții RPC care lucrează pe date de utilizator
+
+În Supabase, `revoke execute on function … from public` **nu** scoate privilegiile rolurilor
+`anon` și `authenticated` — ele primesc EXECUTE prin `PUBLIC`, iar revocarea de la `PUBLIC` nu le
+atinge. Măsurat pe proiectul live (08.10.2026): `POST /rest/v1/rpc/purge_guest_chat_history` cu cheia
+publicabilă răspundea **200** (orice client anonim putea porni ștergerea); după
+`revoke execute … from anon, authenticated` răspunde **401 permission denied for function**. ACL-ul
+corect este cel de la `reserve_ai_request` / `sync_revenuecat_subscription`:
+`postgres=X/postgres, service_role=X/postgres`.
+
+Regulă: orice funcție nouă `security definer` care citește/scrie date de utilizator (sau care
+pornește o operație distructivă) primește în **aceeași migrare**:
+
+```sql
+revoke all on function public.<nume>(<semnătura>) from public, anon, authenticated;
+grant execute on function public.<nume>(<semnătura>) to service_role;
+```
+
+La funcțiile `security definer` RLS este ocolit (regulile se aplică în numele definer-ului), deci
+GRANT-ul/REVOKE-ul este singura barieră. Proba rapidă, în SQL Editor:
+
+```sql
+select p.proname, p.prosecdef, p.proacl
+from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+where n.nspname = 'public' order by 1;
+```
+
+Cele 11 migrări anterioare datei de 08.10.2026 nu conțin niciun `revoke` (15 definiții
+`security definer`) — sunt înghețate ca atare de `tests/rpc-execute-grants.test.mjs`, care pică dacă
+apare o funcție nouă fără revoke. Nu slăbi testul: scrie revoke-ul în migrarea nouă.
+
 ## Verificare minimă
 
 - toate cele nouă tabele există în schema `public`;
