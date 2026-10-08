@@ -4,7 +4,20 @@ import { Text, type ColorValue } from 'react-native';
 import { palette } from '@/constants/palette';
 import { useLocalization } from '@/providers/localization-provider';
 
-const TabIcon = ({ symbol, color }: { symbol: string; color: ColorValue }) => <Text style={{ color, fontSize: 20 }}>{symbol}</Text>;
+/**
+ * Regula 27 din AGENTS.md: iconițele importante se văd, minim 24. Tab-urile aveau glyfe
+ * la 20, deci sub prag — de aici `TAB_ICON_SIZE`, ca valoarea să fie una singură și
+ * verificabilă (`tests/tab-icons-rule-27.test.mjs`).
+ *
+ * Clauza „fiecare în cerc alb" nu se randează aici: bara de tab-uri e deja alb pur
+ * (`palette.card` = #FFFFFF), deci un cerc alb ar fi invizibil. Cercul din regulă se referă
+ * la iconițele desenate PESTE conținut.
+ */
+const TAB_ICON_SIZE = 24;
+
+const TabIcon = ({ symbol, color }: { symbol: string; color: ColorValue }) => (
+  <Text style={{ color, fontSize: TAB_ICON_SIZE, lineHeight: TAB_ICON_SIZE + 4 }}>{symbol}</Text>
+);
 
 export default function TabsLayout() {
   const { t } = useLocalization();
