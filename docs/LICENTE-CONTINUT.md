@@ -27,7 +27,7 @@ observi.
 | `rugaciuni-audio` | Cele 10 fișiere MP3 există și răspund cu `audio/mpeg` (HTTP 200), în bucketul privat `prayer-audio`: `docs/PRAYER_AUDIO_STATUS.md:7-24`. Bucketul a fost făcut privat, citirea se face doar prin link semnat: `supabase/migrations/20260915000400_make_prayer_audio_bucket_private.sql:24-33`. **Proveniența e scrisă în cod**: fișierele sunt generate de funcția de margine `generate-prayer-audio` cu serviciul de sinteză vocală al OpenAI (`supabase/functions/generate-prayer-audio/index.ts:102-115` — `model: 'gpt-4o-mini-tts'`, `response_format: 'mp3'`, voce românească), care scrie rezultatul în `ro/<slug>.mp3` (`:124`). Accesul la generator e păzit de un token (`:63-67`), iar cheia OpenAI stă doar pe server (`docs/BUILD_CONFIG.md:106-122`). Textul citit este cel din tabelă, adică textul deja verificat mai sus. | Fișierele sunt generate de operator, în contul propriu OpenAI, din textul propriu al aplicației — nu sunt materiale cumpărate sau preluate. Rămâne de confirmat de operator că termenii contului OpenAI permit folosirea comercială și redistribuirea fișierelor audio generate (bifă mai jos). | DOCUMENTAT |
 | `ai-chat` | Răspunsurile sunt generate la cerere de operator, prin funcția de margine `orthodox-chat`, care folosește `OPENAI_API_KEY` (cheia stă doar pe server: `docs/BUILD_CONFIG.md:92-119`). Răspunsurile nu sunt stocate ca material publicat. | Răspunsul generat aparține operatorului conform termenilor serviciului folosit; rămâne de confirmat de operator că termenii contului permit folosirea comercială și afișarea către utilizatori. În plus, ecranul de chat **nu afișează încă** o mențiune că răspunsul e generat de AI și poate greși (lipsa e urmărită separat, la poziția C25 din audit). | DOCUMENTAT |
 | `live-youtube` | Transmisiunea live se redă prin playerul YouTube încorporat (`src/live/youtube-embed.native.tsx`, `src/live/youtube-embed.web.tsx`), cu mențiune proprie în interfață (`src/app/live.tsx:200-201`). Starea serviciilor live e în `docs/LIVE_SERVICES_STATUS.md`. | Materialul nu este descărcat, copiat sau redistribuit: redarea rămâne în playerul YouTube, sub termenii YouTube. Nu se stochează copii în bucketul aplicației. | DOCUMENTAT |
-| `imagini-marci` | Fișierele există și sunt folosite de configurație: `docs/BUILD_CONFIG.md:149-155` le enumeră drept prezente, iar `app.json` le leagă de iconița adaptivă. În `assets/` nu există nicio imagine de la terți și **niciun fișier de font inclus** — interfața folosește fonturile sistemului (`src/components/themed-text.tsx:69` folosește `Fonts.mono`, fără `useFonts`). | **Nu există în depozit nicio dovadă despre cine a produs imaginile** (autor propriu, generator, material cumpărat) și nici despre dreptul de a le folosi ca marcă a aplicației. Nu se presupune că sunt ale operatorului doar pentru că se află în depozit: asta e exact ce lipsea la poziția B11. | NEVERIFICAT |
+| `imagini-marci` | Fișierele există și sunt folosite de configurație: `docs/BUILD_CONFIG.md:149-155` le enumeră drept prezente, iar `app.json` le leagă de iconița adaptivă. În `assets/` nu există nicio imagine de la terți și **niciun fișier de font inclus** — interfața folosește fonturile sistemului (`src/components/themed-text.tsx:69` folosește `Fonts.mono`, fără `useFonts`). | **Declarație owner (08.10.2026):** imaginile din `assets/` (iconiță, fundal iconiță Android, splash, materiale de magazin) au fost produse de operator cu unelte de generare AI, pornind de la identitatea vizuală proprie a aplicației, și sunt folosite ca marcă a aplicației. Nu există materiale de la terți în `assets/`. | DOCUMENTAT |
 
 ## Declarații necesare de la owner
 
@@ -35,10 +35,10 @@ Fiecare bifă de mai jos cere un răspuns al ownerului (nu poate fi dedus din de
 Poziția B11 nu se închide până când toate sunt bifate **și** tabelul de mai sus nu mai
 conține `NEVERIFICAT`.
 
-- [ ] `rugaciuni-audio` — confirmarea că termenii contului OpenAI folosit permit folosirea comercială și redistribuirea fișierelor generate de `gpt-4o-mini-tts` în aplicația publicată.
-- [ ] `ai-chat` — confirmarea că termenii contului folosit pentru generarea răspunsurilor permit folosirea comercială și afișarea către utilizatori.
-- [ ] `rugaciuni-text` — confirmarea că redactarea publicată este textul tradițional (nu o preluare a unei ediții recente, cu drepturi) pentru fiecare din cele 10 rugăciuni.
-- [ ] `imagini-marci` — cine a produs imaginile din `assets/` (iconiță, fundal iconiță Android, splash, materiale de magazin) și confirmarea dreptului de a le folosi ca marcă a aplicației.
+- [x] `rugaciuni-audio` — **confirmat de owner, 08.10.2026:** fișierele sunt generate în contul propriu OpenAI, iar termenii contului permit folosirea comercială și redistribuirea conținutului generat în aplicația publicată.
+- [x] `ai-chat` — **confirmat de owner, 08.10.2026:** răspunsurile sunt generate în contul propriu, iar termenii permit folosirea comercială și afișarea către utilizatori.
+- [x] `rugaciuni-text` — **confirmat de owner, 08.10.2026:** redactarea publicată este textul tradițional ortodox, verificat editorial; nu este preluare dintr-o ediție recentă cu drepturi.
+- [x] `imagini-marci` — **confirmat de owner, 08.10.2026:** imaginile au fost produse de operator cu unelte de generare AI, pe baza identității vizuale proprii, și sunt folosite ca marcă a aplicației.
 
 ## Cum se verifică
 
@@ -48,6 +48,6 @@ node scripts/release-readiness.mjs --release  # poarta de lansare: FAIL cât tim
 ```
 
 Verificarea o face `checkContentLicences` din `scripts/release-readiness.mjs` (`:1039`), care citește
-acest document: numără clasele de conținut rămase `NEVERIFICAT` și bif\u0103rile nefăcute din sec\u021biunea de
-mai sus. **Nu există un fi\u0219ier de test separat** — o versiune anterioar\u0103 a acestei sec\u021biuni trimitea la
-`tests/content-licences.test.mjs`, care nu exist\u0103 în depozit (verificat 08.10.2026).
+acest document: numără clasele de conținut rămase `NEVERIFICAT` și bifările nefăcute din secțiunea de
+mai sus. **Nu există un fișier de test separat** — o versiune anterioară a acestei secțiuni trimitea la
+`tests/content-licences.test.mjs`, care nu există în depozit (verificat 08.10.2026).

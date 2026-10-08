@@ -69,7 +69,6 @@ CE GĂSEȘTI ÎN APLICAȚIE
 • Asistent cu inteligență artificială pentru întrebări despre rugăciune, calendar, sfinți și viață
   duhovnicească. Răspunsurile sunt informative și nu înlocuiesc sfatul preotului.
 • Slujbe live: unde poți urmări o slujbă transmisă online.
-• Notificări la ora pe care o alegi, ca să nu ratezi mesajul zilei.
 • Favorite: versete și rugăciuni salvate pentru mai târziu.
 
 PENTRU CINE
