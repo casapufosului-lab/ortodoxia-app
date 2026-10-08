@@ -13,6 +13,9 @@
  *   node scripts/upload-play.mjs --track internal              (urcă pe Internal testing)
  *   node scripts/upload-play.mjs --track internal --notes "text"
  *   node scripts/upload-play.mjs --track production --status draft
+ *   node scripts/upload-play.mjs --track production --promote 3 --status draft
+ *       (atribuie unui track un versionCode DEJA urcat, fără să încarce fișiere: Play refuză
+ *        același versionCode la un al doilea upload — „Version code 3 has already been used")
  *
  * DEFAULTS: --aab android/app/build/outputs/bundle/release/app-release.aab
  *           --track internal · --status completed · --lang ro-RO
@@ -26,6 +29,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import crypto from 'node:crypto';
+import { pathToFileURL } from 'node:url';
 
 const PKG = 'ro.ortodoxia.app';
 const API = 'https://androidpublisher.googleapis.com/androidpublisher/v3';
@@ -46,6 +50,7 @@ const options = {
   lang: flag('lang', 'ro-RO'),
   notes: flag('notes', ''),
   key: flag('key', path.join(os.homedir(), 'Documents', 'ortodoxia-keystore-backup', 'play-service-account.json')),
+  promote: flag('promote', null),
   dryRun: flag('dry-run', false) === true,
 };
 
@@ -55,6 +60,36 @@ function log(...parts) {
 
 function base64url(input) {
   return Buffer.from(input).toString('base64url');
+}
+
+/**
+ * Codul de versiune care se promovează, sau `null` când nu se promovează nimic.
+ *
+ * Validarea e strictă intenționat: un `--promote` fără valoare ar promova „nimic", iar Play ar răspunde
+ * cu o eroare neclară. Aici se oprește cu un mesaj care spune exact ce lipsește.
+ */
+export function resolvePromoteVersionCode(raw) {
+  if (raw === null || raw === undefined || raw === false) return null;
+  if (raw === true) {
+    throw new Error('--promote are nevoie de un cod de versiune, ex. --promote 3');
+  }
+  const value = String(raw).trim();
+  if (!/^[0-9]+$/.test(value)) {
+    throw new Error(`--promote vrea un cod de versiune numeric, nu "${value}"`);
+  }
+  return value;
+}
+
+/**
+ * Corpul unui release pentru API-ul Play. Codurile de versiune sunt șiruri acolo (API-ul le primește
+ * așa), iar notele de versiune apar doar când există text — un `releaseNotes` gol e respins.
+ */
+export function buildTrackRelease({ status, versionCodes, notes, lang }) {
+  const codes = (Array.isArray(versionCodes) ? versionCodes : [versionCodes]).map((code) => String(code));
+  if (codes.length === 0) throw new Error('un release are nevoie de cel puțin un cod de versiune');
+  const release = { status, versionCodes: codes };
+  if (notes) release.releaseNotes = [{ language: lang, text: String(notes) }];
+  return release;
 }
 
 /**
@@ -160,9 +195,14 @@ async function uploadBundle(token, editId, aabPath) {
 }
 
 async function main() {
+  const promoteCode = resolvePromoteVersionCode(options.promote);
   const aabPath = path.resolve(options.aab);
-  log('track:', options.track, '| status:', options.status, '| aab:', aabPath);
-  if (!fs.existsSync(aabPath)) throw new Error(`AAB-ul nu există: ${aabPath}`);
+  log(
+    'track: ' + options.track + ' | status: ' + options.status + ' | ' +
+      (promoteCode ? 'promovez versionCode ' + promoteCode + ' (fără upload)' : 'aab: ' + aabPath),
+  );
+  // La promovare nu se încarcă niciun fișier, deci nici nu e nevoie de AAB pe disc.
+  if (!promoteCode && !fs.existsSync(aabPath)) throw new Error('AAB-ul nu există: ' + aabPath);
 
   const token = await getAccessToken(resolveServiceAccount(options.key));
   if (options.dryRun) {
@@ -172,6 +212,8 @@ async function main() {
       const releases = (track.releases ?? []).map((r) => `${r.status}:${(r.versionCodes ?? []).join(',')}`);
       log(`track ${track.track}: ${releases.join(' ') || '(gol)'}`);
     }
+    const bundles = await api(token, 'GET', `${API}/applications/${PKG}/edits/${edit.id}/bundles`);
+    log('bundle-uri deja urcate: ' + ((bundles.bundles ?? []).map((b) => b.versionCode).join(', ') || '(niciunul)'));
     await api(token, 'DELETE', `${API}/applications/${PKG}/edits/${edit.id}`);
     log('dry-run: edit anulat, nu s-a urcat nimic');
     return;
@@ -179,27 +221,54 @@ async function main() {
 
   const edit = await api(token, 'POST', `${API}/applications/${PKG}/edits`, {});
   try {
-    const bundle = await uploadBundle(token, edit.id, aabPath);
-    const release = {
+    let versionCode;
+    if (promoteCode) {
+      // Promovarea mută un versionCode existent pe alt track. Play refuză un al doilea upload al
+      // aceluiași cod („Version code 3 has already been used"), deci aici nu se încarcă fișiere.
+      const bundles = await api(token, 'GET', `${API}/applications/${PKG}/edits/${edit.id}/bundles`);
+      const uploaded = (bundles.bundles ?? []).map((bundle) => String(bundle.versionCode));
+      if (!uploaded.includes(promoteCode)) {
+        throw new Error(
+          'versionCode ' + promoteCode + ' nu e urcat în Play (există: ' + (uploaded.join(', ') || 'niciunul') + ')',
+        );
+      }
+      versionCode = promoteCode;
+      log('promovez un bundle deja urcat, fără să încarc fișiere:', versionCode);
+    } else {
+      const bundle = await uploadBundle(token, edit.id, aabPath);
+      versionCode = String(bundle.versionCode);
+    }
+
+    const release = buildTrackRelease({
       status: options.status,
-      versionCodes: [String(bundle.versionCode)],
-      releaseNotes: options.notes
-        ? [{ language: options.lang, text: String(options.notes) }]
-        : undefined,
-    };
-    await api(token, 'PUT', `${API}/applications/${PKG}/edits/${edit.id}/tracks/${options.track}`, {
-      track: options.track,
-      releases: [release],
+      versionCodes: [versionCode],
+      notes: options.notes,
+      lang: options.lang,
     });
+    const url = `${API}/applications/${PKG}/edits/${edit.id}/tracks/${options.track}`;
+    const saved = await api(token, 'PUT', url, { track: options.track, releases: [release] });
+    log('răspuns track: ' + JSON.stringify(saved).slice(0, 400));
     await api(token, 'POST', `${API}/applications/${PKG}/edits/${edit.id}:commit`);
-    log(`GATA: versionCode ${bundle.versionCode} e pe track-ul ${options.track} (${options.status})`);
+    log(
+      'GATA: versionCode ' + versionCode + ' e pe track-ul ' + options.track + ' (' + options.status + ')' +
+        (promoteCode ? ' — promovat, fără upload' : ''),
+    );
   } catch (error) {
     await api(token, 'DELETE', `${API}/applications/${PKG}/edits/${edit.id}`).catch(() => {});
     throw error;
   }
 }
 
-main().catch((error) => {
-  console.error('[upload-play] EȘEC:', error.message);
-  process.exit(1);
-});
+/**
+ * Rulează doar când fișierul este executat direct (`node scripts/upload-play.mjs …`). Testele îl
+ * importă ca modul, ca să verifice flagul fără să deschidă un edit de Play.
+ */
+const isEntryPoint =
+  Boolean(process.argv[1]) && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href;
+
+if (isEntryPoint) {
+  main().catch((error) => {
+    console.error('[upload-play] EȘEC:', error.message);
+    process.exit(1);
+  });
+}
