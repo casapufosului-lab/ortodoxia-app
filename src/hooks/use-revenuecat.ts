@@ -20,7 +20,12 @@ import {
   restoreRevenueCatPurchases,
   type RevenueCatPlan,
 } from '@/lib/revenuecat';
-import type { SubscriptionRow } from '@/lib/subscription';
+import {
+  purchaseAvailability,
+  type PurchaseAvailability,
+  type StoreOfferingsLoad,
+  type SubscriptionRow,
+} from '@/lib/subscription';
 import { useAuth } from '@/providers/auth-provider';
 import { useLocalization } from '@/providers/localization-provider';
 
@@ -42,6 +47,11 @@ export function useRevenueCat() {
   const [customerInfo, setCustomerInfo] = useState<CustomerInfo | null>(null);
   const [loading, setLoading] = useState(false);
   const [offeringsError, setOfferingsError] = useState('');
+  // OBIECTIV 1: `loading` este „nu am citit încă", ca să nu confundăm „nu s-a citit" cu „nu există
+  // oferte" — două stări cu mesaje diferite pe ecranul Premium.
+  const [offeringsLoad, setOfferingsLoad] = useState<StoreOfferingsLoad>('loading');
+  // `null` = încă necunoscut; doar `false` explicit blochează cumpărarea.
+  const [canMakePayments, setCanMakePayments] = useState<boolean | null>(null);
   const [customerInfoUserId, setCustomerInfoUserId] = useState<string | null>(null);
   const [loadingUserId, setLoadingUserId] = useState<string | null>(null);
 
@@ -89,6 +99,7 @@ export function useRevenueCat() {
       setCustomerInfoUserId(requestUserId);
       setCustomerInfo(info);
       setOfferingsError('');
+      setOfferingsLoad('loaded');
     } catch {
       if (
         !mountedRef.current ||
@@ -96,6 +107,7 @@ export function useRevenueCat() {
         userIdRef.current !== requestUserId
       ) return;
       setOfferingsError(t('premium.offeringsError'));
+      setOfferingsLoad('error');
     }
   }, [t, userId]);
 
@@ -106,6 +118,27 @@ export function useRevenueCat() {
     const timeoutId = setTimeout(() => void refresh(), 0);
     return () => clearTimeout(timeoutId);
   }, [refresh]);
+
+  // Poate dispozitivul să cumpere? `canMakePayments()` întoarce o promisiune și poate arunca atunci
+  // când SDK-ul nu e configurat; orice eșec îl tratăm ca „necunoscut" (`null`), iar necunoscutul NU
+  // blochează butonul (vezi `purchaseAvailability`). Fără verificarea asta, un dispozitiv care nu
+  // poate cumpăra primea tot buton activ, iar la apăsare vedea o eroare a magazinului, care pare
+  // defect al aplicației.
+  useEffect(() => {
+    if (!isRevenueCatConfigured()) {
+      setCanMakePayments(null);
+      return undefined;
+    }
+    let cancelled = false;
+    void Purchases.canMakePayments()
+      .then((value) => {
+        if (!cancelled && mountedRef.current) setCanMakePayments(value === true);
+      })
+      .catch(() => {
+        if (!cancelled && mountedRef.current) setCanMakePayments(null);
+      });
+    return () => { cancelled = true; };
+  }, []);
 
   // Leaga utilizatorul autentificat de un App User ID in RevenueCat.
   useEffect(() => {
@@ -224,6 +257,25 @@ export function useRevenueCat() {
     [packages],
   );
 
+  /**
+   * Starea reală a magazinului pentru un plan (OBIECTIV 1): singura sursă a butonului de cumpărare.
+   * Butonul se activează doar pentru `purchasable`; prețul afișat vine tot de aici.
+   */
+  const availabilityFor = useCallback(
+    (plan: RevenueCatPlan): PurchaseAvailability => {
+      const pkg = packages ? packageForPlan(packages, plan) : null;
+      return purchaseAvailability({
+        storeConfigured: Boolean(isRevenueCatConfigured()),
+        canMakePayments,
+        offeringsLoad,
+        packageCount: packages?.length ?? 0,
+        hasPackageForPlan: pkg !== null,
+        storePrice: pkg ? packagePriceText(pkg) : null,
+      });
+    },
+    [canMakePayments, offeringsLoad, packages],
+  );
+
   return {
     packages,
     customerInfo: currentCustomerInfo,
@@ -232,6 +284,7 @@ export function useRevenueCat() {
     loading: loadingUserId === userId ? loading : false,
     offeringsError,
     priceFor,
+    availabilityFor,
     buy,
     restore,
     refresh,
