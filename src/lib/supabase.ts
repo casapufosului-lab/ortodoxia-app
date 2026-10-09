@@ -6,12 +6,19 @@ import 'react-native-url-polyfill/auto';
 
 import { createChunkedSecureStorage } from '@/lib/secure-session-storage';
 
-const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL;
-const supabasePublishableKey = process.env.EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
+const configuredSupabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL;
+const configuredSupabasePublishableKey = process.env.EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
 
-if (!supabaseUrl || !supabasePublishableKey) {
+if (!configuredSupabaseUrl || !configuredSupabasePublishableKey) {
   throw new Error('Lipsesc variabilele publice Supabase din fișierul .env.');
 }
+
+/**
+ * Exportate pentru `src/lib/chat-stream.ts`, care cheamă funcția Edge direct (streaming), nu prin
+ * `functions.invoke`. Verificarea de mai sus garantează că sunt șiruri, deci tipul nu mai e „poate lipsi".
+ */
+export const supabaseUrl: string = configuredSupabaseUrl;
+export const supabasePublishableKey: string = configuredSupabasePublishableKey;
 
 type AuthStorage = {
   getItem: (key: string) => Promise<string | null>;

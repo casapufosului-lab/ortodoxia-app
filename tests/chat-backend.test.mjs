@@ -81,18 +81,52 @@ const RESERVATION_DEFAULTS = {
   retry_after_seconds: 0, client_limit: 20, monthly_remaining: 19999,
 };
 
+/*
+ * Cadrele SSE ale modelului, exact cum le trimite OpenAI Responses API când `stream: true`.
+ * Endpointul le citeşte, le taie în bucăţi de text şi le trimite mai departe aplicaţiei.
+ */
+const deltaFrame = (text) => ({ event: 'response.output_text.delta', data: { type: 'response.output_text.delta', delta: text } });
+const completedFrame = { event: 'response.completed', data: { type: 'response.completed' } };
+const failedFrame = { event: 'response.failed', data: { type: 'response.failed', response: { error: { message: 'private upstream details' } } } };
+
+/** Textul brut al unui răspuns SSE: pentru fiecare cadru, `event:` + `data:` + linie goală. */
+function sseBody(frames) {
+  return frames.map(({ event, data }) => `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`).join('');
+}
+
+/** Taie textul în bucăţi de cel mult `size` caractere: aşa se verifică şi cadrele rupte de reţea. */
+function chunkText(text, size) {
+  const pieces = [];
+  for (let index = 0; index < text.length; index += size) pieces.push(text.slice(index, index + size));
+  return pieces;
+}
+
+/** Cadrele implicite ale unui răspuns reuşit, pornind de la payload-ul cerut de test. */
+function defaultFrames(payload) {
+  const text = payload === undefined
+    ? 'răspuns'
+    : (typeof payload?.output_text === 'string' ? payload.output_text : '');
+  return text ? [deltaFrame(text), completedFrame] : [completedFrame];
+}
+
 function harness(options = {}) {
   const events = [];
   let handler;
+  /** Fiecare eveniment primeşte un `seq`, ca testele să poată cere ORDINEA, nu doar prezenţa lui. */
+  const mark = (event) => {
+    event.seq = events.length;
+    events.push(event);
+    return event;
+  };
   const client = {
     auth: { getUser: async () => ({ data: { user: options.user === false ? null : { id: userId, is_anonymous: options.user !== true } } }) },
     rpc(name, args) {
-      events.push({ kind: 'rpc', name, args });
+      mark({ kind: 'rpc', name, args });
       return { single: async () => ({ data: options.reservation ?? RESERVATION_DEFAULTS, error: options.rpcError ?? null }) };
     },
     from(table) {
       const event = { kind: 'query', table, filters: [] };
-      events.push(event);
+      mark(event);
       const result = () => {
         if (options.dbThrow) throw new Error('private database details');
         if (table === 'chat_threads') return { data: options.foreignThread ? null : { id: 'thread-owned' }, error: null };
@@ -117,6 +151,16 @@ function harness(options = {}) {
       ? limitIdentity
       : { createClient: () => client, ...sharedHttp }),
     Request, Response, AbortSignal,
+    // Endpointul care livrează bucată cu bucată are nevoie de aceste globale, exact ca în runtime-ul
+    // Edge: altfel fiecare cerere cade în `catch`-ul general şi răspunde 500 (fără ele, streamingul nu
+    // poate fi nici măcar testat).
+    AbortController, ReadableStream, TextDecoder, setTimeout, clearTimeout,
+    // Logurile funcţiei sunt măsurătorile cerute de OB.1: se înregistrează, ca testul să le poată citi.
+    console: {
+      log: (...parts) => mark({ kind: 'log', line: parts.map(String).join(' ') }),
+      warn: (...parts) => mark({ kind: 'warn', line: parts.map(String).join(' ') }),
+      error: (...parts) => mark({ kind: 'error', line: parts.map(String).join(' ') }),
+    },
     ...(options.noCrypto ? {} : { crypto: globalThis.crypto }),
     TextEncoder,
     Deno: {
@@ -124,9 +168,35 @@ function harness(options = {}) {
       serve: callback => { handler = callback; },
     },
     fetch: async (url, init) => {
-      events.push({ kind: 'fetch', url, body: JSON.parse(init.body), signal: init.signal });
+      mark({ kind: 'fetch', url, body: JSON.parse(init.body), signal: init.signal });
       if (options.networkError) throw new Error('private upstream details');
-      return new Response(options.invalidJson ? 'broken' : JSON.stringify(options.payload ?? { output_text: 'răspuns' }), { status: options.upstreamStatus ?? 200 });
+      if ((options.upstreamStatus ?? 200) >= 400) return new Response('refuzat', { status: options.upstreamStatus });
+      const body = options.invalidJson ? 'broken' : sseBody(options.frames ?? defaultFrames(options.payload));
+      const pieces = chunkText(body, options.chunkBytes ?? body.length);
+      let index = 0;
+      /**
+       * Sursa e livrată prin `pull`, nu dintr-o dată: aşa testul poate rupe streamul LA MIJLOC
+       * (`streamBreaks`) ori poate arăta că un cadru tăiat de reţea e refăcut corect (`chunkBytes`).
+       */
+      const upstream = new ReadableStream({
+        pull(controller) {
+          if (index < pieces.length) {
+            controller.enqueue(new TextEncoder().encode(pieces[index]));
+            index += 1;
+            return;
+          }
+          mark({ kind: 'upstream-end' });
+          if (options.streamBreaks) {
+            controller.error(new Error('private upstream details'));
+            return;
+          }
+          controller.close();
+        },
+      });
+      return new Response(upstream, {
+        status: options.upstreamStatus ?? 200,
+        headers: { 'content-type': options.contentType ?? 'text/event-stream' },
+      });
     },
   });
   return {
@@ -141,6 +211,47 @@ function harness(options = {}) {
       ...(method === 'POST' ? { body: typeof body === 'string' ? body : JSON.stringify(body) } : {}),
     })),
   };
+}
+
+/**
+ * Consumă răspunsul exact cum face aplicaţia: citeşte bucăţile, reface cadrele SSE și adună textul.
+ * Citește până la capăt (nu doar primul cadru), fiindcă abia atunci streamul funcţiei s-a încheiat.
+ */
+async function readSse(response) {
+  assert.match(response.headers.get('content-type') ?? '', /text\/event-stream/, 'răspunsul trebuie livrat ca stream SSE');
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  const frames = [];
+  let carry = '';
+  let text = '';
+  let meta = null;
+  let done = false;
+  let error = null;
+  for (;;) {
+    const { done: finished, value } = await reader.read();
+    if (finished) break;
+    carry += decoder.decode(value, { stream: true });
+    for (;;) {
+      const boundary = carry.indexOf('\n\n');
+      if (boundary === -1) break;
+      const raw = carry.slice(0, boundary);
+      carry = carry.slice(boundary + 2);
+      let name = null;
+      let data = '';
+      for (const line of raw.split('\n')) {
+        if (line.startsWith('event:')) name = line.slice(6).trim();
+        else if (line.startsWith('data:')) data += line.slice(5).trim();
+      }
+      if (!data) continue;
+      const payload = JSON.parse(data);
+      frames.push({ event: name, data: payload });
+      if (name === 'meta') meta = payload;
+      else if (name === 'error') error = payload.message ?? '';
+      else if (name === 'done') done = true;
+      else if (typeof payload.delta === 'string') text += payload.delta;
+    }
+  }
+  return { frames, text, meta, done, error };
 }
 
 for (const body of ['{', null, [], 3, '"string"', { guestId, message: '' }, { guestId, message: 'x'.repeat(1201) }]) {
@@ -180,8 +291,13 @@ test('C13: an implausible device value falls back to the address, never to a sha
 });
 test('guest success reserves quota before AI and returns server counters', async () => {
   const h = harness(); const response = await h.run({ guestId, message: ' question ', threadId: 'foreign' });
-  assert.equal(response.status, 200); assert.deepEqual(await response.json(), { reply: 'răspuns', threadId: null, remaining: 4, dailyLimit: 5 });
-  assert.deepEqual(h.events.map(e => e.kind), ['rpc', 'fetch']);
+  assert.equal(response.status, 200);
+  const { text, meta } = await readSse(response);
+  assert.deepEqual(meta, { threadId: null, remaining: 4, dailyLimit: 5 });
+  assert.equal(text, 'răspuns');
+  // Contoarele vin înaintea textului, iar rezervarea cotei înaintea apelului AI (ordinea din `seq`).
+  assert.deepEqual(h.events.filter(e => e.kind !== 'log' && e.kind !== 'upstream-end').map(e => e.kind), ['rpc', 'fetch']);
+  assert.ok(h.events[0].seq < h.events.find(e => e.kind === 'fetch').seq, 'rezervarea se face ÎNAINTE de apelul AI');
   const quotaCall = JSON.parse(JSON.stringify(h.events[0].args));
   assert.equal(quotaCall.p_user_id, userId);
   assert.equal(quotaCall.p_guest_id, null);
@@ -189,7 +305,8 @@ test('guest success reserves quota before AI and returns server counters', async
   assert.match(quotaCall.p_client_hash, /^[0-9a-f]{64}$/);
   assert.match(quotaCall.p_ip_hash, /^[0-9a-f]{64}$/);
   assert.notEqual(quotaCall.p_client_hash, quotaCall.p_ip_hash);
-  assert.equal(h.events[1].body.safety_identifier, userId); assert.ok(h.events[1].signal);
+  const upstreamCall = h.events.find(e => e.kind === 'fetch');
+  assert.equal(upstreamCall.body.safety_identifier, userId); assert.ok(upstreamCall.signal);
 });
 test('daily quota denial returns structured details and never calls AI', async () => {
   const h = harness({ reservation: { ...RESERVATION_DEFAULTS, success: false, remaining_limit: 0, denial_reason: 'daily_limit' } });
@@ -225,7 +342,7 @@ test('database or malformed reservation never calls AI', async () => {
 test('authenticated identity comes from verified user, and history is chronological', async () => {
   const h = harness({ user: true, reservation: { ...RESERVATION_DEFAULTS, remaining_limit: 49, daily_limit: 50 } });
   const response = await h.run({ guestId: 'forged', userId: 'forged', message: 'question', threadId: 'thread-owned' });
-  assert.equal(response.status, 200); assert.equal((await response.json()).dailyLimit, 50);
+  assert.equal(response.status, 200); assert.equal((await readSse(response)).meta.dailyLimit, 50);
   assert.equal(h.events.find(e => e.kind === 'rpc').args.p_user_id, userId);
   assert.equal(h.events.find(e => e.kind === 'rpc').args.p_guest_id, null);
   assert.deepEqual(h.events.find(e => e.kind === 'fetch').body.input, [{ role: 'assistant', content: 'previous' }, { role: 'user', content: 'question' }]);
@@ -352,4 +469,73 @@ test('an inconsistent reservation is refused instead of trusted', async () => {
     assert.equal((await h.run({ message: 'q' })).status, 500, JSON.stringify(reservation));
     assert.equal(h.events.some(e => e.kind === 'fetch'), false);
   }
+});
+
+// ─── streaming: model → funcție → aplicație, bucată cu bucată (OB.2) ─────────────────────────
+
+test('streaming: bucățile ajung pe rând și în ordine, cu contoarele înaintea textului', async () => {
+  const chunks = ['Bună, ', 'acesta ', 'este răspunsul.'];
+  // Bucăți de 3 octeți la intrare: cadrele sosesc TĂIATE, exact ca pe o rețea reală.
+  const h = harness({ user: true, frames: [...chunks.map(deltaFrame), completedFrame], chunkBytes: 3 });
+  const response = await h.run({ message: 'question', threadId: 'thread-owned' });
+  assert.equal(response.status, 200);
+  const { frames, text, meta, done, error } = await readSse(response);
+  assert.equal(error, null, 'un răspuns reușit nu trimite eveniment de eroare');
+  assert.equal(done, true, 'streamul se încheie cu `event: done`');
+  assert.equal(frames[0].event, 'meta', 'contoarele pleacă ÎNAINTE de primul text');
+  assert.deepEqual(meta, { threadId: 'thread-owned', remaining: 4, dailyLimit: 5 });
+  assert.deepEqual(frames.filter(frame => frame.event === null).map(frame => frame.data.delta), chunks);
+  assert.equal(text, chunks.join(''), 'textul e refăcut exact, deși cadrele au fost tăiate de rețea');
+  // OB.1: măsurătorile cerute sunt scrise în logurile funcției, ca valori reale (nu estimate).
+  const ttft = h.events.find(event => event.kind === 'log' && event.line.startsWith('chat-stream ttft'));
+  const total = h.events.find(event => event.kind === 'log' && event.line.startsWith('chat-stream total'));
+  assert.ok(ttft, 'timpul până la primul text se loghează');
+  assert.ok(total, 'durată totală se loghează');
+  assert.match(ttft.line, /"ttftMs":\d+/);
+  assert.match(total.line, /"totalMs":\d+/);
+  assert.match(total.line, new RegExp(`"chars":${chunks.join('').length}`));
+  // Rezervarea cotei înaintea apelului AI; istoricul scris DUPĂ ce streamul modelului s-a terminat.
+  const upstream = h.events.find(event => event.kind === 'fetch');
+  const saved = h.events.find(event => event.value?.role === 'assistant');
+  assert.equal(upstream.body.stream, true, 'funcția cere modelului streaming');
+  assert.ok(h.events.find(event => event.kind === 'rpc').seq < upstream.seq, 'cota se rezervă ÎNAINTE de apelul AI');
+  assert.ok(saved.seq > h.events.find(event => event.kind === 'upstream-end').seq, 'scrierea nu se face în timpul streamului');
+  assert.equal(saved.value.content, chunks.join(''));
+});
+
+test('streaming: eroarea modelului la mijlocul răspunsului dă mesaj clar, nu balon gol', async () => {
+  const h = harness({ user: true, frames: [deltaFrame('Bună'), failedFrame] });
+  const response = await h.run({ message: 'question', threadId: 'thread-owned' });
+  assert.equal(response.status, 200, 'streamul a început deja: eroarea se livrează în stream, nu ca HTTP');
+  const { text, error, done } = await readSse(response);
+  assert.equal(text, 'Bună', 'textul deja sosit rămâne pe ecran');
+  assert.equal(done, false);
+  assert.equal(typeof error, 'string');
+  assert.ok(error.length > 0, 'aplicația are ce afișa, în locul unui spinner veșnic');
+  assert.equal(error.includes('private'), false, 'motivul furnizorului nu ajunge la utilizator');
+  assert.equal(h.events.some(event => event.value?.role === 'assistant'), false, 'răspunsul parțial NU se salvează');
+  assert.ok(h.events.some(event => event.table === 'chat_messages' && event.action === 'delete'), 'mesajul optimist se curăță');
+});
+
+test('streaming: o cădere de rețea la mijlocul streamului dă tot mesaj clar', async () => {
+  const h = harness({ user: true, frames: [deltaFrame('Bună'), deltaFrame(' iar')], streamBreaks: true });
+  const response = await h.run({ message: 'question', threadId: 'thread-owned' });
+  assert.equal(response.status, 200);
+  const { text, error, done } = await readSse(response);
+  assert.equal(text, 'Bună iar');
+  assert.equal(done, false);
+  assert.ok(typeof error === 'string' && error.length > 0);
+  assert.equal(h.events.some(event => event.value?.role === 'assistant'), false);
+});
+
+test('streaming: anularea din aplicație oprește modelul și nu salvează un răspuns parțial', async () => {
+  const h = harness({ user: true, frames: [deltaFrame('prima '), deltaFrame('a doua')], chunkBytes: 8 });
+  const response = await h.run({ message: 'question', threadId: 'thread-owned' });
+  assert.equal(response.status, 200);
+  const reader = response.body.getReader();
+  await reader.read();
+  await reader.cancel();
+  await new Promise(resolve => setTimeout(resolve, 0));
+  assert.equal(h.events.some(event => event.value?.role === 'assistant'), false, 'răspunsul parțial nu se scrie în istoric');
+  assert.equal(h.events.find(event => event.kind === 'fetch').signal.aborted, true, 'apelul către model se oprește');
 });

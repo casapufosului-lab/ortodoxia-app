@@ -30,7 +30,18 @@ test('MEDIUM #12 backend trusts only verified user identity for quota', () => {
 test('MEDIUM #12 anonymous users do not persist chat history', () => {
   assert.match(backend, /const isAnonymous = user\?\.is_anonymous === true/);
   assert.match(backend, /if \(user && !isAnonymous && !threadId\)/);
-  assert.equal((backend.match(/if \(user && !isAnonymous && threadId\)/g) ?? []).length, 3);
+  // OB.2: scrierea de după răspuns (mesajul asistentului + ora conversației) s-a mutat la FINALUL
+  // streamului și se face într-un singur \`if\` — deci 2 în loc de 3: mesajul utilizatorului înainte de
+  // apelul AI (împreună cu citirea istoricului) și scrierea finală. Ambele doar pentru conturi reale.
+  assert.equal((backend.match(/if \(user && !isAnonymous && threadId\)/g) ?? []).length, 2);
+  const assistantWrite = backend.indexOf("role: 'assistant', content: reply");
+  assert.ok(assistantWrite !== -1, 'mesajul asistentului se scrie în istoric');
+  const writeGuard = backend.lastIndexOf('if (user && !isAnonymous && threadId)', assistantWrite);
+  assert.ok(writeGuard !== -1 && writeGuard < assistantWrite, 'scrierea în istoric rămâne sub gardul de cont real');
+  assert.match(
+    backend.slice(assistantWrite, assistantWrite + 500),
+    /from\('chat_threads'\)[\s\S]*update\(\{ updated_at: new Date\(\)\.toISOString\(\) \}\)/
+  );
 });
 
 test('MEDIUM #12 local Supabase config enables anonymous sign-ins', () => {

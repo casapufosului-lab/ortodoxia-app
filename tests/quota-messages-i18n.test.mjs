@@ -93,7 +93,7 @@ test('B. codurile serverului sunt EXACT cele pe care clientul le localizează', 
 });
 
 test('C. clientul folosește traducerea și păstrează textul serverului ca rezervă', () => {
-  assert.match(chat, /message = quotaMessage\(details, typeof details\?\.error === 'string' \? details\.error : message, t\);/);
+  assert.match(chat, /setErrorMessage\(quotaMessage\(details, typeof details\?\.error === 'string' \? details\.error : t\('chat\.aiResponseError'\), t\)\);/);
   assert.match(
     chat,
     /function quotaMessage\(details: \{ code\?: unknown \} \| null \| undefined, fallback: string, translate: \(key: TranslationKey\) => string\): string \{/,

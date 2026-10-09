@@ -1,4 +1,3 @@
-import { FunctionsHttpError } from '@supabase/supabase-js';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { router, useFocusEffect } from 'expo-router';
 import { SymbolView } from 'expo-symbols';
@@ -9,7 +8,9 @@ import { palette } from '@/constants/palette';
 import { type TranslationKey, translatePlural } from '@/i18n/config';
 import { getAiLimitDeviceId } from '@/lib/ai-limit-device';
 import { deleteChatHistoryForSession, shouldOfferChatHistoryDeletion } from '@/lib/chat-history';
-import { chatGuestSupabase, ensureGuestChatSession, supabase } from '@/lib/supabase';
+import { logChatLatency } from '@/lib/chat-latency';
+import { streamChatReply, type ChatStreamFailure } from '@/lib/chat-stream';
+import { chatGuestSupabase, ensureGuestChatSession, supabase, supabasePublishableKey, supabaseUrl } from '@/lib/supabase';
 import { FREE_DAILY_AI_LIMIT, hasPremiumAccess, PREMIUM_DAILY_AI_LIMIT, type SubscriptionRow } from '@/lib/subscription';
 import { useRevenueCat } from '@/hooks/use-revenuecat';
 import { useAuth } from '@/providers/auth-provider';
@@ -40,13 +41,6 @@ type SpeechRecognitionEvent = {
 declare const require: (moduleName: string) => unknown;
 
 let speechRecognitionModule: SpeechRecognitionModule | null | undefined;
-
-type ChatResponse = {
-  reply: string;
-  threadId: string | null;
-  remaining: number;
-  dailyLimit: number;
-};
 
 /**
  * Server quota codes → localized messages.
@@ -81,14 +75,25 @@ function quotaMessage(details: { code?: unknown } | null | undefined, fallback: 
 }
 
 /**
- * Client-side ceiling for a chat request.
+ * Ce se scrie în chat când streamul nu ajunge la capăt.
  *
- * `supabase.functions.invoke` applies a timeout only when one is passed, and the
- * Edge Function's own 30s guard covers the upstream AI call rather than the whole
- * request. Without this the send button could stay disabled forever on a stalled
- * connection.
+ * Cerința OB.2.3: un eșec la mijlocul răspunsului are nevoie de un mesaj clar — nu de un balon gol și nu
+ * de un spinner veșnic. O tăcere prea lungă ori o conexiune căzută se spun ca indisponibilitate de
+ * serviciu (omul poate reîncerca), restul ca eșec al răspunsului.
  */
-const CHAT_REQUEST_TIMEOUT_MS = 45_000;
+function streamFailureMessage(failure: ChatStreamFailure, translate: (key: TranslationKey) => string): string {
+  if (failure === 'network' || failure === 'timeout') return translate('chat.serviceUnavailableError');
+  return translate('chat.aiResponseError');
+}
+
+/**
+ * Plafoanele unei cereri de chat stau acum în `src/lib/chat-stream.ts`: `CHAT_STREAM_IDLE_TIMEOUT_MS`
+ * (30 s de tăcere = stream pierdut) și `CHAT_STREAM_TOTAL_TIMEOUT_MS` (180 s, plafon de siguranță).
+ *
+ * DE CE NU mai există un singur timeout total de 45 s: cu streaming un răspuns lung are voie să dureze,
+ * deci se taie doar când modelul tace prea mult. Fără niciun plafon, însă, butonul de trimitere ar putea
+ * rămâne blocat la infinit pe o conexiune moartă — de aceea plafonul total rămâne, doar mai larg.
+ */
 
 /**
  * L-06: a foreground reload only happens when the app was actually backgrounded
@@ -189,6 +194,9 @@ function ChatConversation() {
   const [remaining, setRemaining] = useState(FREE_DAILY_AI_LIMIT);
   const [isLoading, setIsLoading] = useState(true);
   const [isSending, setIsSending] = useState(false);
+  // Textul care sosește acum, bucată cu bucată. `''` = cererea e în curs, dar încă nu a venit nimic
+  // (se arată spinnerul); `null` = nu se trimite nimic.
+  const [streamingReply, setStreamingReply] = useState<string | null>(null);
   // A7: identificatorii răspunsurilor deja raportate în această sesiune de ecran. Butonul dispare
   // după o raportare reușită, ca omul să nu trimită același raport de mai multe ori.
   const [reportedMessageIds, setReportedMessageIds] = useState<string[]>([]);
@@ -504,67 +512,123 @@ function ChatConversation() {
 
     isSendingRef.current = true;
     setIsSending(true);
+    setStreamingReply('');
+
+    /**
+     * OB.1 — măsurători reale, scrise în logul aplicației (logcat), nu estimate: `[chat-latency] primul
+     * text` = de la trimitere până când primul text apare pe ecran, `[chat-latency] total` = până la
+     * finalul răspunsului. Scrierea trece prin `src/lib/chat-latency.ts` (doar durate, fără conţinutul
+     * conversaţiei), iar prefixul `[chat-latency]` e cel căutat în loguri.
+     */
+    const requestStartedAt = Date.now();
+    let assistantId: string | null = null;
+    let streamedText = '';
 
     try {
       if (!user) await ensureGuestChatSession();
       const chatClient = user ? supabase : chatGuestSupabase;
       if (!isCurrentRequest()) return;
 
-      const { data, error } = await chatClient.functions.invoke<ChatResponse>('orthodox-chat', {
-        body: { message: clean, threadId },
-        // The server enforces its free-tier brakes on a salted hash of (this identifier + the
-        // client address). Without the header only the IP brake applies, which is why the value
-        // is sent on every request even though the server never trusts it on its own.
-        headers: { 'x-device-id': await getAiLimitDeviceId() },
-        // Without an explicit timeout the request can hang indefinitely while the
-        // composer stays disabled, leaving the user with no way to recover except
-        // restarting the app. The Edge Function bounds its own upstream AI call to
-        // 30s, so 45s covers a cold start plus the AI round trip.
-        timeout: CHAT_REQUEST_TIMEOUT_MS,
+      /**
+       * `streamChatReply` cheamă direct URL-ul funcției (nu `functions.invoke`, care ar aștepta tot
+       * corpul) și îmi dă fiecare bucată prin `onEvent`. Nu aruncă: întoarce mereu un rezultat, ca butonul
+       * de trimitere să se deblocheze în orice caz.
+       */
+      const outcome = await streamChatReply({
+        projectUrl: supabaseUrl,
+        apiKey: supabasePublishableKey,
+        // Sesiunea clientului potrivit (cont sau oaspete) — exact tokenul pe care `functions.invoke` îl
+        // trimitea singur, luat aici ca să se poată chema URL-ul funcției direct.
+        accessToken: async () => {
+          const { data } = await chatClient.auth.getSession();
+          return data.session?.access_token ?? null;
+        },
+        message: clean,
+        threadId,
+        deviceId: await getAiLimitDeviceId(),
+        onEvent: (event) => {
+          if (!isCurrentRequest()) return;
+          if (event.type === 'meta') {
+            setThreadId(event.meta.threadId);
+            setDailyLimit(event.meta.dailyLimit);
+            setRemaining(event.meta.remaining);
+            return;
+          }
+          if (event.type !== 'delta') return;
+          streamedText += event.text;
+          if (assistantId === null) {
+            assistantId = `assistant-${Date.now()}`;
+            logChatLatency('primul text', Date.now() - requestStartedAt);
+          }
+          setStreamingReply(streamedText);
+        },
       });
 
       if (!isCurrentRequest()) return;
 
-      if (error || !data?.reply) {
-        let message = t('chat.aiResponseError');
-        if (error instanceof FunctionsHttpError) {
-          try {
-            const details = await error.context.json();
-            if (!isCurrentRequest()) return;
-            message = quotaMessage(details, typeof details?.error === 'string' ? details.error : message, t);
-            if (typeof details?.remaining === 'number') setRemaining(details.remaining);
-            if (typeof details?.dailyLimit === 'number') setDailyLimit(details.dailyLimit);
-            if (isQuotaExhausted(details?.code)) setRemaining(0);
-          } catch {
-            // Păstrăm mesajul simplu de mai sus.
-          }
-        }
-
-        if (!isCurrentRequest()) return;
-        setErrorMessage(message);
+      if (outcome.kind === 'http') {
+        // Răspuns final non-2xx (cotă zilnică, frână pe dispozitiv, cerere invalidă): detaliile vin în corp.
+        const details = outcome.details as { code?: unknown; error?: unknown; remaining?: unknown; dailyLimit?: unknown } | null;
+        if (typeof details?.remaining === 'number') setRemaining(details.remaining);
+        if (typeof details?.dailyLimit === 'number') setDailyLimit(details.dailyLimit);
+        if (isQuotaExhausted(details?.code)) setRemaining(0);
+        setErrorMessage(quotaMessage(details, typeof details?.error === 'string' ? details.error : t('chat.aiResponseError'), t));
         setMessages((current) => current.filter((m) => m.id !== optimisticId));
+        setStreamingReply(null);
+        setInput(clean);
+        logChatLatency('eșec HTTP', Date.now() - requestStartedAt, `status ${outcome.status}`);
+        return;
+      }
+
+      if (outcome.kind === 'stream-error') {
+        // Textul care a apucat să sosească rămâne pe ecran, iar deasupra lui se scrie de ce s-a oprit:
+        // nici balon gol, nici spinner veșnic (OB.2.3).
+        setErrorMessage(streamFailureMessage(outcome.failure, t));
+        if (outcome.partialText && assistantId !== null) {
+          setMessages((current) => [...current, {
+            id: assistantId as string,
+            role: 'assistant',
+            text: outcome.partialText,
+          }]);
+        } else {
+          setMessages((current) => current.filter((m) => m.id !== optimisticId));
+          setInput(clean);
+        }
+        setStreamingReply(null);
+        logChatLatency('stream întrerupt', Date.now() - requestStartedAt, outcome.failure);
+        return;
+      }
+
+      if (!outcome.text) {
+        // Stream încheiat, dar fără text: tratat ca eșec, ca să nu rămână un balon gol.
+        setErrorMessage(t('chat.aiResponseError'));
+        setMessages((current) => current.filter((m) => m.id !== optimisticId));
+        setStreamingReply(null);
         setInput(clean);
         return;
       }
 
-      setThreadId(data.threadId);
-      setDailyLimit(data.dailyLimit);
-      setRemaining(data.remaining);
       setMessages((current) => [...current, {
-        id: `assistant-${Date.now()}`,
+        id: assistantId ?? `assistant-${Date.now()}`,
         role: 'assistant',
-        text: data.reply,
+        text: outcome.text,
       }]);
+      setStreamingReply(null);
+      // `firstTextMs` vine din stream (când a sosit primul text), `totalMs` până la evenimentul `done`.
+      logChatLatency('total', outcome.totalMs, outcome.firstTextMs === null ? 'primul text nu a venit' : `primul text ${outcome.firstTextMs} ms`);
     } catch {
       if (isCurrentRequest()) {
         setErrorMessage(t('chat.serviceUnavailableError'));
         setMessages((current) => current.filter((m) => m.id !== optimisticId));
+        setStreamingReply(null);
+        logChatLatency('excepție', Date.now() - requestStartedAt);
         setInput(clean);
       }
     } finally {
       if (isCurrentRequest()) {
         isSendingRef.current = false;
         setIsSending(false);
+        setStreamingReply(null);
       }
     }
   };
@@ -722,7 +786,14 @@ function ChatConversation() {
                 ) : null}
               </View>
             ))}
-            {isSending ? (
+            {/* OB.2: textul care sosește se afișează pe măsură. Butonul de raportare apare abia când
+                răspunsul e complet, adică atunci când textul intră în lista `messages`. */}
+            {streamingReply ? (
+              <View style={[styles.message, styles.assistantMessage]}>
+                <Text style={styles.assistantText}>{streamingReply}</Text>
+              </View>
+            ) : null}
+            {isSending && !streamingReply ? (
               <View style={[styles.message, styles.assistantMessage, styles.thinking]}>
                 <ActivityIndicator size="small" color={palette.blue} />
                 <Text style={styles.assistantText}>{t('chat.thinking')}</Text>

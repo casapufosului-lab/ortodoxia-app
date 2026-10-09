@@ -22,6 +22,7 @@ const migration = readFileSync(resolve(`supabase/migrations/${migrationName}.sql
 const endpoint = readFileSync(resolve('supabase/functions/orthodox-chat/index.ts'), 'utf8');
 const limitIdentity = readFileSync(resolve('supabase/functions/orthodox-chat/limit-identity.ts'), 'utf8');
 const chatScreen = readFileSync(resolve('src/app/(tabs)/chat.tsx'), 'utf8');
+const chatStreamLib = readFileSync(resolve('src/lib/chat-stream.ts'), 'utf8');
 const deviceLib = readFileSync(resolve('src/lib/ai-limit-device.ts'), 'utf8');
 const docs = readFileSync(resolve('docs/AI_LIMITS_DEVICE_MONTHLY.md'), 'utf8');
 
@@ -149,7 +150,10 @@ test('the endpoint accepts exactly the denial reasons the database can return', 
 });
 
 test('the app sends the device identifier with every chat request', () => {
-  assert.match(chatScreen, /headers: \{ 'x-device-id': await getAiLimitDeviceId\(\) \}/);
+  // OB.2: cererea nu mai trece prin \`functions.invoke\` (ar aștepta tot corpul), deci antetul se pune
+  // în clientul de streaming, iar ecranul îl alimentează în continuare cu identificatorul dispozitivului.
+  assert.match(chatScreen, /deviceId: await getAiLimitDeviceId\(\)/);
+  assert.match(chatStreamLib, /'x-device-id': args\.deviceId/);
   // Quota codes are localized on the client (tests/quota-messages-i18n.test.mjs); here we only pin the
   // badge behaviour: every exhausted-quota code clears the counter, the cooldown does not.
   assert.match(chatScreen, /if \(isQuotaExhausted\(details\?\.code\)\) setRemaining\(0\);/);

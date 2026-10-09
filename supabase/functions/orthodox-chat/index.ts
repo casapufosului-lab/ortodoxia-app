@@ -1,5 +1,5 @@
 import { createClient } from 'npm:@supabase/supabase-js@2';
-import { createJsonResponder, preflightResponse } from '../_shared/http.ts';
+import { corsHeaders, createJsonResponder, preflightResponse } from '../_shared/http.ts';
 import { buildLimitIdentity, normalizeAddress, normalizeDevice } from './limit-identity.ts';
 
 const ALLOWED_HEADERS = 'authorization, x-client-info, apikey, content-type';
@@ -68,38 +68,105 @@ type RequestBody = {
     threadId?: unknown;
     guestId?: unknown;
 };
-type OpenAIOutput = {
-    output_text?: string;
-    output?: {
-        type?: string;
-        content?: {
-            type?: string;
-            text?: string;
-        }[];
-    }[];
-    error?: {
-        message?: string;
-    };
+/**
+ * Streaming: model → funcție → aplicație (09.10.2026).
+ *
+ * Până acum funcția aștepta răspunsul COMPLET al modelului (`await response.json()`) și abia apoi
+ * trimitea ceva aplicației, care afișa tot textul deodată: testerul vedea 5–15 s de spinner, deși
+ * modelul începe să scrie în ~1 s. Acum funcția cere modelului `stream: true` și trimite fiecare
+ * bucată mai departe ca server-sent events, iar aplicația o afișează pe măsură ce sosește.
+ *
+ * Ce NU se schimbă: rezervarea cotei rămâne ÎNAINTE de apelul AI (`reserve_ai_request`, mai jos), iar
+ * mesajul asistentului se scrie în istoric la FINALUL streamului, nu în timpul lui.
+ *
+ * C17: `json` se construiește în handler, legat de cererea curentă (`createJsonResponder` din
+ * `../_shared/http.ts`). Nu mai există nicio stare la nivel de modul, deci o cerere concurentă nu
+ * poate împrumuta `Origin`-ul alteia.
+ */
+type ModelFrame = {
+    event: string;
+    data: unknown;
+};
+/** Cât acceptăm să tacă modelul între două bucăți: inactivitatea taie streamul, nu durata totală. */
+const AI_IDLE_TIMEOUT_MS = positiveInteger(Deno.env.get('AI_IDLE_TIMEOUT_MS')) ?? 20000;
+/** Plafon de siguranță pentru un singur răspuns, ca un stream blocat să nu țină conexiunea la infinit. */
+const AI_TOTAL_TIMEOUT_MS = positiveInteger(Deno.env.get('AI_TOTAL_TIMEOUT_MS')) ?? 120000;
+/** Mesaj unic pentru orice eșec al serviciului AI: nu dezvăluie detalii de furnizor. */
+const AI_UNAVAILABLE_MESSAGE = 'Serviciul AI nu a răspuns. Încearcă din nou mai târziu.';
+const SSE_RESPONSE_HEADERS: Record<string, string> = {
+    'Content-Type': 'text/event-stream',
+    // Fără caching și fără transformare: un buffer intermediar ar anula exact câștigul de latență.
+    'Cache-Control': 'no-cache, no-transform',
+    'X-Accel-Buffering': 'no',
 };
 /**
- * C17: `json` se construiește în handler, legat de cererea curentă (`createJsonResponder`
- * din `../_shared/http.ts`). Nu mai există nicio stare la nivel de modul, deci o cerere
- * concurentă nu poate împrumuta `Origin`-ul alteia.
+ * Cele două praguri se pot scurta prin variabile de mediu DOAR pentru teste și rulări locale, ca un
+ * test să nu aștepte 20 de secunde. În producție variabilele nu sunt setate, deci valorile implicite
+ * rămân cele de mai sus.
  */
-function extractReply(payload: OpenAIOutput) {
-    if (typeof payload.output_text === 'string' && payload.output_text.trim()) {
-        return payload.output_text.trim();
-    }
-    for (const item of payload.output ?? []) {
-        if (item.type !== 'message')
+function positiveInteger(raw: string | undefined) {
+    if (typeof raw !== 'string' || raw.trim() === '')
+        return null;
+    const value = Number(raw);
+    return Number.isInteger(value) && value > 0 ? value : null;
+}
+/** Un cadru SSE către aplicație: `event:` (opțional) + `data:` + linie goală. */
+function sseFrame(event: string | null, payload: Record<string, unknown>) {
+    const data = `data: ${JSON.stringify(payload)}\n\n`;
+    return event === null ? data : `event: ${event}\n${data}`;
+}
+/** Textul unei bucăți de răspuns, dacă evenimentul primit de la model e o bucată de text. */
+function frameText(frame: ModelFrame) {
+    if (frame.event !== 'response.output_text.delta' || typeof frame.data !== 'object' || frame.data === null)
+        return '';
+    const delta = (frame.data as { delta?: unknown }).delta;
+    return typeof delta === 'string' ? delta : '';
+}
+/**
+ * `true` dacă modelul a raportat un eșec în mijlocul streamului (`response.failed`, `error`).
+ *
+ * Motivul de la furnizor NU se întoarce spre aplicație: se înregistrează doar în logurile funcției, ca
+ * niciun detaliu de furnizor să nu ajungă la utilizator (aceeași regulă ca la `catch`-urile de mai jos).
+ */
+function frameFailed(frame: ModelFrame) {
+    return frame.event === 'response.failed' || frame.event === 'error';
+}
+/**
+ * Citește cadrele complete dintr-un buffer SSE și păstrează restul pentru bucata următoare.
+ *
+ * Un cadru poate fi tăiat de rețea în orice punct (chiar în mijlocul liniei `data:`), deci restul
+ * neîntregit NU se aruncă: se lipește la bucata următoare.
+ */
+function takeFrames(carry: string) {
+    const frames: ModelFrame[] = [];
+    let rest = carry;
+    for (;;) {
+        const separator = rest.indexOf('\n\n');
+        if (separator === -1)
+            return { frames, rest };
+        const raw = rest.slice(0, separator);
+        rest = rest.slice(separator + 2);
+        let event = '';
+        let data = '';
+        for (const line of raw.split('\n')) {
+            if (line.startsWith('event:'))
+                event = line.slice('event:'.length).trim();
+            else if (line.startsWith('data:'))
+                data += line.slice('data:'.length).trim();
+        }
+        if (data === '[DONE]') {
+            frames.push({ event: 'done', data: null });
             continue;
-        for (const content of item.content ?? []) {
-            if (content.type === 'output_text' && typeof content.text === 'string' && content.text.trim()) {
-                return content.text.trim();
-            }
+        }
+        if (!data)
+            continue;
+        try {
+            frames.push({ event, data: JSON.parse(data) as unknown });
+        }
+        catch {
+            // Cadru neinteligibil: îl ignorăm, exact ca un răspuns fără text.
         }
     }
-    return '';
 }
 Deno.serve(async (req: Request) => {
   // C17: responderul e legat de această cerere, nu de o variabilă de modul.
@@ -297,12 +364,38 @@ Deno.serve(async (req: Request) => {
                 content: string;
             }[];
         }
-        // 2. Call OpenAI
-        let reply: string;
+        // 2. Call OpenAI (streaming)
+        const aiStartedAt = Date.now();
+        const encoder = new TextEncoder();
+        /**
+         * Timeout pe INACTIVITATE, nu pe durata totală: un răspuns lung are voie să dureze (înainte era
+         * tăiat la 30 de secunde), dar un model care tace prea mult se taie. Plafonul total rămâne doar
+         * o plasă de siguranță, ca un stream blocat să nu țină conexiunea la infinit.
+         */
+        const upstreamAbort = new AbortController();
+        let idleTimer: ReturnType<typeof setTimeout> | undefined;
+        const totalTimer = setTimeout(() => upstreamAbort.abort(), AI_TOTAL_TIMEOUT_MS);
+        const bumpIdle = () => {
+            if (idleTimer !== undefined)
+                clearTimeout(idleTimer);
+            idleTimer = setTimeout(() => upstreamAbort.abort(), AI_IDLE_TIMEOUT_MS);
+        };
+        const clearTimers = () => {
+            if (idleTimer !== undefined)
+                clearTimeout(idleTimer);
+            clearTimeout(totalTimer);
+        };
+        /** Curăță mesajul optimist al utilizatorului când răspunsul nu poate fi livrat (ca înainte). */
+        const dropSavedUserMessage = async () => {
+            if (savedUserMessage)
+                await admin.from('chat_messages').delete().eq('id', savedUserMessage.id);
+        };
+        let upstream: Response;
         try {
-            const response = await fetch('https://api.openai.com/v1/responses', {
+            bumpIdle();
+            upstream = await fetch('https://api.openai.com/v1/responses', {
                 method: 'POST',
-                signal: AbortSignal.timeout(30000),
+                signal: upstreamAbort.signal,
                 headers: {
                     Authorization: `Bearer ${openAIKey}`,
                     'Content-Type': 'application/json',
@@ -316,36 +409,178 @@ Deno.serve(async (req: Request) => {
                     max_output_tokens: 700,
                     safety_identifier: user.id,
                     store: false,
+                    // Modelul scrie bucată cu bucată, iar noi trimitem fiecare bucată imediat mai departe.
+                    stream: true,
                 }),
             });
-            const openAIResult = await response.json() as OpenAIOutput;
-            reply = response.ok ? extractReply(openAIResult) : '';
         }
         catch {
-            if (savedUserMessage)
-                await admin.from('chat_messages').delete().eq('id', savedUserMessage.id);
-            return json({ error: 'Serviciul AI nu a răspuns. Încearcă din nou mai târziu.' }, 502);
+            clearTimers();
+            await dropSavedUserMessage();
+            return json({ error: AI_UNAVAILABLE_MESSAGE }, 502);
+        }
+        const upstreamBody = upstream.body;
+        // Un răspuns care nu e `text/event-stream` nu poate fi livrat incremental: îl tratăm ca eșec,
+        // exact ca înainte, când un răspuns fără text însemna 502 și curățarea mesajului optimist.
+        if (!upstream.ok || !upstreamBody ||
+            !(upstream.headers.get('content-type') ?? '').includes('text/event-stream')) {
+            clearTimers();
+            await dropSavedUserMessage();
+            return json({ error: AI_UNAVAILABLE_MESSAGE }, 502);
+        }
+        const reader = upstreamBody.getReader();
+        const decoder = new TextDecoder();
+        let carry = '';
+        let ended = false;
+        let failed = false;
+        let reply = '';
+        let queue: ModelFrame[] = [];
+        /**
+         * Citește până la PRIMA bucată de text. Până acolo nu am trimis nimic aplicației, deci un eșec se
+         * poate întoarce încă în format JSON — contractul de erori de dinainte, neschimbat.
+         */
+        const readUntilFirstText = async () => {
+            for (;;) {
+                const { done, value } = await reader.read();
+                if (done) {
+                    ended = true;
+                    return;
+                }
+                bumpIdle();
+                carry += decoder.decode(value, { stream: true }).replace(/\r/g, '');
+                const parsed = takeFrames(carry);
+                carry = parsed.rest;
+                for (let index = 0; index < parsed.frames.length; index += 1) {
+                    const frame = parsed.frames[index];
+                    if (frameFailed(frame)) {
+                        failed = true;
+                        return;
+                    }
+                    const delta = frameText(frame);
+                    if (delta) {
+                        reply = delta;
+                        // Cadrele din aceeași bucată rămase neprocesate nu se pierd.
+                        queue = parsed.frames.slice(index + 1);
+                        return;
+                    }
+                    if (frame.event === 'done') {
+                        ended = true;
+                        return;
+                    }
+                }
+            }
+        };
+        try {
+            await readUntilFirstText();
+        }
+        catch {
+            clearTimers();
+            await dropSavedUserMessage();
+            return json({ error: AI_UNAVAILABLE_MESSAGE }, 502);
         }
         if (!reply) {
-            if (savedUserMessage)
-                await admin.from('chat_messages').delete().eq('id', savedUserMessage.id);
-            return json({ error: 'Serviciul AI nu a răspuns. Încearcă din nou mai târziu.' }, 502);
+            clearTimers();
+            await dropSavedUserMessage();
+            return json({ error: AI_UNAVAILABLE_MESSAGE }, 502);
         }
-        if (user && !isAnonymous && threadId) {
-            const { error: saveAssistantError } = await admin
-                .from('chat_messages')
-                .insert({ thread_id: threadId, user_id: user.id, role: 'assistant', content: reply });
-            if (saveAssistantError)
-                return json({ error: 'Răspunsul a fost generat, dar nu a putut fi salvat.' }, 500);
-        }
-        if (user && !isAnonymous && threadId) {
-            await admin
-                .from('chat_threads')
-                .update({ updated_at: new Date().toISOString() })
-                .eq('id', threadId)
-                .eq('user_id', user.id);
-        }
-        return json({ reply, threadId, remaining: reservation.remaining_limit, dailyLimit });
+        // Măsurătoarea cerută de OB.1: timpul până la primul text, scris în logurile funcției.
+        console.log('chat-stream ttft', JSON.stringify({ ttftMs: Date.now() - aiStartedAt }));
+        const quota = { threadId, remaining: reservation.remaining_limit, dailyLimit };
+        let clientGone = false;
+        /**
+         * De aici înainte răspunsul e un stream SSE, iar aplicația afișează fiecare bucată când sosește.
+         * Ordinea cadrelor: `event: meta` (contoarele de cotă), apoi bucățile de text, apoi `event: done`
+         * sau `event: error`. Contoarele pleacă ÎNAINTE de text, ca bara de cotă să fie corectă din prima
+         * secundă și ca un text care sosește să nu rămână niciodată fără context.
+         */
+        const stream = new ReadableStream({
+            async start(controller) {
+                const send = (frame: string) => {
+                    if (!clientGone)
+                        controller.enqueue(encoder.encode(frame));
+                };
+                send(sseFrame('meta', quota));
+                send(sseFrame(null, { delta: reply }));
+                try {
+                    for (;;) {
+                        for (const frame of queue) {
+                            if (frameFailed(frame)) {
+                                failed = true;
+                                break;
+                            }
+                            const delta = frameText(frame);
+                            if (delta) {
+                                reply += delta;
+                                send(sseFrame(null, { delta }));
+                            }
+                        }
+                        queue = [];
+                        if (failed || ended || clientGone)
+                            break;
+                        const { done, value } = await reader.read();
+                        if (done) {
+                            ended = true;
+                            break;
+                        }
+                        bumpIdle();
+                        carry += decoder.decode(value, { stream: true }).replace(/\r/g, '');
+                        const parsed = takeFrames(carry);
+                        carry = parsed.rest;
+                        queue = parsed.frames;
+                    }
+                }
+                catch {
+                    failed = true;
+                }
+                clearTimers();
+                if (clientGone)
+                    return;
+                if (failed) {
+                    console.warn('chat-stream: modelul a întrerupt răspunsul', threadId ?? 'guest');
+                    await dropSavedUserMessage();
+                    // Eroare la mijlocul streamului: mesaj clar, nu balon gol și nu spinner veșnic.
+                    send(sseFrame('error', { message: AI_UNAVAILABLE_MESSAGE }));
+                    controller.close();
+                    return;
+                }
+                // Istoricul se scrie la FINALUL streamului, după ce textul a plecat deja spre aplicație.
+                try {
+                    if (user && !isAnonymous && threadId) {
+                        const { error: saveAssistantError } = await admin
+                            .from('chat_messages')
+                            .insert({ thread_id: threadId, user_id: user.id, role: 'assistant', content: reply });
+                        if (saveAssistantError)
+                            throw new Error('assistant insert failed');
+                        await admin
+                            .from('chat_threads')
+                            .update({ updated_at: new Date().toISOString() })
+                            .eq('id', threadId)
+                            .eq('user_id', user.id);
+                    }
+                    send(sseFrame('done', {}));
+                }
+                catch {
+                    send(sseFrame('error', { message: 'Răspunsul a fost generat, dar nu a putut fi salvat.' }));
+                }
+                console.log('chat-stream total', JSON.stringify({
+                    totalMs: Date.now() - aiStartedAt,
+                    chars: reply.length,
+                }));
+                controller.close();
+            },
+            cancel() {
+                // Aplicația a plecat (sau a anulat): oprim și apelul către model, ca să nu plătim generarea
+                // unui răspuns pe care nimeni nu îl mai citește. Răspunsul parțial NU se scrie în istoric.
+                clientGone = true;
+                clearTimers();
+                void reader.cancel().catch(() => undefined);
+                upstreamAbort.abort();
+            },
+        });
+        return new Response(stream, {
+            status: 200,
+            headers: { ...corsHeaders(req, ALLOWED_HEADERS), ...SSE_RESPONSE_HEADERS },
+        });
     }
     catch {
         return json({ error: 'Serviciul nu este disponibil. Încearcă din nou mai târziu.' }, 500);

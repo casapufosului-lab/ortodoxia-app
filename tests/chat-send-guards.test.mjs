@@ -97,10 +97,12 @@ test('no assistant message is added on failure', () => {
 
 // 8. Server-side limits remain authoritative
 test('remaining and dailyLimit come from server response', () => {
-  const successPath = src.indexOf('setRemaining(data.remaining)');
-  assert.ok(successPath !== -1, 'remaining must be set from server data');
-  const dailyLimitPath = src.indexOf('setDailyLimit(data.dailyLimit)');
-  assert.ok(dailyLimitPath !== -1, 'dailyLimit must be set from server data');
+  // OB.2: cu streaming, limitele vin în primul cadru \`meta\` (nu într-un \`response.json()\` la final);
+  // pe calea de eroare HTTP rămân în corpul răspunsului. Nicăieri nu se inventează local.
+  assert.ok(src.includes('setRemaining(event.meta.remaining)'), 'remaining must be set from the server meta frame');
+  assert.ok(src.includes('setDailyLimit(event.meta.dailyLimit)'), 'dailyLimit must be set from the server meta frame');
+  assert.ok(src.includes('setRemaining(details.remaining)'), 'remaining must be set from the HTTP error body');
+  assert.ok(src.includes('setDailyLimit(details.dailyLimit)'), 'dailyLimit must be set from the HTTP error body');
 });
 
 // 9. Finally block clears both ref and state
@@ -198,7 +200,11 @@ test('send rejects stale async results', () => {
   const body = src.slice(start, src.indexOf('return (', start));
   assert.ok(body.includes('const requestId = ++sendRequestRef.current;'));
   assert.ok(body.includes('const isCurrentRequest = () => sendRequestRef.current === requestId;'));
-  assert.ok((body.split('if (!isCurrentRequest()) return;').length - 1) >= 4);
+  // OB.2: verificarea de dinainte de \`response.json()\` a dispărut (nu mai există un corp de citit), dar
+  // fiecare cadru primit e acum verificat ÎNAINTE de a fi aplicat — mai des, nu mai rar — plus după
+  // autentificare și după încheierea streamului.
+  assert.ok((body.split('if (!isCurrentRequest()) return;').length - 1) >= 3);
+  assert.match(body, /onEvent: \(event\) => \{\s*if \(!isCurrentRequest\(\)\) return;/);
   assert.ok(body.includes('if (isCurrentRequest()) {'));
 });
 
