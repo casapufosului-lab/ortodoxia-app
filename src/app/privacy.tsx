@@ -1,17 +1,21 @@
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { palette } from '@/constants/palette';
 import { useLegalFill } from '@/lib/legal-fields';
+import { screenBottomPadding } from '@/lib/responsive-layout';
 import { useLocalization } from '@/providers/localization-provider';
 
 export default function PrivacyScreen() {
   const { t } = useLocalization();
   // Legal values are configuration; placeholders render a localized notice until set.
   const fillLegal = useLegalFill();
+  // Ecran fără bară de tab-uri: ultimul paragraf trebuie să rămână deasupra barei de
+  // navigare a sistemului, deci padding-ul de jos include zona sigură (nu 60 fix).
+  const insets = useSafeAreaInsets();
   return (
     <SafeAreaView edges={['top']} style={styles.safe}>
-      <ScrollView contentContainerStyle={styles.content}>
+      <ScrollView contentContainerStyle={[styles.content, { paddingBottom: screenBottomPadding(insets.bottom, 60) }]}>
         <Text style={styles.h1}>{fillLegal(t('privacy.title'))}</Text>
         <Text style={styles.meta}>{fillLegal(t('privacy.meta'))}</Text>
 
@@ -132,7 +136,7 @@ export default function PrivacyScreen() {
 
 const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: palette.background },
-  content: { width: '100%', maxWidth: 760, alignSelf: 'center', padding: 20, paddingBottom: 60, gap: 4 },
+  content: { width: '100%', maxWidth: 760, alignSelf: 'center', padding: 20, gap: 4 },
   h1: { color: palette.ink, fontSize: 28, fontWeight: '800', paddingTop: 12, paddingBottom: 4 },
   meta: { color: palette.muted, fontSize: 13, marginBottom: 16 },
   h2: { color: palette.ink, fontSize: 18, fontWeight: '800', marginTop: 18, marginBottom: 6 },

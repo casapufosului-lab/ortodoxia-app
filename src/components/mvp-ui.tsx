@@ -1,13 +1,36 @@
 import type { PropsWithChildren, ReactNode } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View, type ViewStyle } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View, type ViewStyle } from 'react-native';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { palette } from '@/constants/palette';
+import { contentBoxStyle, screenBottomPadding } from '@/lib/responsive-layout';
 
+/**
+ * Containerul comun al ecranelor.
+ *
+ * Bug-ul din 09.10.2026: conținutul se termina cu un padding de jos FIX (`paddingBottom: 36`)
+ * și fără citirea zonei sigure, iar lățimea maximă era aplicată orbește. Acum:
+ * - padding-ul de jos = baza + `insets.bottom`, deci ultimul element rămâne deasupra barei
+ *   de navigare a sistemului (Android 15 e edge-to-edge obligatoriu la targetSdk 36);
+ * - pe ecrane late (≥ `WIDE_SCREEN_MIN_WIDTH`) conținutul se centrează și se limitează la
+ *   `CONTENT_MAX_WIDTH`, ca să nu se întindă pe tot ecranul unui foldable/tabletă.
+ * Ambele calcule sunt în `@/lib/responsive-layout` și sunt testate direct.
+ */
 export function Screen({ children, style, contentStyle }: PropsWithChildren<{ style?: ViewStyle; contentStyle?: ViewStyle }>) {
+  const insets = useSafeAreaInsets();
+  const { width } = useWindowDimensions();
+
   return (
     <SafeAreaView edges={['top']} style={[styles.safeArea, style]}>
-      <ScrollView contentContainerStyle={[styles.screen, contentStyle]}>{children}</ScrollView>
+      <ScrollView
+        contentContainerStyle={[
+          styles.screen,
+          contentBoxStyle(width),
+          { paddingBottom: screenBottomPadding(insets.bottom) },
+          contentStyle,
+        ]}>
+        {children}
+      </ScrollView>
     </SafeAreaView>
   );
 }
@@ -105,7 +128,7 @@ export function SecondaryButton({ label, onPress, disabled = false, accessibilit
 
 const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: palette.skyLight },
-  screen: { width: '100%', maxWidth: 760, alignSelf: 'center', padding: 20, paddingBottom: 36, gap: 18 },
+  screen: { width: '100%', padding: 20, gap: 18 },
   header: { gap: 6, paddingTop: 8 },
   eyrow: { color: palette.goldDark, fontSize: 12, fontWeight: '800', letterSpacing: 1.2, textTransform: 'uppercase' },
   title: { color: palette.ink, fontSize: 30, lineHeight: 36, fontWeight: '800' },
