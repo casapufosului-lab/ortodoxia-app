@@ -1,7 +1,9 @@
 import { Tabs } from 'expo-router';
 import { Text, type ColorValue } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { palette } from '@/constants/palette';
+import { tabBarMetrics } from '@/lib/tab-bar-metrics';
 import { useLocalization } from '@/providers/localization-provider';
 
 /**
@@ -21,6 +23,15 @@ const TabIcon = ({ symbol, color }: { symbol: string; color: ColorValue }) => (
 
 export default function TabsLayout() {
   const { t } = useLocalization();
+  /**
+   * Bug 09.10.2026: înălțimea și padding-ul de jos erau fixe (66 / 8), deci pe telefoanele
+   * cu navigare pe 3 butoane bara de tab-uri rămânea sub bara de sistem (Android 15 e
+   * edge-to-edge obligatoriu, iar aplicația are targetSdk 36). `insets.bottom` se adaugă
+   * peste dimensiunea de bază, prin `tabBarMetrics`, ca bara să rămână deasupra barei de
+   * navigare. Pe navigarea gestuală `insets.bottom` e mic, deci bara arată aproape la fel.
+   */
+  const insets = useSafeAreaInsets();
+  const barMetrics = tabBarMetrics(insets.bottom);
 
   return (
     <Tabs
@@ -28,7 +39,7 @@ export default function TabsLayout() {
         headerShown: false,
         tabBarActiveTintColor: palette.primaryInk,
         tabBarInactiveTintColor: palette.muted,
-        tabBarStyle: { backgroundColor: palette.card, borderTopColor: palette.divider, height: 66, paddingBottom: 8, paddingTop: 6 },
+        tabBarStyle: { backgroundColor: palette.card, borderTopColor: palette.divider, ...barMetrics, paddingTop: 6 },
         tabBarLabelStyle: { fontSize: 11, fontWeight: '600' },
       }}>
       <Tabs.Screen name="index" options={{ title: t('nav.home'), tabBarIcon: ({ color }) => <TabIcon symbol="⌂" color={color} /> }} />
