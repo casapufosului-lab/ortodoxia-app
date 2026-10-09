@@ -18,7 +18,7 @@
     },
     "android": {
       "package": "ro.ortodoxia.app",
-      "versionCode": 3,
+      "versionCode": 4,
       "googleServicesFile": "./google-services.json",
       "adaptiveIcon": {
         "backgroundColor": "#FFFFFF",
