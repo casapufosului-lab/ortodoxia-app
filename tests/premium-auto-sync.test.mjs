@@ -200,8 +200,10 @@ describe('PREMIUM / sincronizarea cu magazinul (R1: doar la cererea omului)', ()
     assert.ok(PREMIUM_SCREEN.includes('label={busyPlan === \'restore\' ? t(\'premium.restoring\') : t(\'premium.restorePurchases\')}'));
   });
 
-  test('ECRAN: "Premium activ" + expirarea, cu butoanele de cumparare ascunse', () => {
-    // Eticheta, expirarea si butoanele ies TOATE din acelasi `premiumUiState(...)` (o singura sursa).
+  test('ECRAN: "Premium activ" + expirarea; butoanele ies din actiunea planului (T3)', () => {
+    // Eticheta si expirarea ies din `premiumUiState(...)`; butoanele, din `premiumPlanActions(...)`.
+    // O singură sursă pentru fiecare: eticheta nu poate contrazice butoanele, fiindcă amândouă citesc
+    // ACELAȘI entitlement (`premium`), nu rândul din baza de date.
     assert.equal(
       (PREMIUM_SCREEN.match(/= premiumUiState\(\{/g) ?? []).length,
       1,
@@ -209,17 +211,23 @@ describe('PREMIUM / sincronizarea cu magazinul (R1: doar la cererea omului)', ()
     );
     assert.ok(
       PREMIUM_SCREEN.includes(
-        'const { labelKey: premiumLabelKey, expirationDate: expiryIso, showPurchaseButtons } = premiumUiState({',
+        'const { labelKey: premiumLabelKey, expirationDate: expiryIso } = premiumUiState({',
       ),
       'ecranul trebuie sa isi derive starea din `premiumUiState(...)`',
     );
-    assert.ok(PREMIUM_SCREEN.includes('premiumActive, premiumExpirationDate: premium?.expirationDate ?? null'), 'inputs: entitlement-ul');
+    assert.ok(PREMIUM_SCREEN.includes('premiumActive,'), 'inputs: entitlement-ul');
+    assert.ok(PREMIUM_SCREEN.includes('premiumExpirationDate: premium?.expirationDate ?? null'), 'inputs: expirarea din entitlement');
     assert.ok(PREMIUM_SCREEN.includes('storeStateKnown: premiumKnown'), 'inputs: starea magazinului');
-    assert.ok(PREMIUM_SCREEN.includes('storeStateUnknownError, storeStateUnknownExpired'), 'inputs: fereastra "necunoscut"');
+    assert.ok(PREMIUM_SCREEN.includes('storeStateUnknownError,'), 'inputs: fereastra "necunoscut" (eroare de citire)');
+    assert.ok(PREMIUM_SCREEN.includes('storeStateUnknownExpired,'), 'inputs: fereastra "necunoscut" (10 secunde)');
     assert.ok(PREMIUM_SCREEN.includes("t('premium.statusChecking') : premiumLabel"));
     assert.ok(PREMIUM_SCREEN.includes("t('premium.expiryLabel').replace('{date}', expiryDate)"));
-    // Ambele planuri sunt conditionate de `showPurchaseButtons` (exact 2 blocuri, ca inainte).
-    assert.equal((PREMIUM_SCREEN.match(/\{showPurchaseButtons \? \(/g) ?? []).length, 2);
+    // T3 (build 21, 11.10.2026): butoanele nu mai ies din `premiumUiState(...)` - fiecare plan își
+    // ia rândul din `premiumPlanActions(...)`, prin `planCardBody`, exact o dată per plan. Interdicția
+    // veche rămâne: `{showPurchaseButtons ? (` nu mai are voie să apară (a fost regula duplicată).
+    assert.equal((PREMIUM_SCREEN.match(/\{showPurchaseButtons \? \(/g) ?? []).length, 0);
+    assert.equal((PREMIUM_SCREEN.match(/\{planCardBody\(planActions\./g) ?? []).length, 2);
+    assert.ok(PREMIUM_SCREEN.includes('const planActions = premiumPlanActions({'));
   });
 
   test('ECRAN: diagnosticul permanent e randat neconditionat, inainte de </Screen>', () => {

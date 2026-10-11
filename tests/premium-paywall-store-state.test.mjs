@@ -141,14 +141,36 @@ describe('OBIECTIV 1: ecranul Premium folosește starea magazinului', () => {
       PREMIUM_SCREEN.includes('const annualBlocked = Boolean(user) && !isPurchasable(annualAvailability);'),
       'planul anual trebuie blocat când nu e cumpărabil',
     );
-    assert.ok(PREMIUM_SCREEN.includes('disabled={busyPlan !== null || monthlyBlocked}'));
-    assert.ok(PREMIUM_SCREEN.includes('disabled={busyPlan !== null || annualBlocked}'));
+    // T3 (build 21, 11.10.2026): cele două valori rămân calculate ca înainte, dar ecranul are UN SINGUR
+    // buton per card (în `planCardBody`), deci blocarea se alege după planul cardului. Regula testului
+    // rămâne: butonul de cumpărare e dezactivat când planul nu e cumpărabil.
+    assert.ok(PREMIUM_SCREEN.includes("const blocked = plan === 'monthly' ? monthlyBlocked : annualBlocked;"));
+    assert.ok(PREMIUM_SCREEN.includes('disabled={busyPlan !== null || blocked}'));
   });
 
   test('STRUCTURAL: fiecare plan are mesajul stării lui, randat sub buton', () => {
+    // T3 (build 21, 11.10.2026): mesajul nu se mai scrie de două ori în JSX — se alege o dată, după
+    // planul cardului (`noticeKey`), și se randează o dată. Fiecare plan își păstrează mesajul lui,
+    // plus mesajul butonului mort (`blockedNotice`), care înainte nu era pin-uit aici.
+    assert.ok(
+      PREMIUM_SCREEN.includes("const noticeKey = plan === 'monthly' ? monthlyNoticeKey : annualNoticeKey;"),
+      'mesajul trebuie ales după planul cardului',
+    );
+    assert.ok(
+      PREMIUM_SCREEN.includes('{noticeKey ? <Text accessibilityLiveRegion="polite" style={styles.storeNotice}>{t(noticeKey)}</Text> : null}'),
+      'mesajul stării planului trebuie randat sub buton',
+    );
     for (const plan of ['monthly', 'annual']) {
-      const line = `{${plan}NoticeKey ? <Text accessibilityLiveRegion="polite" style={styles.storeNotice}>{t(${plan}NoticeKey)}</Text> : null}`;
-      assert.ok(PREMIUM_SCREEN.includes(line), `lipsește mesajul pentru planul ${plan}`);
+      assert.ok(
+        PREMIUM_SCREEN.includes(
+          `const ${plan}NoticeKey = ${plan}Availability === 'store-unavailable' ? null : purchaseAvailabilityMessageKey(${plan}Availability);`,
+        ),
+        `lipsește mesajul pentru planul ${plan}`,
+      );
+      assert.ok(
+        PREMIUM_SCREEN.includes(`const ${plan}BlockedNotice = ${plan}Blocked && !${plan}NoticeKey`),
+        `lipsește mesajul butonului mort pentru planul ${plan}`,
+      );
     }
     assert.ok(PREMIUM_SCREEN.includes('storeNotice: { color: palette.muted'), 'stilul mesajului lipsește');
     assert.ok(
@@ -161,7 +183,7 @@ describe('OBIECTIV 1: ecranul Premium folosește starea magazinului', () => {
     assert.ok(PREMIUM_SCREEN.includes("const monthlyAvailability = availabilityFor('monthly');"));
     assert.ok(PREMIUM_SCREEN.includes("const annualAvailability = availabilityFor('annual');"));
     assert.ok(
-      PREMIUM_SCREEN.includes('const { availabilityFor, buy, loading, offeringsError, priceFor, restore } = useRevenueCat();'),
+      PREMIUM_SCREEN.includes('const { availabilityFor, buy, loading, offeringsError, packages, priceFor, restore } = useRevenueCat();'),
       'ecranul trebuie să ceară starea magazinului de la hook',
     );
     assert.ok(RC_HOOK.includes('storePrice: pkg ? packagePriceText(pkg) : null'), 'prețul cerut vine din pachet');

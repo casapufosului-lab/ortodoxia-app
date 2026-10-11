@@ -176,7 +176,13 @@ test('Native embed uses ONE plain WebView on YouTube\'s embed endpoint', () => {
   // The measured request carries our Referer, and it is the ONLY request there is.
   assert.ok(eCode.includes('headers: { Referer: EMBED_REFERER }'));
   assert.ok(eCode.includes('const EMBED_REFERER = `${EMBED_DOCUMENT_BASE_URL}/`;'));
-  assert.ok(eCode.includes('source={{ uri: buildEmbedRequestUrl(videoId), headers: { Referer: EMBED_REFERER } }}'));
+  // BUILD 21 (T2): the ONE source is the result of a pure function with one branch per platform.
+  // iOS asks OUR page (plain `uri`, no headers - nothing can blank the document any more), while
+  // Android asks YouTube exactly as before, headers included. Both branches are pinned literally
+  // below, so neither can drift. The Android constants stay: the store build needs them.
+  assert.ok(eCode.includes('source={embedSourceFor(videoId, Platform.OS)}'));
+  assert.ok(eCode.includes("if (platform === 'ios') return { uri: buildEmbedPageUrl(videoId) };"));
+  assert.ok(eCode.includes('return { uri: buildEmbedRequestUrl(videoId), headers: { Referer: EMBED_REFERER } };'));
   // BUILD 20: the reserve, the header/document mode, the remount on `key` and the ref that fed them
   // are GONE - there is no timer in the component and no second source it could switch to, so
   // nothing in this file can cancel, replace or restart the load that is running.
@@ -192,19 +198,18 @@ test('Native embed uses ONE plain WebView on YouTube\'s embed endpoint', () => {
   assert.equal((eCode.match(/useRef[<(]/g) ?? []).length, 2);
   assert.ok(eCode.includes('const reportPayloadRef = useRef<LivePlayerDiagnosticReport | null>(null);'));
   assert.ok(eCode.includes('const reportCountRef = useRef(0);'));
-  const expectedSource =
-    'source={{ uri: buildEmbedRequestUrl(videoId), headers: { Referer: EMBED_REFERER } }}';
+  const expectedSource = 'source={embedSourceFor(videoId, Platform.OS)}';
   assert.equal(
-    eCode.slice(eCode.indexOf('source={{'), eCode.indexOf('source={{') + expectedSource.length),
+    eCode.slice(eCode.indexOf('source={'), eCode.indexOf('source={') + expectedSource.length),
     expectedSource,
     'the source is a literal built from `videoId` - never read from a ref or from state',
   );
   assert.ok(!eCode.includes('<iframe'));
   assert.ok(!eCode.includes('baseUrl:'));
   assert.ok(!eCode.includes('injectedJavaScript={mode'));
-  assert.ok(eCode.includes('injectedJavaScript={EMBED_REFERRER_PROBE}'));
+  assert.ok(eCode.includes("injectedJavaScript={Platform.OS === 'android' ? EMBED_REFERRER_PROBE : undefined}"));
   assert.equal((eCode.match(/<WebView/g) ?? []).length, 1);
-  assert.equal((eCode.match(/source=\{\{/g) ?? []).length, 1);
+  assert.equal((eCode.match(/source=\{/g) ?? []).length, 1);
   // No timer may act ON THE PLAYER. The file has three `setTimeout` calls, each pinned by name: two
   // inside the injected probe (they only measure) and one line that schedules the report to the
   // server at 3 s and 8 s. Build 20.2 added that third one on the owner's order, and the guard that

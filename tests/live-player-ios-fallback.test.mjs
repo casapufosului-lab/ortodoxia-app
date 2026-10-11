@@ -90,8 +90,13 @@ test('build 20: ONE WebView, ONE loading, and nothing that can cancel it', () =>
   // Exactly one WebView and exactly one source: there is no second variant to switch to, so no
   // failure can be answered by replacing the load that is running.
   assert.equal((code.match(/<WebView/g) ?? []).length, 1, 'exactly one WebView may exist');
-  assert.equal((code.match(/source=\{\{/g) ?? []).length, 1, 'exactly one source may exist');
-  assert.match(code, /source=\{\{ uri: buildEmbedRequestUrl\(videoId\), headers: \{ Referer: EMBED_REFERER \} \}\}/);
+  // BUILD 21 (T2): the ONE source is now the result of a pure function with one branch per
+  // platform. iOS asks OUR page (plain `uri`, no headers), Android asks YouTube exactly as before,
+  // headers included. Both branches are pinned literally in
+  // `tests/live-embed-source-platform.test.mjs`; the pin kept HERE is that the source is still a
+  // single literal expression built from `videoId`.
+  assert.equal((code.match(/source=\{/g) ?? []).length, 1, 'exactly one source may exist');
+  assert.match(code, /source=\{embedSourceFor\(videoId, Platform\.OS\)\}/);
   // THE REMOVAL IS PINNED HERE, so the mechanism the audit found cannot come back quietly. A `key`
   // that changes with the mode unmounts the WebView and aborts the request already in flight; the
   // reserve is what changed it; the mode state and the ref are what fed both.
@@ -108,9 +113,8 @@ test('build 20: ONE WebView, ONE loading, and nothing that can cancel it', () =>
   assert.equal((code.match(/useRef[<(]/g) ?? []).length, 2, 'only the report may hold refs');
   assert.match(code, /const reportPayloadRef = useRef<LivePlayerDiagnosticReport \| null>\(null\);/);
   assert.match(code, /const reportCountRef = useRef\(0\);/);
-  const expectedSource =
-    'source={{ uri: buildEmbedRequestUrl(videoId), headers: { Referer: EMBED_REFERER } }}';
-  const sourceAt = code.indexOf('source={{');
+  const expectedSource = 'source={embedSourceFor(videoId, Platform.OS)}';
+  const sourceAt = code.indexOf('source={');
   assert.equal(
     code.slice(sourceAt, sourceAt + expectedSource.length),
     expectedSource,
@@ -229,11 +233,13 @@ test('build 15: native player never fails silently', () => {
   assert.doesNotMatch(code, /frameMeasuredEmpty/);
   assert.doesNotMatch(code, /iframe:marime/);
   // Build 20: the header request has no document of ours, so its page state is collected by the
-  // injected probe. There is exactly ONE probe now, it is unconditional (no mode), and what it
-  // reports is the decisive datum: `document.referrer` as YouTube's own page sees it, plus whether a
-  // `<video>` element exists and its size, plus the page's visible text - so a refusal arrives with
-  // "Error 153" verbatim and the open question is settled by a measurement, not by a guess.
-  assert.match(code, /injectedJavaScript=\{EMBED_REFERRER_PROBE\}/);
+  // injected probe: `document.referrer` as YouTube's own page sees it, whether a `<video>` element
+  // exists and its size, and the visible text (so a refusal arrives with "Error 153" verbatim).
+  // BUILD 21 (T2): the probe is ANDROID-ONLY. On iOS the document is now OUR page (see the source
+  // expression pinned above), so a probe injected there would report `video=nu` and an empty referer
+  // about our own page while the stream is playing - a measurement of the wrong document. The
+  // Android branch is unchanged, probe included: it is the request that works in the store build.
+  assert.match(code, /injectedJavaScript=\{Platform\.OS === 'android' \? EMBED_REFERRER_PROBE : undefined\}/);
   assert.match(code, /'ref=' \+ \(document\.referrer \|\| '\(gol\)'\)/);
   // Build 20.1: ONE message per fact (`ref=`, `video=`, `text=`), so no two facts share a line.
   assert.match(code, /send\('ref=' \+ \(document\.referrer \|\| '\(gol\)'\)\);/);
@@ -261,13 +267,15 @@ test('build 15: native player never fails silently', () => {
   assert.doesNotMatch(code, /live\.playerVariantLabel/);
   // BUILD 20.1: the ORDER of the diagnostic block, pinned as one sequence, because the owner reads it
   // off the phone in exactly this order and a shuffled line would be misread. In code tokens:
-  //   loadingText -> loadedUrlText (`pagina:`) -> httpStatusText (`http:`) -> errorText (`eroare:`)
+  //   loadingText -> loadedUrlText (`pagina:`) -> requestedUrlText (`cerut=`) -> httpStatusText
+  //   (`http:`) -> errorText (`eroare:`)
   //   -> playerSignalLabel (heading) -> referrerText (`ref=`) -> videoText (`video=`)
-  //   -> webviewSizeText (`webview=`) -> incarcat= -> pageTextLine (`text=`) -> the manual way out.
+  //   -> webviewSizeText (`webview=`) -> incarcat= -> pageTextLine (`text=`) -> pageStateText
+  //   (`page=`, build 21: mesajele paginii NOASTRE) -> the manual way out.
   // All of it inside the footer, under the player, above the button.
   assert.match(
     code,
-    /<View style=\{styles\.footer\}>[\s\S]*loadingText[\s\S]*loadedUrlText[\s\S]*httpStatusText[\s\S]*errorText[\s\S]*playerSignalLabel[\s\S]*referrerText[\s\S]*videoText[\s\S]*webviewSizeText[\s\S]*incarcat=[\s\S]*pageTextLine[\s\S]*openOnYouTube/,
+    /<View style=\{styles\.footer\}>[\s\S]*loadingText[\s\S]*loadedUrlText[\s\S]*requestedUrlText[\s\S]*httpStatusText[\s\S]*errorText[\s\S]*playerSignalLabel[\s\S]*referrerText[\s\S]*videoText[\s\S]*webviewSizeText[\s\S]*incarcat=[\s\S]*pageTextLine[\s\S]*pageStateText[\s\S]*openOnYouTube/,
   );
 });
 
@@ -279,15 +287,18 @@ test('build 15/17: the YouTube way out is unconditional and manual, and stays in
   assert.ok(buttonAt > 0, 'the open-on-YouTube control is missing from the player footer');
   const before = footer.slice(0, buttonAt);
   // The diagnostics may (and do) sit above it, but the button itself is a plain element.
-  // Build 20.1 added the probe's own lines AFTER the last conditional (they are unconditional, one per
-  // field), so the tail after the last `: null}` is no longer blank - and what this test is about was
-  // never the blankness: it is that between the LAST diagnostic line and the button there is no
-  // conditional at all, so no `? :` and no `&&` can ever hide the way out. The line before the button
-  // is the last probe line (`text=`), which ends in `DIAGNOSTIC_PENDING`.
-  const afterDiagnostics = before.slice(
-    before.lastIndexOf('DIAGNOSTIC_PENDING') + 'DIAGNOSTIC_PENDING'.length,
-  );
+  // BUILD 21: the diagnostic block moved behind an invisible 48x48 toggle (`showDiagnostics`), so the
+  // tail after the last diagnostic line now legitimately closes that ONE conditional. What this test
+  // is about is unchanged, and it is pinned from that close onwards: the way out is a plain element
+  // outside every conditional - between the toggle and the button there is nothing but whitespace
+  // (comments are stripped from `code`), so no `? :` and no `&&` can ever hide it.
+  assert.match(before, /\{showDiagnostics \? \(/, 'the diagnostic block must still exist, just hidden');
+  assert.match(footer, /onPress=\{\(\) => setShowDiagnostics\(\(visible\) => !visible\)\}/, 'the invisible toggle is missing');
+  const toggleCloseAt = before.lastIndexOf(': null}') + ': null}'.length;
+  assert.ok(toggleCloseAt > ': null}'.length, 'the toggle that hides the diagnostics is missing');
+  const afterDiagnostics = before.slice(toggleCloseAt);
   assert.ok(afterDiagnostics.length > 0, 'the way out must come after the diagnostic block');
+  assert.match(afterDiagnostics, /^\s*$/, 'nothing but whitespace may sit between the diagnostics and the button');
   assert.doesNotMatch(afterDiagnostics, /\?(?![?=])/, 'no ternary may sit between the diagnostics and the button');
   assert.doesNotMatch(afterDiagnostics, /&&/, 'no `&&` may sit between the diagnostics and the button');
   assert.doesNotMatch(afterDiagnostics, /: null\}/, 'no conditional element may sit between the diagnostics and the button');
@@ -371,6 +382,14 @@ test('build 20.2: the report carries the screen\'s own values, one expression ea
   // `incarcat=` is the boolean side of the same measurement, and it is the same constant too.
   assert.match(payloadBlock, /loaded: pageLoaded,/);
   assert.match(footerBlock, /incarcat=\$\{pageLoaded \? 'da' : 'nu'\}/);
+  // BUILD 21: the two columns added for the verdict (T4) follow the SAME rule for the half that is
+  // printed on screen - the footer reads the very constant the payload sends, so the screen and the
+  // database cannot disagree. The payload sends them raw (the columns are nullable); the screen shows
+  // the `...` placeholder while they are still null.
+  assert.ok(payloadBlock.includes('requested_url: requestedUrlText,'));
+  assert.ok(footerBlock.includes('cerut=${requestedUrlText ?? DIAGNOSTIC_PENDING}'));
+  assert.ok(payloadBlock.includes('page_state: pageStateText,'));
+  assert.ok(footerBlock.includes('page=${pageStateText ?? DIAGNOSTIC_PENDING}'));
   // The two build fields come from the build itself, once, and from nothing the user can type.
   assert.match(payloadBlock, /app_version: LIVE_DIAGNOSTIC_APP_VERSION,/);
   assert.match(payloadBlock, /device: LIVE_DIAGNOSTIC_DEVICE,/);
@@ -378,7 +397,8 @@ test('build 20.2: the report carries the screen\'s own values, one expression ea
   assert.match(code, /Constants\.expoConfig\?\.version/);
   // `id` and `created_at` belong to the server: the device must not invent either.
   assert.doesNotMatch(payloadBlock, /\bid:|created_at/);
-  // NO PII, checked as a closed list rather than a blacklist: exactly the twelve agreed fields, and
+  // NO PII, checked as a closed list rather than a blacklist: exactly the fourteen agreed fields
+  // (build 21 added `requested_url` and `page_state`, the two columns the verdict is read from), and
   // a `user_id` that is null - the player has no signed-in user and no personal data to send.
   const payloadKeys = (payloadBlock.match(/^\s*([a-z_]+):/gm) ?? []).map((line) =>
     line.trim().replace(':', ''),
@@ -393,6 +413,8 @@ test('build 20.2: the report carries the screen\'s own values, one expression ea
     'webview_size',
     'loaded',
     'page_text',
+    'requested_url',
+    'page_state',
     'app_version',
     'device',
     'user_id',

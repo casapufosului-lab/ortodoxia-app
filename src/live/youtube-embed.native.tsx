@@ -187,6 +187,42 @@ function buildEmbedRequestUrl(videoId: string): string {
 }
 
 /**
+ * ═══ BUILD 21 — PAGINA NOASTRĂ DE EMBED (T2) ═══
+ *
+ * De ce s-a schimbat cererea pe iOS: `source={{ uri, headers }}` NU ajunge la YouTube pe iOS. Biblioteca
+ * construiește un `NSMutableURLRequest` (`RCTConvert.mm:189`), iar când cererea se întoarce `nil`
+ * WebView-ul este GOLIT la o pagină albă fără nicio eroare, emițând totuși `onLoad`
+ * (`RNCWebViewImpl.m:863-866`) — exact `page_url = about:blank`, `loaded = true`, fără cod HTTP și
+ * fără eroare, măsurat în build-urile 11–20. Androidul nu a avut niciodată problema: el cheamă
+ * `loadUrl(uri, headers)`.
+ *
+ * Reparația nu este un antet, ci un DOCUMENT: pagina noastră, servită prin HTTPS de propriul nostru
+ * site (`public/live-embed.html`, publicat la https://ortodoxia.web.app/live-embed), încărcată cu un
+ * `uri` simplu. Atunci browserul pune SINGUR referer-ul (documentul e al nostru), iar pagina încorporează
+ * YouTube prin IFrame API. Nimic nu mai depinde de felul în care WebView-ul tratează antetele.
+ */
+const EMBED_PAGE_PATH = '/live-embed';
+
+/** Adresa paginii noastre de embed, cu id-ul streamului ca singur parametru al paginii. */
+function buildEmbedPageUrl(videoId: string): string {
+  return `${EMBED_DOCUMENT_BASE_URL}${EMBED_PAGE_PATH}?v=${encodeURIComponent(videoId)}`;
+}
+
+/**
+ * Sursa cererii, pe platforme. iOS: pagina NOASTRĂ, `uri` simplu, fără antete (deci nimic nu mai poate
+ * goli documentul). Android: EXACT cererea care funcționează azi (YouTube direct, cu `Referer`-ul
+ * nostru), literă cu literă, ca build-ul din magazin să nu poată regresa. Funcția este pură (nu atinge
+ * nimic din React), ca AMBELE ramuri să poată fi pin-uite de teste.
+ */
+export function embedSourceFor(
+  videoId: string,
+  platform: string,
+): { uri: string; headers?: { Referer: string } } {
+  if (platform === 'ios') return { uri: buildEmbedPageUrl(videoId) };
+  return { uri: buildEmbedRequestUrl(videoId), headers: { Referer: EMBED_REFERER } };
+}
+
+/**
  * ═══ THE REPORT TO THE SERVER (build 20.2) ═══
  *
  * The screen is read by a human holding a phone; that is how builds 18 and 19 ended without one
@@ -229,6 +265,15 @@ export interface LivePlayerDiagnosticReport {
   webview_size: string;
   loaded: boolean;
   page_text: string;
+  /**
+   * T2/T4 (build 21): adresa cererii pe care WebView-ul a PORNIT-O (`onLoadStart`) și mesajele pe care
+   * le trimite pagina noastră de embed (`page-ready|api-ready|player-ready|state(n)|error(cod)`).
+   * Ambele rămân NULL când evenimentul nu a venit, DELIBERAT: `requested_url` non-null este singurul
+   * marcaj care deosebește un rând de build 21 de rândurile build-urilor ≤ 20, iar un substituent
+   * („...") ar face marcajul fără sens (ar fi mereu non-null).
+   */
+  requested_url: string | null;
+  page_state: string | null;
   app_version: string;
   device: string;
   /** Always null today: the player has no signed-in user, and no PII belongs in a diagnostic. */
@@ -281,6 +326,30 @@ const EMBED_REFERRER_PROBE = `(function () {
 })();
 true;`;
 
+/**
+ * T2 (build 21): este mesajul primit de la pagina NOASTRĂ de embed sau de la sonda din Android?
+ * Pagina trimite `page-ready?v=…` (obligatoriu — este dovada că documentul este al nostru), apoi
+ * `api-ready`, `player-ready`, `state(n)` la fiecare schimbare de stare și `error(cod)` pentru
+ * 2/5/100/101/150. `Error 153` NU este cod de player, ci text de pagină — de aceea pagina îl raportează
+ * ca expirare (`error(no-player-in-25s)`), nu prefăcându-se că știe numărul.
+ */
+function isEmbedPageMessage(data: string): boolean {
+  return (
+    data === 'page-ready' ||
+    data.startsWith('page-ready?') ||
+    data === 'api-ready' ||
+    data === 'player-ready' ||
+    data.startsWith('state(') ||
+    data.startsWith('error(')
+  );
+}
+
+/**
+ * Câte mesaje de pagină se păstrează per deschidere. `state(n)` se repetă la fiecare tick de
+ * buffering, iar `page-ready` — singura dovadă că documentul e al nostru — trebuie să rămână PRIMUL.
+ */
+const PAGE_STATE_MAX_ENTRIES = 8;
+
 export interface YouTubeEmbedProps {
   videoId: string | null;
   onClose: () => void;
@@ -305,6 +374,14 @@ export function YouTubeEmbed({ videoId, onClose }: YouTubeEmbedProps) {
   const [videoInfo, setVideoInfo] = useState<{ videoId: string; text: string } | null>(null);
   const [pageText, setPageText] = useState<{ videoId: string; text: string } | null>(null);
   const [webviewSize, setWebviewSize] = useState<{ videoId: string; text: string } | null>(null);
+  // Build 21: adresa pe care WebView-ul a PORNIT cererea (`onLoadStart`) — instrumentul care lipsea în
+  // build 20 (acolo numai `onLoadEnd` scria, adică documentul COMIS, deja golit) — și mesajele paginii
+  // noastre, acumulate în ordinea sosirii.
+  const [requestedUrl, setRequestedUrl] = useState<{ videoId: string; text: string } | null>(null);
+  const [pageState, setPageState] = useState<{ videoId: string; messages: string[] } | null>(null);
+  // Blocul tehnic stă în spatele unui buton transparent de 48x48 (implicit: ascuns). Nu se șterge — a
+  // fost singurul canal citibil în 20 de build-uri — dar nu mai concurează cu playerul pe ecran.
+  const [showDiagnostics, setShowDiagnostics] = useState(false);
 
   const handleBack = useCallback(() => {
     if (videoId) {
@@ -345,6 +422,13 @@ export function YouTubeEmbed({ videoId, onClose }: YouTubeEmbedProps) {
   const videoText = videoInfo && videoInfo.videoId === videoId ? videoInfo.text : null;
   const pageTextLine = pageText && pageText.videoId === videoId ? pageText.text : null;
   const webviewSizeText = webviewSize && webviewSize.videoId === videoId ? webviewSize.text : null;
+  // Build 21: ce s-a CERUT (`onLoadStart`) și ce a raportat pagina. `requestedUrlText` rămâne null dacă
+  // evenimentul nu a venit — este o măsurătoare, nu un substituent.
+  const requestedUrlText = requestedUrl && requestedUrl.videoId === videoId ? requestedUrl.text : null;
+  const pageStateText =
+    pageState && pageState.videoId === videoId && pageState.messages.length > 0
+      ? pageState.messages.join('|')
+      : null;
   // Honest states only: we cannot see "the picture is playing" from here, so we claim nothing beyond
   // what was measured. The loading sentence is the line that was already on screen; `incarcat=`
   // below says the same thing as a token. Neither state triggers any ACTION: nothing in this
@@ -379,6 +463,9 @@ export function YouTubeEmbed({ videoId, onClose }: YouTubeEmbedProps) {
       webview_size: webviewSizeText ?? DIAGNOSTIC_PENDING,
       loaded: pageLoaded,
       page_text: pageTextLine ?? DIAGNOSTIC_PENDING,
+      // T4 (build 21): the two columns added BEFORE the build, so the verdict does not need a photo.
+      requested_url: requestedUrlText,
+      page_state: pageStateText,
       app_version: LIVE_DIAGNOSTIC_APP_VERSION,
       device: LIVE_DIAGNOSTIC_DEVICE,
       user_id: null,
@@ -442,8 +529,17 @@ export function YouTubeEmbed({ videoId, onClose }: YouTubeEmbedProps) {
           style={styles.webview}
           // The measured request: YouTube's own embed URL, with our `Referer` on it. One source,
           // always the same; there is no second variant to fall back to.
-          source={{ uri: buildEmbedRequestUrl(videoId), headers: { Referer: EMBED_REFERER } }}
-          injectedJavaScript={EMBED_REFERRER_PROBE}
+          //
+          // ═══ BUILD 21 (T2): sursa are acum o ramură de PLATFORMĂ, într-o singură expresie ═══
+          // iOS: pagina noastră servită de site-ul nostru, `uri` simplu, fără antete (deci nimic nu
+          // mai poate goli documentul); Android: cererea YouTube de azi, cu `Referer`, neschimbată.
+          // Există o SINGURĂ expresie de sursă în fișier, ca să nu existe o a doua cale de încărcare.
+          source={embedSourceFor(videoId, Platform.OS)}
+          // ═══ BUILD 21 (T2): sonda se injectează DOAR pe Android. Pe iOS documentul este al nostru,
+          // iar `ref=`/`video=` ar raporta despre pagina noastră (care nu are `<video>` în documentul
+          // părinte) — un diagnostic FALS care ar arăta „video=nu" chiar când streamul se vede, exact
+          // în build-ul care trebuie să dea verdictul. Mesajele paginii rămân singura sursă pe iOS. ═══
+          injectedJavaScript={Platform.OS === 'android' ? EMBED_REFERRER_PROBE : undefined}
           originWhitelist={['*']}
           allowsInlineMediaPlayback={true}
           allowsFullscreenVideo
@@ -460,6 +556,13 @@ export function YouTubeEmbed({ videoId, onClose }: YouTubeEmbedProps) {
             }
           }}
           onLoad={() => setPageLoadedFor(videoId)}
+          // Build 21 (T2): adresa cererii pe care WebView-ul a PORNIT-O. `onLoadEnd` scrie documentul
+          // COMIS (deja `about:blank` când cererea a fost anulată, `RNCWebViewImpl.m:863-866`), deci
+          // numai această linie poate arăta dacă cererea a plecat și CE s-a cerut.
+          onLoadStart={(event: { nativeEvent: { url: string } }) => {
+            const url = event.nativeEvent.url;
+            if (url) setRequestedUrl({ videoId, text: url });
+          }}
           // The address is taken from the load that ENDED, not from a script that ran before the
           // navigation. `onLoadEnd` fires for a finished load (success or failure), so this line can
           // never again read `about:blank`.
@@ -474,6 +577,18 @@ export function YouTubeEmbed({ videoId, onClose }: YouTubeEmbedProps) {
             if (data.startsWith('ref=')) setReferrer({ videoId, text: data });
             else if (data.startsWith('video=')) setVideoInfo({ videoId, text: data });
             else if (data.startsWith('text=')) setPageText({ videoId, text: data });
+            // Build 21: mesajele paginii NOASTRE. Se ACUMULEAZĂ, nu se suprascriu: streamul retrimite
+            // `state(n)` la fiecare tick, iar `page-ready` — singura dovadă că documentul e al nostru —
+            // trebuie să rămână primul în rând.
+            else if (isEmbedPageMessage(data)) {
+              setPageState((previous) => {
+                const current = previous && previous.videoId === videoId ? previous.messages : [];
+                if (current.includes(data) || current.length >= PAGE_STATE_MAX_ENTRIES) {
+                  return previous && previous.videoId === videoId ? previous : { videoId, messages: current };
+                }
+                return { videoId, messages: [...current, data] };
+              });
+            }
           }}
           onError={(event: { nativeEvent: { description: string } }) => setPlayerError({
             videoId,
@@ -494,11 +609,21 @@ export function YouTubeEmbed({ videoId, onClose }: YouTubeEmbedProps) {
         {/* The loading sentence that was already on screen, unchanged, and still shown only while the
             page has not loaded. `incarcat=nu` further down says the same thing as a token. */}
         {loadingText ? <Text style={styles.diagnostic}>{loadingText}</Text> : null}
+        {/* ═══ BUILD 21: blocul tehnic a trecut în spatele țintei invizibile de 48x48 de mai jos. Este
+            ACELAȘI bloc, cu aceleași linii, plus `cerut=` și mesajele paginii; NU se șterge (a fost
+            singurul canal citibil în 20 de build-uri) — doar nu mai împinge playerul. ═══ */}
+        {showDiagnostics ? (
+          <>
         {/* pagina: the address of the load that ENDED (`onLoadEnd`). Unconditional on purpose -
             `...` means the load never ended, which is a measurement too, and it is not `about:blank`. */}
         <Text selectable style={styles.probe}>
           {`${t('live.playerPageOrigin')}: ${loadedUrlText ?? DIAGNOSTIC_PENDING}`}
         </Text>
+        {/* cerut=: the url the WebView actually STARTED (`onLoadStart`, build 21). This is the line
+            that was missing in every build up to 20: `pagina:` above shows the COMMITTED document,
+            which is `about:blank` as soon as the request is cancelled. `null` here (the line stays
+            `...`) means the event never arrived - a measurement, never a substitute. */}
+        <Text selectable style={styles.probe}>{`cerut=${requestedUrlText ?? DIAGNOSTIC_PENDING}`}</Text>
         {/* http: the status code, only if the WebView reported a failed response. */}
         {httpStatusText ? (
           <Text selectable style={styles.probe}>{`${t('live.playerHttpLabel')}: ${httpStatusText}`}</Text>
@@ -525,6 +650,11 @@ export function YouTubeEmbed({ videoId, onClose }: YouTubeEmbedProps) {
             from "ended in failure". */}
         <Text selectable style={styles.probe}>{`incarcat=${pageLoaded ? 'da' : 'nu'}`}</Text>
         <Text selectable style={styles.probe}>{pageTextLine ?? DIAGNOSTIC_PENDING}</Text>
+        {/* Build 21: mesajele paginii NOASTRE, exact cum au sosit, deduplicate (`page-ready` primul).
+            Ele sunt singura sursă pe iOS, unde sonda nu se injectează. */}
+        <Text selectable style={styles.probe}>{`page=${pageStateText ?? DIAGNOSTIC_PENDING}`}</Text>
+          </>
+        ) : null}
         {/* Always visible, never inside a condition, and MANUAL - nothing opens it by itself, no
             timer and no "the picture did not start" guess: the player above is the main path and a
             24/7 livestream may need a tap or a few seconds of buffering first. This stays as a
@@ -555,6 +685,15 @@ export function YouTubeEmbed({ videoId, onClose }: YouTubeEmbedProps) {
         >
           <Text style={styles.closeText}>{t('live.closePlayer')}</Text>
         </Pressable>
+        {/* Ținta invizibilă care arată blocul tehnic: 48x48 (piscul minim al proiectului: 48, nu 44 —
+            vezi `youtube-embed.native.tsx:601` și `:607-608`), în colțul dreapta-jos, cu etichetă
+            pentru cititoarele de ecran. Implicit: blocul este ascuns. */}
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={t('live.playerDiagnosticsToggle')}
+          onPress={() => setShowDiagnostics((visible) => !visible)}
+          style={styles.diagnosticsToggle}
+        />
       </View>
     </View>
   );
@@ -622,5 +761,16 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   closeText: { color: palette.ink, fontSize: 15, fontWeight: '800' },
+  // Build 21 (T2): ținta care arată blocul tehnic. Invizibilă deliberat (fără fundal, fără text — pe
+  // ecran trebuie să se vadă playerul), dar o țintă REALĂ: 48x48, minimul impus de auditul de
+  // accesibilitate al proiectului (48, nu 44), în colțul dreapta-jos al zonei de jos, cu
+  // `accessibilityLabel` pentru cititoarele de ecran.
+  diagnosticsToggle: {
+    position: 'absolute',
+    right: 0,
+    bottom: 0,
+    width: 48,
+    height: 48,
+  },
   pressed: { opacity: 0.75 },
 });

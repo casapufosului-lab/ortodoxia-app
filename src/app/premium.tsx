@@ -1,7 +1,7 @@
 import { router, useFocusEffect } from 'expo-router';
 import { ActivityIndicator, Linking, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import Purchases, { type PurchasesPackage } from 'react-native-purchases';
-import { useCallback, useRef, useState, useEffect } from 'react';
+import { type ReactElement, useCallback, useRef, useState, useEffect } from 'react';
 
 import { Card, PageHeader, PrimaryButton, Screen, SecondaryButton } from '@/components/mvp-ui';
 import { palette } from '@/constants/palette';
@@ -9,11 +9,13 @@ import { type TranslationKey } from '@/i18n/config';
 import { useRevenueCat } from '@/hooks/use-revenuecat';
 import { useSubscription } from '@/hooks/use-subscription';
 import { useLegalFill } from '@/lib/legal-fields';
-import { isRevenueCatConfigured } from '@/lib/revenuecat';
+import { isRevenueCatConfigured, packageForPlan } from '@/lib/revenuecat';
 import { manageSubscriptionUrl } from '@/lib/store-links';
 import {
   isPurchasable,
   PENDING_ACTIVATION_POLL_INTERVAL_MS,
+  type PlanAction,
+  premiumPlanActions,
   premiumScreenState,
   premiumUiState,
   purchaseAvailabilityMessageKey,
@@ -37,7 +39,9 @@ export default function PremiumScreen() {
   // Ordinea de la începutul destructurării (`dailyAiLimit, error, ...`) este fixată de testul
   // structural `premium-activation-pending.test.mjs`; numele noi se adaugă după ea.
   const { dailyAiLimit, error, entitlement, entitlementDiagnostics, customerInfoError, isLoading, premium, premiumActive, premiumKnown, storeStateUnknownError, storeStateUnknownExpired, subscriptionRowActive, refresh, refreshRevenueCat, storeSync, subscription, syncWithStore } = useSubscription();
-  const { availabilityFor, buy, loading, offeringsError, priceFor, restore } = useRevenueCat();
+  // T3 (build 21): catalogul de pachete intra in ecran — din el se citeste id-ul produsului fiecarui
+  // plan (`pkg.product.identifier`), ca sa stim carui plan apartine abonamentul activ.
+  const { availabilityFor, buy, loading, offeringsError, packages, priceFor, restore } = useRevenueCat();
   const [purchaseResult, setPurchaseResult] = useState<{ ok: boolean; message: string } | null>(null);
   const [busyPlan, setBusyPlan] = useState<'monthly' | 'annual' | 'restore' | null>(null);
 
@@ -59,14 +63,32 @@ export default function PremiumScreen() {
   // magazinului e cunoscuta”; cand ea lipseste, `storeStateUnknownError` (citirea `CustomerInfo` a
   // esuat) sau `storeStateUnknownExpired` (au trecut 10 secunde) inchid fereastra „necunoscut” si
   // `premiumUiState` trece pe „inactiv” cu butoanele VIZIBILE, in loc sa le tina ascunse la nesfarsit.
-  const { labelKey: premiumLabelKey, expirationDate: expiryIso, showPurchaseButtons } = premiumUiState({ premiumActive, premiumExpirationDate: premium?.expirationDate ?? null, storeStateKnown: premiumKnown, storeStateUnknownError, storeStateUnknownExpired });
-  const premiumLabel = t(premiumLabelKey);
-  // T4 (10.10.2026) — fereastra „starea magazinului e necunoscuta”: prima citire `CustomerInfo` nu s-a
-  // terminat inca și nu a eșuat. Cat timp e deschisa NU afirmam „Plan Gratuit” (ar fi aceeași
-  // neadevar, doar pe dos), dar nici nu tinem butoanele ascunse la nesfarsit: la 10 secunde
-  // (`STORE_STATE_UNKNOWN_TIMEOUT_MS`) sau la o citire eșuată, `premiumUiState` trece pe „inactiv”
-  // și butoanele se ARATA. Aici doar spunem „se verifica” cat timp chiar se verifica.
+  // T3 (build 21, 11.10.2026) — fereastra „magazinul nu a răspuns încă" se citește ÎNAINTE de `premiumUiState`,
+// fiindcă intră acum și în starea fiecărui card de plan (regula: cât timp fereastra e deschisă, niciun plan
+// nu primește buton). O singură definiție, aici.
   const storeStateUnresolved = !premiumKnown && !storeStateUnknownError && !storeStateUnknownExpired;
+  // T3 (build 21, 11.10.2026) — ce face fiecare card de plan. Id-ul produsului activ vine din entitlement
+  // (aceeași valoare care se citește în diagnosticul „entitlement 'premium'.productIdentifier"); id-urile
+  // planurilor, din catalogul RevenueCat; „vandabil" din `availabilityFor(plan) === 'purchasable'`.
+  const planActions = premiumPlanActions({
+  premiumActive,
+  activeProductId: premium?.productIdentifier ?? null,
+  monthlyProductId: packageForPlan(packages ?? [], 'monthly')?.product.identifier ?? null,
+  annualProductId: packageForPlan(packages ?? [], 'annual')?.product.identifier ?? null,
+  monthlyPurchasable: isPurchasable(availabilityFor('monthly')),
+  annualPurchasable: isPurchasable(availabilityFor('annual')),
+  storeStateUnknown: storeStateUnresolved,
+  });
+  const { labelKey: premiumLabelKey, expirationDate: expiryIso } = premiumUiState({
+  premiumActive,
+  premiumExpirationDate: premium?.expirationDate ?? null,
+  storeStateKnown: premiumKnown,
+  storeStateUnknownError,
+  storeStateUnknownExpired,
+  });
+  const premiumLabel = t(premiumLabelKey);
+  // T4 (10.10.2026) — fereastra „starea magazinului e necunoscută" se calculează mai sus, lângă apelul
+  // `premiumUiState` (T3, build 21): o singură definiție, folosită și de starea cardurilor de plan.
   // Numele planului (lunar/anual) si diagnosticul se citesc din ACELASI entitlement, doar normalizat
   // (`readPremiumEntitlement` citeste tot `entitlements.active['premium']`), nu din alta sursa.
   const premiumPlanLabel = entitlement.plan === 'annual' ? t('premium.statusAnnual') : t('premium.statusMonthly');
@@ -273,6 +295,42 @@ export default function PremiumScreen() {
     }
   };
 
+  /*
+   * T3 (build 21, 11.10.2026) — ce se randează în cardul unui plan, după acțiunea lui
+   * (`premiumPlanActions`, lib/subscription.ts):
+   *   'current'   -> textul „Planul tău actual", FĂRĂ buton;
+   *   'subscribe' -> butonul de activare (exact ca înainte de build 21);
+   *   'switch'    -> butonul de schimbare a planului + nota care spune că magazinul decide data
+   *                  de la care se aplică; apăsarea cheamă ACELAȘI `purchase(plan)` — schimbarea
+   *                  o face magazinul, în fereastra lui;
+   *   'pending'   -> fără buton (magazinul nu poate vinde planul, sau nu știm ce produs e activ);
+   *                  rămân doar mesajele care explică de ce.
+   */
+  const planCardBody = (action: PlanAction, plan: 'monthly' | 'annual'): ReactElement | null => {
+    if (action === 'current') {
+      return <Text style={styles.currentPlan}>{t('premium.currentPlan')}</Text>;
+    }
+    const actionLabel: TranslationKey = plan === 'monthly'
+      ? (action === 'switch' ? 'premium.switchToMonthly' : 'premium.activateMonthly')
+      : (action === 'switch' ? 'premium.switchToAnnual' : 'premium.activateAnnual');
+    const label: TranslationKey = user
+      ? (busyPlan === plan ? 'premium.processing' : actionLabel)
+      : 'premium.loginToSubscribe';
+    const noticeKey = plan === 'monthly' ? monthlyNoticeKey : annualNoticeKey;
+    const blockedNotice = plan === 'monthly' ? monthlyBlockedNotice : annualBlockedNotice;
+    const blocked = plan === 'monthly' ? monthlyBlocked : annualBlocked;
+    return (
+      <>
+        {action === 'pending' ? null : (
+          <PrimaryButton disabled={busyPlan !== null || blocked} label={t(label)} onPress={() => void purchase(plan)} />
+        )}
+        {action === 'switch' ? <Text style={styles.storeNotice}>{t('premium.switchStoreNote')}</Text> : null}
+        {noticeKey ? <Text accessibilityLiveRegion="polite" style={styles.storeNotice}>{t(noticeKey)}</Text> : null}
+        {blockedNotice ? <Text accessibilityLiveRegion="polite" style={styles.storeNotice}>{blockedNotice}</Text> : null}
+      </>
+    );
+  };
+
   return (
     <Screen>
       <PageHeader eyebrow={t('premium.eyebrow')} title={t('premium.title')} subtitle={t('premium.subtitle')} />
@@ -309,25 +367,13 @@ export default function PremiumScreen() {
         <Text style={styles.plan}>{t('premium.planMonthly')}</Text>
         <Text style={styles.introPrice}>{monthlyPrice ?? t('premium.priceInStore')}</Text>
         <Text style={styles.price}>{t('premium.renewsAutomatically')}</Text>
-        {showPurchaseButtons ? (
-          <>
-            <PrimaryButton disabled={busyPlan !== null || monthlyBlocked} label={user ? (busyPlan === 'monthly' ? t('premium.processing') : t('premium.activateMonthly')) : t('premium.loginToSubscribe')} onPress={() => void purchase('monthly')} />
-            {monthlyNoticeKey ? <Text accessibilityLiveRegion="polite" style={styles.storeNotice}>{t(monthlyNoticeKey)}</Text> : null}
-            {monthlyBlockedNotice ? <Text accessibilityLiveRegion="polite" style={styles.storeNotice}>{monthlyBlockedNotice}</Text> : null}
-          </>
-        ) : null}
+        {planCardBody(planActions.monthly, 'monthly')}
       </Card>
       <Card>
         <Text style={styles.plan}>{t('premium.planAnnual')}</Text>
         <Text style={styles.introPrice}>{annualPrice ?? t('premium.priceInStore')}</Text>
         <Text style={styles.price}>{t('premium.renewsAutomatically')}</Text>
-        {showPurchaseButtons ? (
-          <>
-            <PrimaryButton disabled={busyPlan !== null || annualBlocked} label={user ? (busyPlan === 'annual' ? t('premium.processing') : t('premium.activateAnnual')) : t('premium.loginToSubscribe')} onPress={() => void purchase('annual')} />
-            {annualNoticeKey ? <Text accessibilityLiveRegion="polite" style={styles.storeNotice}>{t(annualNoticeKey)}</Text> : null}
-            {annualBlockedNotice ? <Text accessibilityLiveRegion="polite" style={styles.storeNotice}>{annualBlockedNotice}</Text> : null}
-          </>
-        ) : null}
+        {planCardBody(planActions.annual, 'annual')}
       </Card>
       {/* Rezultatul ultimei acțiuni, LÂNGĂ butoane: mesajul din cardul de status e sus, în afara
           ecranului, exact când omul apasă butonul de jos — de aceea părea că nu se întâmplă nimic
@@ -420,6 +466,8 @@ const styles = StyleSheet.create({
   check: { color: palette.gold, fontSize: 18, fontWeight: '800' },
   benefit: { color: '#FFFFFF', fontSize: 15, flex: 1 },
   plan: { color: palette.ink, fontSize: 20, fontWeight: '800' },
+  /* T3 (build 21): planul pe care omul il are deja (fara buton). */
+  currentPlan: { color: palette.blue, fontSize: 15, fontWeight: '700', textAlign: 'center' },
   introPrice: { color: palette.goldDark, fontSize: 20, fontWeight: '800' },
   price: { color: palette.muted, fontSize: 14 },
   loadingRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },

@@ -170,7 +170,7 @@ describe('T6(2) inactiv dupa prima citire => butoane VIZIBILE; fara login => cer
     assert.ok(RC_HOOK.includes('const storeStateUnknownExpired = !premiumKnown && unknownWindow.userId === userId && unknownWindow.elapsed;'));
     assert.ok(RC_HOOK.includes("const storeStateUnknownError = !premiumKnown && customerInfoError !== '';"));
     assert.ok(
-      PREMIUM_CODE.includes('storeStateUnknownError, storeStateUnknownExpired });'),
+      /storeStateUnknownError,\s*\n\s*storeStateUnknownExpired,\s*\n\s*\}\);/.test(PREMIUM_CODE),
       'ecranul paseaza fereastra mai departe lui `premiumUiState`',
     );
   });

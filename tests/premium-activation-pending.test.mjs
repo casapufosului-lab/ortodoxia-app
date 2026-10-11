@@ -111,15 +111,17 @@ describe('B1: cablajul ecranului Premium (STRUCTURAL)', () => {
     assert.match(PREMIUM_SCREEN, /premiumScreenState\(subscription, premiumActive\)/);
   });
 
-  test('STRUCTURAL: butoanele de cumpărare sunt condiționate de shouldShowPurchaseButtons', () => {
-    // Build 18: butoanele NU mai au o expresie separata — ies din aceeasi valoare ca eticheta.
-    assert.match(PREMIUM_SCREEN, /showPurchaseButtons \} = premiumUiState\(\{/);
+  test('STRUCTURAL: butoanele de cumpărare sunt condiționate de acțiunea planului (`premiumPlanActions`)', () => {
+    // Build 18: butoanele nu mai aveau o expresie separata - ieseau din aceeasi valoare ca eticheta.
+    assert.match(PREMIUM_SCREEN, /expirationDate: expiryIso \} = premiumUiState\(\{/);
     assert.ok(
       !/shouldShowPurchaseButtons\(screenState\)/.test(PREMIUM_SCREEN),
       'interzis: a doua expresie care decide butoanele',
     );
     const occurrences = (PREMIUM_SCREEN.match(/\{showPurchaseButtons \?/g) ?? []).length;
-    assert.equal(occurrences, 2, 'ambele planuri (lunar + anual) trebuie condiționate');
+    assert.equal(occurrences, 0, 'T3 (build 21): butoanele nu mai au regula lor in ecran');
+    // T3 (build 21): fiecare plan isi primeste randul din `premiumPlanActions(...)`, prin `planCardBody`.
+    assert.equal((PREMIUM_SCREEN.match(/\{planCardBody\(planActions\./g) ?? []).length, 2);
   });
 
   test('STRUCTURAL: mesajul de activare în curs este randat prin fillLegal (adresa de suport reală)', () => {

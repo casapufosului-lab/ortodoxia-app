@@ -99,6 +99,88 @@ export function shouldShowPurchaseButtons(state: PremiumScreenState): boolean {
  * `'activation-pending'`, dar el NU ajunge niciodata pe ecran ca text de plan: eticheta de acolo este
  * mereu una dintre cele doua de mai sus.
  */
+/**
+ * T3 (build 21, 11.10.2026) — ce face fiecare card de plan în ecranul Premium.
+ *
+ * De ce exista: `showPurchaseButtons` (regula de mai sus) răspunde la o singură întreși — „se poate
+ * cumpăra acum?”. Când entitlement-ul e activ, răspunsul e „nu” și, până la build 21, ecranul ascundea
+ * **ambele** butoane: un client cu plan lunar nu mai putea trece pe anual din aplicație
+ * („a dispărut căsuța” din raportul ownerului). Aici fiecare plan își spune starea lui.
+ */
+export type PlanAction = 'subscribe' | 'switch' | 'current' | 'pending';
+
+/**
+ * Funcție pură, fără dependențe: starea fiecărui card de plan (§4.1 din
+ * `TASK-BUILD-21-LIVE-SI-PREMIUM.md`).
+ *
+ * De ce există: regula veche (`showPurchaseButtons: false` de îndată ce entitlement-ul `premium`
+ * era activ) ascundea AMBELE butoane, deci un client pe Lunar nu mai putea trece pe Anual din
+ * aplicație — „a dispărut căsuța" din raportul ownerului (11.10.2026). Aici fiecare plan își spune
+ * starea lui. Regulile, în ordine:
+ *
+ *   1. fereastra „magazinul nu a răspuns încă" (`storeStateUnknown`) rămâne exact cum este azi: fără
+ *      butoane — ambele planuri ies `'pending'`, niciodată `'subscribe'`;
+ *   2. fără abonament: `'subscribe'` dacă planul e vandabil acum, altfel `'pending'`;
+ *   3. cu abonament activ: planul al cărui produs este `activeProductId` → `'current'` (fără buton);
+ *      celălalt plan, dacă e vandabil → `'switch'`, altfel `'pending'`;
+ *   4. dacă `activeProductId` este `null` (nu știm ce produs e activ) → AMBELE `'pending'`: nu
+ *      vindem pe nevăzute un plan pe care omul îl poate avea deja, iar cardul „Planul tău actual"
+ *      nu se ghicește. (De aceea nu mai există garda de no-op din ecran: cu regula asta nu mai
+ *      există calea „buton pe planul chiar activ".)
+ *
+ * `'switch'` cere și el `purchasable`: un buton care nu poate vinde nimic ar fi o minciună (aceeași
+ * regulă ca la `purchaseAvailability`, OBIECTIV 1 din task-ul de paywall). El nu taie accesul și nu
+ * schimbă nimic pe server: apeși, se deschide fereastra magazinului, iar Apple/Google decid dacă
+ * schimbarea se aplică imediat (upgrade) sau la reînnoire (downgrade).
+ */
+export function premiumPlanActions(input: {
+  premiumActive: boolean;
+  /** Id-ul produsului activ, exact cum vine din `entitlements.active['premium'].productIdentifier`. */
+  activeProductId: string | null | undefined;
+  /** Id-urile produselor din catalogul RevenueCat pentru fiecare plan (null dacă nu s-au încărcat). */
+  monthlyProductId: string | null | undefined;
+  annualProductId: string | null | undefined;
+  /** Câte un plan e vandabil acum (`availabilityFor(...) === 'purchasable'`). */
+  monthlyPurchasable: boolean;
+  annualPurchasable: boolean;
+  /** Fereastra „magazinul nu a răspuns încă” (`STORE_STATE_UNKNOWN_TIMEOUT_MS`) încă e deschisă. */
+  storeStateUnknown: boolean;
+}): { monthly: PlanAction; annual: PlanAction } {
+  const monthlyPurchasable = input.monthlyPurchasable === true;
+  const annualPurchasable = input.annualPurchasable === true;
+
+  if (input.premiumActive !== true) {
+    // Regula 1 (cand fereastra e deschisa) + regula 2: fara abonament nu promitem nimic pana nu stim.
+    const blocked = input.storeStateUnknown === true;
+    return {
+      monthly: !blocked && monthlyPurchasable ? 'subscribe' : 'pending',
+      annual: !blocked && annualPurchasable ? 'subscribe' : 'pending',
+    };
+  }
+
+  const activeProductId = input.activeProductId ?? null;
+  const monthlyProductId = input.monthlyProductId ?? null;
+  const annualProductId = input.annualProductId ?? null;
+  const monthlyIsCurrent = monthlyProductId !== null && monthlyProductId === activeProductId;
+  const annualIsCurrent = annualProductId !== null && annualProductId === activeProductId;
+
+  if (monthlyIsCurrent || annualIsCurrent) {
+    // Regula 3, cazul în care stim exact ce produs e activ: un card e „Planul tau actual", celalalt
+    // primeste butonul de schimbare (daca magazinul il poate vinde).
+    return {
+      monthly: monthlyIsCurrent ? 'current' : monthlyPurchasable ? 'switch' : 'pending',
+      annual: annualIsCurrent ? 'current' : annualPurchasable ? 'switch' : 'pending',
+    };
+  }
+
+  // Regula 4: nu stim ce produs e activ (sau catalogul nu s-a incarcat) -> niciun buton.
+  // Nu ghicim care card e „Planul tau actual" si nu vindem un plan pe care omul il poate avea deja.
+  return {
+    monthly: 'pending',
+    annual: 'pending',
+  };
+}
+
 export type PremiumUiState = {
   /** Cheia textului afisat ca „planul tau". */
   labelKey: TranslationKey;

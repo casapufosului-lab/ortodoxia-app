@@ -140,20 +140,36 @@ describe('PREMIUM: cablajul „o singură sursă de adevăr" (STRUCTURAL)', () =
     assert.ok(SUBSCRIPTION_HOOK.includes('premiumKnown: revenueCat.premiumKnown,'));
   });
 
-  test('ECRAN: eticheta, expirarea și butoanele ies din `premiumUiState(...)`', () => {
+  test('ECRAN: eticheta si expirarea ies din `premiumUiState(...)`, butoanele din `premiumPlanActions(...)`', () => {
     assert.ok(
       PREMIUM_SCREEN.includes(
         // T4 (10.10.2026): apelul primeste acum si fereastra „necunoscut” (storeStateUnknownError /
         // storeStateUnknownExpired), ca butoanele de cumparare sa apara la 10 s sau la o eroare de
         // citire. Regula testului rămâne neschimbată: eticheta, expirarea si butoanele ies toate din
         // acelasi `premiumUiState(...)`.
-        'const { labelKey: premiumLabelKey, expirationDate: expiryIso, showPurchaseButtons } = premiumUiState({ premiumActive, premiumExpirationDate: premium?.expirationDate ?? null, storeStateKnown: premiumKnown, storeStateUnknownError, storeStateUnknownExpired });',
+        'const { labelKey: premiumLabelKey, expirationDate: expiryIso } = premiumUiState({',
       ),
       'ecranul trebuie să derive toată starea de abonament din `premiumUiState(...)`',
     );
     assert.ok(PREMIUM_SCREEN.includes("t('premium.statusChecking') : premiumLabel"));
     assert.ok(PREMIUM_SCREEN.includes("t('premium.expiryLabel').replace('{date}', expiryDate)"));
-    assert.equal((PREMIUM_SCREEN.match(/\{showPurchaseButtons \? \(/g) ?? []).length, 2);
+    assert.ok(PREMIUM_SCREEN.includes('premiumExpirationDate: premium?.expirationDate ?? null'));
+    assert.ok(PREMIUM_SCREEN.includes('storeStateKnown: premiumKnown'));
+    assert.ok(PREMIUM_SCREEN.includes('storeStateUnknownError'));
+    assert.ok(PREMIUM_SCREEN.includes('storeStateUnknownExpired'));
+    // T3 (build 21, 11.10.2026): butoanele NU mai au o a doua regulă în ecran - ies din
+    // `premiumPlanActions(...)`, o funcție PURĂ din același modul, testată în
+    // `premium-plan-actions.test.mjs`. Ecranul o cheamă o dată per plan, prin `planCardBody`.
+    assert.ok(PREMIUM_SCREEN.includes('const planActions = premiumPlanActions({'));
+    assert.ok(PREMIUM_SCREEN.includes('activeProductId: premium?.productIdentifier ?? null,'));
+    assert.ok(PREMIUM_SCREEN.includes('storeStateUnknown: storeStateUnresolved,'));
+    assert.equal(
+      (PREMIUM_SCREEN.match(/\{planCardBody\(planActions\./g) ?? []).length,
+      2,
+      'ambele planuri (lunar + anual) isi iau randul din actiunea planului lor',
+    );
+    // Regula veche rămâne ca interdicție: `showPurchaseButtons` nu mai decide niciun buton în ecran.
+    assert.equal((PREMIUM_SCREEN.match(/\{showPurchaseButtons \? \(/g) ?? []).length, 0);
   });
 
   test('ECRAN: interzis — o a doua expresie care decide eticheta sau butoanele', () => {
