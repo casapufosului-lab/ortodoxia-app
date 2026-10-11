@@ -7,22 +7,21 @@ name: iOS verify (simulator + Maestro, fara publicare)
 # SIMULATOR, fara semnare (CODE_SIGNING_ALLOWED=NO).
 #
 # CAND PORNETE:
-#   - la orice push pe branch-ul `maestro-verify` (= branch-ul nostru de verificare) — deci daca
-#     împingi acolo, porneste o rulare de macOS;
-#   - manual (workflow_dispatch): butonul „Run workflow" apare in tab-ul Actions doar dupa ce fisierul
-#     ajunge pe branch-ul implicit; pana atunci, din CLI:
-#       gh workflow run ios-verify.yml --ref maestro-verify
+#   - DOAR manual (workflow_dispatch). `on: push` a fost scos pe 11.10.2026: fiecare push pe
+#     `maestro-verify` pornea o rulare macOS, iar macOS pe repo privat consuma minutele de ~10x.
+#     Din CLI: gh workflow run ios-verify.yml --ref maestro-verify
 #   Codemagic NU mai face verificarea pe simulator (workflow-ul `ios-verify` a fost scos din
-#   codemagic.yaml). Acolo a rămas doar `ios-testflight`, pornit manual, dimineața, unul per lansare.
+#   codemagic.yaml). Acolo a ramas doar `ios-testflight`, pornit manual, dimineata, unul per lansare.
 #
 # REGULA PROIECTULUI: un singur macOS care consuma minute, o data. Nu porni acest workflow in timp ce
 # ruleaza `ios-testflight` (Codemagic) — `concurrency` de mai jos serializeaza doar rulările acestui
 # workflow, nu știe nimic de Codemagic.
 
 on:
+  # DOAR manual. `on: push` a fost scos pe 11.10.2026: fiecare push pe `maestro-verify` pornea o
+  # rulare macOS, iar pe repo privat macOS consuma minutele de ~10x (11.10.2026: ~6 rulari).
+  # Din CLI: gh workflow run ios-verify.yml --ref maestro-verify
   workflow_dispatch:
-  push:
-    branches: [maestro-verify]
 
 concurrency:
   group: ios-verify-macos
@@ -31,7 +30,10 @@ concurrency:
 jobs:
   verify:
     name: Simulator iOS + flow-urile Maestro
-    runs-on: macos-15
+    # macos-26 = imaginea cu Xcode 26.6 IMPLICIT (17F113): exact toolchain-ul cu care
+    # Codemagic a compilat .app-ul cu succes. macos-15 are implicit 16.4 (Swift 6.1), iar
+    # "cel mai nou" de pe macos-15 e 26.3 = bug upstream expo/expo#50061.
+    runs-on: macos-26
     timeout-minutes: 60
     env:
       BUNDLE_ID: ro.ortodoxia.app
@@ -46,37 +48,36 @@ jobs:
         with:
           node-version: "22"
 
-      # React Native (0.86) cere Xcode >= 16.1: pe imaginea `macos-14` implicitul e 15.4, iar
-      # `pod install` moare cu „Invalid Podfile file: Please upgrade XCode." (patit 11.10.2026).
-      # Si tot acolo s-a dovedit a doua conditie, mai fina: pasul „Build ExpoModulesJSI xcframework"
-      # face un build imbricat care rezolva pachete SwiftPM si are nevoie de Swift 6.2 —
-      # pe Xcode 16.4 (implicitul imaginii macos-15) pica cu:
-      #   package 'apple' is using Swift tools version 6.2.0 but the installed version is 6.1.0
-      # De aceea NU ne bazam pe implicitul imaginii: alegem cel mai nou Xcode instalat (26.x).
-      - name: Alege Xcode 26 (>= 16.1; Swift 6.2 cerut de build-ul ExpoModulesJSI)
+      # DE CE XCODE 26.6 (si nu altceva):
+      #   - React Native 0.86 cere Xcode >= 16.1 (macos-14 are 15.4 => `pod install` moare);
+      #   - build-ul imbricat "Build ExpoModulesJSI xcframework" are nevoie de Swift tools 6.2,
+      #     iar implicitul macos-15 (Xcode 16.4) are Swift 6.1 =>
+      #     "package 'apple' is using Swift tools version 6.2.0 but the installed version is 6.1.0";
+      #   - Xcode 26.0.1-26.3 au Swift 6.2, dar sunt prea stricte pe C++ si pica in
+      #     RuntimeScheduler.h (bug upstream expo/expo#50061), deci "cel mai nou Xcode" nu e o solutie;
+      #   - imaginea macos-26 are Xcode 26.6 IMPLICIT (17F113) = toolchain-ul cu care Codemagic a
+      #     compilat .app-ul cu succes. Garda de mai jos cere exact 26.6.
+      - name: Verifica Xcode 26.6 (toolchain-ul cu care a construit Codemagic)
         run: |
           set -e
           echo "--- Xcode-uri instalate:"
           ls -d /Applications/Xcode*.app || true
-          NEWEST=$(ls -d /Applications/Xcode_*.app | sort -V | tail -1)
-          if [ -z "$NEWEST" ]; then
-            echo "::error::nu am gasit niciun Xcode in /Applications"
-            exit 1
-          fi
-          sudo xcode-select -s "$NEWEST/Contents/Developer"
-          echo "--- Xcode folosit: $NEWEST"
+          echo "--- Xcode activ:"
           xcodebuild -version
-          swift --version
           VER=$(xcodebuild -version | head -1 | awk '{print $2}')
-          MAJ=${VER%%.*}
-          if [ "$MAJ" -lt 16 ]; then
-            echo "::error::Xcode $VER e prea vechi (React Native cere >= 16.1)."
+          if [ "$VER" != "26.6" ]; then
+            echo "ATENTIE: Xcode activ $VER, dar build-ul cere 26.6 (Swift 6.2.4)."
+            if [ -d /Applications/Xcode_26.6.app ]; then
+              sudo xcode-select -s /Applications/Xcode_26.6.app/Contents/Developer
+              xcodebuild -version
+              VER=$(xcodebuild -version | head -1 | awk '{print $2}')
+            fi
+          fi
+          if [ "$VER" != "26.6" ]; then
+            echo "::error::Xcode 26.6 nu e disponibil pe acest runner (activ: $VER)."
             exit 1
           fi
-          if [ "$MAJ" -lt 26 ]; then
-            echo "::error::Xcode $VER nu are Swift 6.2, iar build-ul ExpoModulesJSI are nevoie de el."
-            exit 1
-          fi
+          swift --version
 
       - name: Instaleaza dependintele
         run: npm ci
