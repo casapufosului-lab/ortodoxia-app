@@ -177,6 +177,10 @@ jobs:
 
       - name: Ruleaza flow-urile Maestro pe simulator
         run: |
+          # GitHub Actions ruleaza scriptul cu `bash -e`, deci fara `set +e` primul flow picat
+          # omoara scriptul INAINTE de `case "$code" in` si restul flow-urilor nu mai ruleaza
+          # (patit 11.10.2026: doar `live` a rulat, desi el a picat in prolog).
+          set +e
           set -uo pipefail
           export PATH="$PATH:$HOME/.maestro/bin"
           mkdir -p ci-screenshots
@@ -191,6 +195,11 @@ jobs:
               --format JUNIT --output "maestro-$name.xml" \
               --debug-output "maestro-$name-debug"
             code=$?
+            if [ "$code" -ne 0 ]; then
+              # DOVADA pentru diagnostic: arborele de accesibilitate exact in momentul picarii.
+              # Fara el, fiecare incercare pe macOS e oarba (11.10.2026).
+              maestro --device "$DEVICE_UDID" hierarchy --compact > "hierarchy-$name.txt" 2>&1 || true
+            fi
             case "$code" in
               0) printf '%s\tPASS\n' "$name" >> flow-results.txt ;;
               1) printf '%s\tFAIL (flow, exit 1)\n' "$name" >> flow-results.txt; FAILED="$FAILED $name" ;;
@@ -220,3 +229,4 @@ jobs:
             maestro-*-debug/**
             flow-results.txt
             ci-screenshots/*.png
+            hierarchy-*.txt

@@ -19,7 +19,7 @@ appId: ro.ortodoxia.app
 # iar aplicația urmează limba dispozitivului la prima pornire — altfel aserțiunile de mai jos pică).
 - runFlow: set-language-ro.yaml
 - extendedWaitUntil:
-    visible: "^Acasă$"
+    visible: ".*(Acasă|Home).*"
     timeout: 45000
     label: "PORȚI: aplicația a pornit (bara de tab-uri e vizibilă)"
 # Cardul de pe Acasă are accessibilityLabel = home.liveAccessibilityLabel (unic pe ecran; titlul

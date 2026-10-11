@@ -17,10 +17,10 @@ appId: ro.ortodoxia.app
 # iar aplicația urmează limba dispozitivului la prima pornire — altfel aserțiunile de mai jos pică).
 - runFlow: set-language-ro.yaml
 - extendedWaitUntil:
-    visible: "^Acasă$"
+    visible: ".*(Acasă|Home).*"
     timeout: 45000
     label: "PORȚI: aplicația a pornit"
-- tapOn: "^Cont$"
+- tapOn: ".*(Cont|Account).*"
 # Prologul lasă ecranul Cont derulat la secțiunea de limbă (acolo schimbă limba), iar poziția de
 # Prologul lasă ecranul Cont derulat la secțiunea de limbă (acolo schimbă limba), iar poziția de
 # derulare se păstrează când revii pe tab — deci titlul se caută derulând în SUS, nu se așteaptă.

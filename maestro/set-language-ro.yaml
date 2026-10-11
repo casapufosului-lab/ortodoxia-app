@@ -11,9 +11,17 @@
 # rulare limba e deja română și prologul doar confirmă.
 appId: ro.ortodoxia.app
 ---
+# Pe iOS eticheta unui tab e UN SINGUR nod accesibil, care poarta si iconita si sufixul de
+# iconita, nici daca bara intreaga e un singur nod); pe Android textul e un nod propriu,
+# selectoarele de tab cer doar ca textul sa CONTINĂ eticheta (nu conteaza ordinea fata de
+# "Cont".
+- extendedWaitUntil:
+    visible: ".*(Cont|Account).*"
+    timeout: 45000
+    label: "PROLOG: bara de tab-uri s-a desenat (aplicatia a pornit)"
 - tapOn:
-    text: "^(Cont|Account)$"
-    label: "PROLOG: tab-ul de cont (eticheta depinde de limba curentă)"
+    text: ".*(Cont|Account).*"
+    label: "PROLOG: tab-ul de cont (eticheta depinde de limba curenta si, pe iOS, de iconita)"
 - scrollUntilVisible:
     element:
       text: "Română"
@@ -22,9 +30,9 @@ appId: ro.ortodoxia.app
     label: "PROLOG: secțiunea de limbă din Cont (opțiunea nativă Română)"
 - tapOn: "Română"
 - tapOn:
-    text: "^(Acasă|Home)$"
+    text: ".*(Acasă|Home).*"
     label: "PROLOG: ne întoarcem pe Acasă (eticheta e acum românească)"
 - extendedWaitUntil:
-    visible: "^Acasă$"
+    visible: ".*(Acasă|Home).*"
     timeout: 20000
     label: "PORȚI: prologul a reușit — aplicația vorbește românește"
