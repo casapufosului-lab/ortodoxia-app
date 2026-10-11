@@ -25,11 +25,11 @@ appId: ro.ortodoxia.app
     timeout: 30000
     label: "PORȚI: ecranul de chat s-a deschis (câmpul de scriere e vizibil)"
 - assertVisible: "Bine ai venit. Poți întreba despre rugăciune, sărbători sau termeni din credința ortodoxă."
-- tapOn: "Scrie întrebarea ta"
+- tapOn: ".*Scrie întrebarea ta.*"
 - inputText: "Ce este rugaciunea?"
 # Fără asta, tastatura acoperă butonul „Trimite" (compozitorul e în ScrollView, jos).
 - hideKeyboard
-- tapOn: "Trimite"
+- tapOn: ".*Trimite.*"
 - extendedWaitUntil:
     notVisible: ".*Pregătesc răspunsul\\.\\.\\..*"
     timeout: 15000

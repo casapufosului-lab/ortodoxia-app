@@ -35,13 +35,13 @@ appId: ro.ortodoxia.app
     visible: ".*TRINITAS TV.*"
     timeout: 60000
     label: "PORȚI: lista de surse s-a încărcat din funcția de status"
-- assertNotVisible: "Se verifică transmisiunile…"
+- assertNotVisible: ".*Se verifică transmisiunile….*"
 # PORȚI. Fără o transmisiune LIVE embeddabilă, playerul NU poate fi deschis, deci nici verificat:
 # preferăm un eșec explicit (cu motivul scris) în locul unui „pass" pe un ecran fără player.
 - assertVisible:
     text: ".*Vezi în direct.*"
     label: "PORȚI: există o transmisiune LIVE embeddabilă (fără ea, playerul nu poate fi verificat)"
-- tapOn: "Vezi în direct"
+- tapOn: ".*Vezi în direct.*"
 - extendedWaitUntil:
     visible: ".*Deschide pe YouTube.*"
     timeout: 30000
@@ -50,9 +50,9 @@ appId: ro.ortodoxia.app
     notVisible: "Se încarcă playerul video.*"
     timeout: 60000
     label: "PORȚI: pagina playerului s-a terminat de încărcat"
-- assertVisible: "Player YouTube live"
+- assertVisible: ".*Player YouTube live.*"
 # Blocul tehnic e ascuns implicit; butonul care îl arată e 48x48, invizibil, cu etichetă de accesibilitate.
-- tapOn: "Detalii tehnice despre player"
+- tapOn: ".*Detalii tehnice despre player.*"
 # Maestro compară textul EXACT (regex pe TOT textul nodului), iar linia reală e
 # „Pagina playerului: <adresa>", deci aserțiunile care acceptă un sufix se termină cu `.*`.
 - assertVisible:
@@ -85,9 +85,9 @@ appId: ro.ortodoxia.app
           timeout: 20000
           label: "Android: sonda injectată a citit referrer-ul paginii YouTube"
 - takeScreenshot: live-player
-- tapOn: "Închide playerul video"
+- tapOn: ".*Închide playerul video.*"
 - extendedWaitUntil:
     visible: ".*Slujbe LIVE.*"
     timeout: 15000
     label: "ne-am întors pe ecranul LIVE"
-- assertNotVisible: "Player YouTube live"
+- assertNotVisible: ".*Player YouTube live.*"
