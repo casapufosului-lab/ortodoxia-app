@@ -34,6 +34,14 @@ appId: ro.ortodoxia.app
     direction: DOWN
     timeout: 20000
     label: "cardul Abonament"
+# Titlul cardului poate deveni vizibil chiar la marginea de jos, cu butonul lui SUB ecran (patit
+# 11.10.2026: "Abonament" la y=2045, bara de jos de la y=2194). Deci se deruleaza pana la buton.
+- scrollUntilVisible:
+    element:
+      text: "Vezi Premium|Vezi abonamentul"
+    direction: DOWN
+    timeout: 20000
+    label: "butonul cardului de abonament (se deruleaza pana la el, nu se presupune ca e vizibil)"
 - tapOn:
     text: "Vezi Premium|Vezi abonamentul"
     label: "butonul cardului de abonament duce la /premium"
@@ -76,5 +84,14 @@ appId: ro.ortodoxia.app
     direction: DOWN
     timeout: 20000
     label: "butonul de restaurare a cumpărăturilor"
+# Subsolul sta SUB butonul de restaurare, iar derularea se oprește de îndată ce ținta devine
+# vizibilă (poate rămâne chiar la marginea de jos). Deci se derulează PÂNĂ LA subsol, nu se
+# presupune că e vizibil (patit 11.10.2026: `live`+`chat`+`notifications` verzi, aici exit 1).
+- scrollUntilVisible:
+    element:
+      text: "Plățile se procesează securizat prin App Store sau Google Play."
+    direction: DOWN
+    timeout: 20000
+    label: "subsolul cu informația despre plată"
 - assertVisible: "Plățile se procesează securizat prin App Store sau Google Play."
 - takeScreenshot: premium
