@@ -1,0 +1,85 @@
+# T1 — Slujbe LIVE: playerul chiar încarcă (regresia „WebView-ul primește about:blank").
+#
+# CE VERIFICĂ, în ordine:
+#   1. ecranul „Slujbe LIVE" se deschide din cardul de pe Acasă;
+#   2. lista de surse se încarcă (nu rămâne pe „Se verifică transmisiunile…");
+#   3. există o transmisiune LIVE embeddabilă (altfel NU se poate verifica playerul — flow-ul pică aici, spus explicit);
+#   4. playerul se deschide și pagina se termină de încărcat (`incarcat=da`), deci NU rămâne pe „Se încarcă playerul video…";
+#   5. adresa citită de player NU este `about:blank` (defectul din build-urile 11–20);
+#   6. iOS: pagina NOASTRĂ de embed a răspuns (`page-ready`) — singura dovadă că documentul e al nostru;
+#      Android: sonda injectată a raportat referrer-ul (`ref=`) de pe pagina YouTube.
+#
+# TOATE textele de mai jos sunt chei i18n reale (ro) din src/i18n/config.ts, extrase cu scriptul
+# extract-i18n.mjs (PowerShell distorsionează diacriticele), nu texte inventate.
+appId: ro.ortodoxia.app
+---
+- launchApp:
+    stopApp: true
+- extendedWaitUntil:
+    visible: "^Acasă$"
+    timeout: 45000
+    label: "PORȚI: aplicația a pornit (bara de tab-uri e vizibilă)"
+# Cardul de pe Acasă are accessibilityLabel = home.liveAccessibilityLabel (unic pe ecran; titlul
+# „Slujbe LIVE" apare de două ori, deci NU e un selector sigur).
+- scrollUntilVisible:
+    element:
+      text: "Slujbe LIVE — Urmărește Sfânta Liturghie în direct"
+    direction: DOWN
+    timeout: 30000
+    label: "cardul LIVE de pe Acasă"
+- tapOn: "Slujbe LIVE — Urmărește Sfânta Liturghie în direct"
+- extendedWaitUntil:
+    visible: "TRINITAS TV"
+    timeout: 60000
+    label: "PORȚI: lista de surse s-a încărcat din funcția de status"
+- assertNotVisible: "Se verifică transmisiunile…"
+# PORȚI. Fără o transmisiune LIVE embeddabilă, playerul NU poate fi deschis, deci nici verificat:
+# preferăm un eșec explicit (cu motivul scris) în locul unui „pass" pe un ecran fără player.
+- assertVisible:
+    text: "Vezi în direct"
+    label: "PORȚI: există o transmisiune LIVE embeddabilă (fără ea, playerul nu poate fi verificat)"
+- tapOn: "Vezi în direct"
+- extendedWaitUntil:
+    visible: "Deschide pe YouTube"
+    timeout: 30000
+    label: "PORȚI: playerul (suprapunerea video) s-a deschis"
+- extendedWaitUntil:
+    notVisible: "Se încarcă playerul video…"
+    timeout: 60000
+    label: "PORȚI: pagina playerului s-a terminat de încărcat"
+- assertVisible: "Player YouTube live"
+# Blocul tehnic e ascuns implicit; butonul care îl arată e 48x48, invizibil, cu etichetă de accesibilitate.
+- tapOn: "Detalii tehnice despre player"
+- assertVisible: "Pagina playerului"
+- assertVisible:
+    text: "incarcat=da"
+    label: "PORȚI: evenimentul de încărcare a venit (nu doar că nu a crăpat)"
+- assertNotVisible:
+    text: "about:blank"
+    label: "REGRESIA: documentul playerului nu are voie să fie about:blank"
+- runFlow:
+    when:
+      platform: iOS
+    commands:
+      - extendedWaitUntil:
+          visible: "page-ready"
+          timeout: 20000
+          label: "iOS: pagina NOASTRĂ de embed (ortodoxia.web.app/live-embed) a răspuns"
+      - assertVisible:
+          text: "Pagina playerului: https://ortodoxia.web.app/live-embed"
+          label: "iOS: documentul COMIS este pagina noastră de embed (nu about:blank, nu YouTube)"
+- runFlow:
+    when:
+      platform: Android
+    commands:
+      - extendedWaitUntil:
+          visible: "ref="
+          timeout: 20000
+          label: "Android: sonda injectată a citit referrer-ul paginii YouTube"
+- takeScreenshot: live-player
+- tapOn: "Închide playerul video"
+- extendedWaitUntil:
+    visible: "Slujbe LIVE"
+    timeout: 15000
+    label: "ne-am întors pe ecranul LIVE"
+- assertNotVisible: "Player YouTube live"

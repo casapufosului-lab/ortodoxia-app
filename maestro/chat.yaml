@@ -1,0 +1,52 @@
+# T1 — Chat: întrebarea primește un RĂSPUNS al asistentului, nu mesajul de eroare.
+#
+# CUM SE DISTINGE RĂSPUNSUL DE EROARE (fără testID-uri în aplicație): sub un răspuns COMPLET al
+# asistentului apare butonul „Raportează" (chat.reportButton, `src/app/(tabs)/chat.tsx:793-801`);
+# el nu apare niciodată pe mesajele utilizatorului, nici pe indicatorul „Pregătesc răspunsul...",
+# nici pe textul care sosește în streaming. Deci: „Raportează" vizibil = există un răspuns complet.
+#
+# `clearState: true` e deliberat: aplicația pornește ca o instalare nouă, deci sesiunea de oaspete
+# e nouă și cele 5 mesaje gratuite de ziua respectivă sunt neconsumate. Fără asta, a doua rulare pe
+# același emulator ar pica pe „Ai folosit toate cele {limit} mesaje disponibile azi."
+appId: ro.ortodoxia.app
+---
+- launchApp:
+    clearState: true
+- extendedWaitUntil:
+    visible: "^Acasă$"
+    timeout: 45000
+    label: "PORȚI: aplicația a pornit"
+- tapOn: "^Întreabă$"
+- extendedWaitUntil:
+    visible: "Scrie întrebarea ta"
+    timeout: 30000
+    label: "PORȚI: ecranul de chat s-a deschis (câmpul de scriere e vizibil)"
+- assertVisible: "Bine ai venit. Poți întreba despre rugăciune, sărbători sau termeni din credința ortodoxă."
+- tapOn: "Scrie întrebarea ta"
+- inputText: "Ce este rugaciunea?"
+# Fără asta, tastatura acoperă butonul „Trimite" (compozitorul e în ScrollView, jos).
+- hideKeyboard
+- tapOn: "Trimite"
+- extendedWaitUntil:
+    notVisible: "Pregătesc răspunsul..."
+    timeout: 15000
+    optional: true
+    label: "indicatorul de așteptare (poate apărea și dispărea repede când răspunsul vine în streaming)"
+- extendedWaitUntil:
+    visible: "Raportează"
+    timeout: 120000
+    label: "PORȚI: asistentul a terminat un răspuns (butonul de raportare există doar sub un răspuns complet)"
+- assertVisible: "Ce este rugaciunea?"
+- assertNotVisible:
+    text: "Răspunsul AI nu a putut fi generat. Încearcă din nou."
+    label: "REGRESIA: mesajul de eroare al asistentului"
+- assertNotVisible:
+    text: "Serviciul nu este disponibil momentan. Verifică conexiunea și încearcă din nou."
+    label: "REGRESIA: serviciul de chat indisponibil"
+- assertNotVisible:
+    text: "Ai folosit cele .* întrebări gratuite disponibile azi"
+    label: "REGRESIA: cota gratuită s-a terminat la prima întrebare"
+- assertNotVisible:
+    text: "Prea multe cereri"
+    label: "REGRESIA: cererile au fost limitate (rate limit)"
+- takeScreenshot: chat-answer
