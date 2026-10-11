@@ -44,7 +44,7 @@ workflows:
         BUNDLE_ID: "ro.ortodoxia.app"
         XCODE_WORKSPACE: "ios/Ortodoxia.xcworkspace"
         XCODE_SCHEME: "Ortodoxia"
-        APP_BUILD_NUMBER: "20"
+        APP_BUILD_NUMBER: "21"
       # Valorile publice EXPO_PUBLIC_* + ENVIRONMENT se scriu în .env de scriptul de mai jos
       # (exact valorile din .env-ul local / profilul EAS "production").
     scripts:
