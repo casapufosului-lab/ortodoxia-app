@@ -363,3 +363,44 @@ test('măsurătorile trec prin modulul de latență, nu prin `console.log` în `
   assert.match(sendBody, /logChatLatency\('eșec HTTP'/);
   assert.match(sendBody, /logChatLatency\('stream întrerupt'/);
 });
+
+// ─── Contractul cererii: SSE cerut explicit, JSON acceptat ca rezervă ───
+
+test('cererea cere explicit server-sent events (funcţia îşi alege contractul după acest antet)', async () => {
+  const { outcome, calls } = startChat();
+  await outcome;
+  // Fără acest antet funcţia răspunde un singur corp JSON, iar clientul îl citea ca pe un stream:
+  // de aici venea „Răspunsul AI nu a putut fi generat" (cauza măsurată pe 11.10.2026).
+  assert.equal(calls[0].init.headers.accept, 'text/event-stream');
+});
+
+test('dacă serverul răspunde JSON (fără SSE), răspunsul complet se afişează la fel', async () => {
+  const { outcome, seen } = startChat({
+    response: () => new Response(
+      JSON.stringify({ reply: 'Răspuns complet.', threadId: 'thread-1', remaining: 3, dailyLimit: 5 }),
+      { status: 200, headers: { 'content-type': 'application/json' } },
+    ),
+  });
+  const result = await outcome;
+  // Acelaşi rezultat şi aceleaşi evenimente ca pe calea SSE: ecranul nu depinde de versiunea funcţiei.
+  assert.equal(result.kind, 'ok');
+  assert.equal(result.text, 'Răspuns complet.');
+  assert.deepEqual(seen, [
+    { type: 'meta', meta: { threadId: 'thread-1', remaining: 3, dailyLimit: 5 } },
+    { type: 'delta', text: 'Răspuns complet.' },
+    { type: 'done' },
+  ]);
+});
+
+test('un corp JSON fără text nu se raportează ca răspuns reuşit', async () => {
+  const { outcome } = startChat({
+    response: () => new Response(
+      JSON.stringify({ error: 'quota', message: 'Cotă depăşită.' }),
+      { status: 200, headers: { 'content-type': 'application/json' } },
+    ),
+  });
+  const result = await outcome;
+  // „Nu am primit text" nu are voie să arate ca un răspuns: ecranul ar rămâne cu un balon gol.
+  assert.equal(result.kind, 'stream-error');
+  assert.equal(result.failure, 'incomplete');
+});

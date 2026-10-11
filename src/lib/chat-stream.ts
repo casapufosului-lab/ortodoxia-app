@@ -200,6 +200,11 @@ export async function streamChatReply(args: StreamChatReplyArgs): Promise<ChatSt
   }
 
   const headers: Record<string, string> = {
+    // Funcția își alege contractul DUPĂ acest antet: cu `text/event-stream` răspunde în server-sent
+    // events, fără el răspunde un singur corp JSON. Lipsea, deci serverul trimitea JSON, iar modulul
+    // de aici îl citea ca stream și raporta „răspuns incomplet" — deși răspunsul sosise întreg
+    // (cauză măsurată pe 11.10.2026: 50 → 49 mesaje consumate, răspuns produs la 17:04).
+    accept: 'text/event-stream',
     'content-type': 'application/json',
     apikey: args.apiKey,
     authorization: `Bearer ${token}`,
@@ -233,6 +238,30 @@ export async function streamChatReply(args: StreamChatReplyArgs): Promise<ChatSt
       details = null;
     }
     return { kind: 'http', status: response.status, details };
+  }
+
+  /* Rezervă: dacă serverul a răspuns cu un singur corp JSON (versiune mai veche a funcției ori un
+     intermediar care scoate antetul), îl citim ca JSON și îl traducem în ACELEAȘI evenimente, ca
+     ecranul să nu depindă de versiunea din producție. */
+  const contentType = (response.headers.get('content-type') ?? '').toLowerCase();
+  if (!contentType.includes('text/event-stream')) {
+    cleanup();
+    let payload: unknown = null;
+    try {
+      payload = await response.json();
+    } catch {
+      payload = null;
+    }
+    const reply = textField(payload, 'reply');
+    if (reply === null) return { kind: 'stream-error', failure: 'incomplete', message: '', partialText: '' };
+    const remaining = numberField(payload, 'remaining');
+    const dailyLimit = numberField(payload, 'dailyLimit');
+    if (remaining !== null && dailyLimit !== null) {
+      args.onEvent({ type: 'meta', meta: { threadId: textField(payload, 'threadId'), remaining, dailyLimit } });
+    }
+    if (reply) args.onEvent({ type: 'delta', text: reply });
+    args.onEvent({ type: 'done' });
+    return { kind: 'ok', text: reply, firstTextMs: null, totalMs: now() - startedAt };
   }
 
   const body = response.body;
