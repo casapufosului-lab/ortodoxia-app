@@ -6,24 +6,23 @@ name: iOS verify (simulator + Maestro, fara publicare)
 # NU publica nimic: nu are pas de TestFlight / App Store Connect, iar build-ul e Release pentru
 # SIMULATOR, fara semnare (CODE_SIGNING_ALLOWED=NO).
 #
-# CAND PORNETE (atentie, consuma minute de macOS — pe repo privat se scad de 10x mai repede):
-#   - manual (workflow_dispatch), dar butonul „Run workflow" apare doar dupa ce fisierul ajunge pe
-#     branch-ul implicit (master); pana atunci se porneste prin push care atinge `maestro/**`:
-#       git push origin maestro-verify           (dupa o modificare in maestro/)
-#     sau, din CLI, pe branch:  gh workflow run ios-verify.yml --ref maestro-verify
-#   - NU la fiecare push: doar daca se schimba `maestro/**`. Modificarea acestui fisier NU declanseaza
-#     nimic (nu e in `paths`), ca sa nu porneasca din greseala un al doilea macOS in paralel.
+# CAND PORNETE:
+#   - la orice push pe branch-ul `maestro-verify` (= branch-ul nostru de verificare) — deci daca
+#     împingi acolo, porneste o rulare de macOS;
+#   - manual (workflow_dispatch): butonul „Run workflow" apare in tab-ul Actions doar dupa ce fisierul
+#     ajunge pe branch-ul implicit; pana atunci, din CLI:
+#       gh workflow run ios-verify.yml --ref maestro-verify
+#   Codemagic NU mai face verificarea pe simulator (workflow-ul `ios-verify` a fost scos din
+#   codemagic.yaml). Acolo a rămas doar `ios-testflight`, pornit manual, dimineața, unul per lansare.
 #
 # REGULA PROIECTULUI: un singur macOS care consuma minute, o data. Nu porni acest workflow in timp ce
-# ruleaza `ios-verify` (Codemagic) sau `ios-testflight`. `concurrency` de mai jos serializeaza
-# rulările acestui workflow, dar nu stie nimic de Codemagic — deci verifică intai: `node cm-api.mjs builds <appId>`.
+# ruleaza `ios-testflight` (Codemagic) — `concurrency` de mai jos serializeaza doar rulările acestui
+# workflow, nu știe nimic de Codemagic.
 
 on:
   workflow_dispatch:
   push:
     branches: [maestro-verify]
-    paths:
-      - 'maestro/**'
 
 concurrency:
   group: ios-verify-macos
