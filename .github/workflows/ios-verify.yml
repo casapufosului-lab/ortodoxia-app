@@ -47,16 +47,34 @@ jobs:
           node-version: "22"
 
       # React Native (0.86) cere Xcode >= 16.1: pe imaginea `macos-14` implicitul e 15.4, iar
-      # `pod install` moare cu „Invalid Podfile file: Please upgrade XCode." (patit 11.10.2026, in
-      # rularea 38173557861). Aici doar ne asiguram ca imaginea are ce trebuie, cu mesaj clar.
-      - name: Verifica versiunea de Xcode (>= 16.1)
+      # `pod install` moare cu „Invalid Podfile file: Please upgrade XCode." (patit 11.10.2026).
+      # Si tot acolo s-a dovedit a doua conditie, mai fina: pasul „Build ExpoModulesJSI xcframework"
+      # face un build imbricat care rezolva pachete SwiftPM si are nevoie de Swift 6.2 —
+      # pe Xcode 16.4 (implicitul imaginii macos-15) pica cu:
+      #   package 'apple' is using Swift tools version 6.2.0 but the installed version is 6.1.0
+      # De aceea NU ne bazam pe implicitul imaginii: alegem cel mai nou Xcode instalat (26.x).
+      - name: Alege Xcode 26 (>= 16.1; Swift 6.2 cerut de build-ul ExpoModulesJSI)
         run: |
           set -e
+          echo "--- Xcode-uri instalate:"
+          ls -d /Applications/Xcode*.app || true
+          NEWEST=$(ls -d /Applications/Xcode_*.app | sort -V | tail -1)
+          if [ -z "$NEWEST" ]; then
+            echo "::error::nu am gasit niciun Xcode in /Applications"
+            exit 1
+          fi
+          sudo xcode-select -s "$NEWEST/Contents/Developer"
+          echo "--- Xcode folosit: $NEWEST"
           xcodebuild -version
+          swift --version
           VER=$(xcodebuild -version | head -1 | awk '{print $2}')
           MAJ=${VER%%.*}
           if [ "$MAJ" -lt 16 ]; then
-            echo "::error::Xcode $VER e prea vechi (React Native cere >= 16.1). Schimba 'runs-on' pe o imagine mai noua."
+            echo "::error::Xcode $VER e prea vechi (React Native cere >= 16.1)."
+            exit 1
+          fi
+          if [ "$MAJ" -lt 26 ]; then
+            echo "::error::Xcode $VER nu are Swift 6.2, iar build-ul ExpoModulesJSI are nevoie de el."
             exit 1
           fi
 
