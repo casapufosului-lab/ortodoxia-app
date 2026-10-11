@@ -213,13 +213,19 @@ workflows:
           for f in maestro/live.yaml maestro/chat.yaml maestro/premium.yaml maestro/notifications.yaml; do
             name=$(basename "$f" .yaml)
             echo "════════════ Maestro: $name ════════════"
-            if maestro --device "$DEVICE_UDID" test "$f" --format junit -o "maestro-$name.xml"; then
-              printf '%s\tPASS\n' "$name" >> flow-results.txt
-            else
-              code=$?
-              printf '%s\tFAIL (exit %s)\n' "$name" "$code" >> flow-results.txt
-              FAILED="$FAILED $name"
-            fi
+            # ATENTIE: flagurile corecte sunt --format JUNIT si --output (NU "-o": da "Unknown
+            # option: '-o'" si Maestro iese cu cod 2 fara sa ruleze niciun flow).
+            maestro --device "$DEVICE_UDID" test "$f" \
+              --format JUNIT --output "maestro-$name.xml" \
+              --debug-output "maestro-$name-debug"
+            code=$?
+            case "$code" in
+              0) printf '%s\tPASS\n' "$name" >> flow-results.txt ;;
+              1) printf '%s\tFAIL (flow, exit 1)\n' "$name" >> flow-results.txt; FAILED="$FAILED $name" ;;
+              2) printf '%s\tEROARE CLI (exit 2): comanda Maestro e gresita, flow-ul NU a rulat\n' "$name" >> flow-results.txt; FAILED="$FAILED $name" ;;
+              *) printf '%s\tFAIL (exit %s)\n' "$name" "$code" >> flow-results.txt; FAILED="$FAILED $name" ;;
+            esac
+            ls -l "maestro-$name.xml" 2>/dev/null || echo "  (nu s-a produs maestro-$name.xml)"
             # Captura de ecran a simulatorului, facuta de noi (dovada independenta de Maestro).
             xcrun simctl io "$DEVICE_UDID" screenshot "ci-screenshots/$name.png" || true
           done
@@ -233,6 +239,7 @@ workflows:
     artifacts:
       - build/ios-sim/Build/Products/Release-iphonesimulator/*.app
       - maestro-*.xml
+      - maestro-*-debug/**
       - flow-results.txt
       - ci-screenshots/*.png
       - "*.png"

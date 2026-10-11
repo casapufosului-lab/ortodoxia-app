@@ -31,8 +31,9 @@ PowerShell distorsionează diacriticele românești.
 |---|---|---|
 | `maestro/live.yaml` | Slujbe LIVE → playerul chiar încarcă | pagina playerului s-a terminat de încărcat (`incarcat=da`) și adresa NU e `about:blank`; pe iOS, pagina noastră de embed a răspuns (`page-ready`) |
 | `maestro/chat.yaml` | o întrebare → răspuns al asistentului | apare „Raportează" (buton care există doar sub un răspuns complet) și NU apar textele de eroare / de cotă epuizată |
-| `maestro/premium.yaml` | Premium → eticheta planului + butoanele | „Planul tău" + una dintre valorile reale de plan; butoanele de cumpărare/restaurare sunt acolo |
+| `maestro/premium.yaml` | Premium → cardul fiecărui plan + butoanele | cardul NU e gol: arată fie butonul real („Activează planul lunar/anual", „Treci la …", „Planul tău actual"), fie textul care spune DE CE nu există buton (vizitator / magazin indisponibil / dispozitiv care nu poate cumpăra); plus „Anual" și nota de reînnoire, „Restaurează cumpărăturile" și nota de plată |
 | `maestro/notifications.yaml` | „Activează notificările" → schimbarea stării | starea din card se schimbă în „Notificările sunt active." (sau, pentru un vizitator, butonul duce pe autentificare) |
+| `maestro/set-language-ro.yaml` | prolog (nu e scenariu de sine stătător) | trece aplicația pe română, fiindcă aplicația urmează limba DISPOZITIVULUI |
 
 Fiecare pas important are un `label:` care spune, în logul CI, **de ce** a picat — nu doar „assert
 failed". Fără o transmisiune LIVE reală, `live.yaml` nu poate verifica playerul, deci pică explicit
@@ -42,27 +43,59 @@ la aserțiunea „există o transmisiune LIVE embeddabilă", în loc să raporte
 
 ## 3. Android, local (gratuit, nelimitat)
 
-Precondiții: `ANDROID_HOME` setat, un AVD pornit.
+Precondiții: `ANDROID_HOME` setat, un AVD pornit. Rețeta de mai jos este cea **rulată și dovedită**
+pe 11.10.2026 (emulator `Pixel_7`, android-35, x86_64) — 4/4 flow-uri trecute.
 
-```powershell
-# 1. build debug + instalare
+```bat
+REM 1. emulatorul. Fără fereastră: pe acest calculator fereastra îl omoară (UpdateLayeredWindowIndirect),
+REM    iar pornirea dintr-un script care se termină îl ucide (job object) — se pornește detașat.
+%ANDROID_HOME%\emulator\emulator.exe -avd Pixel_7 -no-window -no-audio -no-boot-anim
+%ANDROID_HOME%\platform-tools\adb.exe wait-for-device
+REM Dialogul „System UI isn't responding" al emulatorului acoperă ecranul și strică capturile;
+REM animațiile lungesc fiecare pas până la timeout:
+%ANDROID_HOME%\platform-tools\adb.exe shell settings put global hide_error_dialogs 1
+%ANDROID_HOME%\platform-tools\adb.exe shell settings put global window_animation_scale 0
+%ANDROID_HOME%\platform-tools\adb.exe shell settings put global transition_animation_scale 0
+%ANDROID_HOME%\platform-tools\adb.exe shell settings put global animator_duration_scale 0
+
+REM 2. APK de RELEASE pentru x86_64 (Release = bundle-ul JS e în aplicație, deci NU are nevoie de Metro).
+REM    Un release normal cere keystore-ul de upload; pe un emulator de test se injectează cheia de debug.
 cd C:\Users\pcgar\Documents\ortodoxia-app\android
-.\gradlew.bat :app:assembleDebug --console=plain
-$adb = "$env:ANDROID_HOME\platform-tools\adb.exe"
-& $adb install -r app\build\outputs\apk\debug\app-debug.apk
+gradlew.bat :app:assembleRelease -PreactNativeArchitectures=x86_64 ^
+  -Pandroid.injected.signing.store.file=C:/Users/pcgar/Documents/ortodoxia-app/android/app/debug.keystore ^
+  -Pandroid.injected.signing.store.password=android ^
+  -Pandroid.injected.signing.key.alias=androiddebugkey ^
+  -Pandroid.injected.signing.key.password=android --console=plain
 
-# 2. serverul de dezvoltare (un build debug are nevoie de el; un build release nu)
-cd ..
-$env:CI = "1"; npx expo start --port 8081        # în alt terminal
-& $adb reverse tcp:8081 tcp:8081
+REM 3. instalare. Dacă pe emulator există o instalare cu ALTĂ semnătură, adb dă
+REM    INSTALL_FAILED_UPDATE_INCOMPATIBLE → întâi `adb uninstall ro.ortodoxia.app` (se pierde doar
+REM    sesiunea de test a emulatorului).
+adb install -r app\build\outputs\apk\release\app-release.apk
 
-# 3. flow-urile
-& "$env:USERPROFILE\.maestro\cli\maestro\bin\maestro.bat" test maestro/
+REM 4. flow-urile, UNUL CÂTE UNUL (un singur emulator ⇒ nu în paralel).
+"%USERPROFILE%\.maestro\cli\maestro\bin\maestro.bat" --device emulator-5554 test maestro\live.yaml ^
+  --format JUNIT --output maestro-out\live.xml ^
+  --test-output-dir maestro-out\artifacts-live --debug-output maestro-out\debug-live
 ```
 
 `maestro test maestro/` rulează toate flow-urile; `maestro test maestro/live.yaml` rulează unul
-singur. Ieșirea fiecărui flow se salvează în consolă, iar `takeScreenshot:` scrie un PNG lângă
-locul din care a fost rulată comanda.
+singur. `--format JUNIT --output …` scrie rezultatul mașină-citibil (`failures="0"` per flow), iar
+`--test-output-dir` adună capturile `takeScreenshot:` într-un singur loc.
+
+Trei lucruri fac diferența între „verde" și un roșu care NU e defect al aplicației:
+
+1. **Limba.** Aplicația urmează limba DISPOZITIVULUI (persistată în AsyncStorage), nu pe cea din cod.
+   Un emulator `en_US` afișează engleză, iar flow-urile asertează texte românești ⇒ pică de la prima
+   poartă. De aceea fiecare flow are, imediat după `launchApp`, prologul `runFlow: set-language-ro.yaml`
+   (Cont → secțiunea de limbă → „Română"; eticheta „Română" e identică în orice limbă, deci se poate
+   apăsa „orbește").
+2. **Textele se compară EXACT.** Maestro potrivește tot textul nodului (regex pe tot textul), nu
+   prefixe: „Pagina playerului" NU prinde „Pagina playerului: https://…". Unde textul are sufix,
+   poarta se scrie cu `.*`.
+3. **Ordinea contează la derulare.** Derularea se oprește de îndată ce ținta devine vizibilă (poate
+   rămâne chiar la marginea de jos), iar cardurile de plan sunt unul SUB altul ⇒ fiecare țintă are
+   propriul pas de derulare. Prologul de limbă lasă ecranul Cont derulat, deci un titlu de ecran
+   asertat imediat după el poate fi în afara ecranului.
 
 ---
 
@@ -100,13 +133,43 @@ Artefacte (se descarcă din pagina build-ului): `.app`-ul construit, `maestro-*.
   prind regresii de logică și de randare, nu diferențe de performanță.
 - `live.yaml` depinde de existența unei transmisiuni LIVE în momentul rulării.
 - Cumpărările reale (RevenueCat) nu se pot face automat: `premium.yaml` verifică ce se poate
-  verifica fără plată (eticheta planului, butoanele, textele).
+  verifica fără plată (eticheta planului, butoanele/textul care explică lipsa lor, textele).
+- Pe emulatorul Android magazinul răspunde `device-cannot-pay` (aplicația nu e instalată din Play),
+  deci cardul de plan arată textul care explică de ce nu există buton. Flow-ul acceptă ambele
+  situații — dar asta înseamnă că **fluxul de cumpărare real nu e acoperit** de testul automat.
 
-## 6. `mobile-mcp` (evaluat, neinstalat)
+## 6. `mobile-mcp` — instalat local, pentru EXPLORARE (nu pentru poartă)
 
-[mobile-next/mobile-mcp](https://github.com/mobile-next/mobile-mcp) a fost evaluat și **nu** a fost
-instalat: este un agent care conduce dispozitivul pas cu pas, potrivit pentru explorare interactivă,
-dar verificarea automată care trebuie să ruleze identic în CI are nevoie de un set de pași
-determinist, versionat în depozit și cu verdict clar PASS/FAIL — exact ce dau flow-urile Maestro.
-Dacă apare nevoia de explorare manuală pe dispozitiv, se instalează separat, local, fără costuri:
-`npx -y @mobilenext/mobile-mcp@latest` (necesită `adb` pentru Android și Xcode pentru iOS).
+[mobile-next/mobile-mcp](https://github.com/mobile-next/mobile-mcp) este un server MCP: îi dai un
+dispozitiv și îl conduci pas cu pas (apasă, citește ecranul, face poză). Poarta de verificare rămâne
+**Maestro** — pași determiniști, versionați, verdict PASS/FAIL — dar pentru explorare („ce scrie pe
+ecran acum?", „apasă aici și vezi ce se întâmplă") mobile-mcp e util.
+
+Instalare locală, fără costuri și fără cont; dispozitivele locale sunt gratuite, iar flota lor
+remote (plătită) NU se folosește:
+
+```bash
+npx -y @mobilenext/mobile-mcp@latest      # pornește serverul MCP pe stdio
+```
+
+Necesită `adb` pentru Android (deja avem) și Xcode/`idb` pentru iOS. Dovada că merge pe acest
+calculator (11.10.2026, `node docs/tools/mobile-mcp-smoke.mjs`):
+
+```
+[server] mobile-mcp 1.0.9 (mcp sdk 2.0.0) server running on stdio
+UNELTE (33): mobile_list_available_devices, mobile_list_apps, mobile_launch_app, mobile_install_app,
+  mobile_list_elements_on_screen, mobile_click_on_screen_at_coordinates, mobile_type_keys,
+  mobile_take_screenshot, mobile_get_device_logs, mobile_list_crashes, …
+mobile_list_available_devices → {"devices":[{"id":"Pixel_7","name":"Pixel 7","platform":"android",
+  "type":"emulator","version":"15","state":"online","model":"sdk_gphone64_x86_64"}]}
+```
+
+Conectarea la un client MCP (config JSON al clientului, secțiunea de servere MCP):
+
+```json
+{ "mcpServers": { "mobile": { "command": "npx", "args": ["-y", "@mobilenext/mobile-mcp@latest"] } } }
+```
+
+Regula de folosire: mobile-mcp este pentru **explorare manuală** și pentru a înțelege un eșec
+(„arată-mi ecranul"), nu pentru poartă. Ce merită păstrat din explorare se transformă în pas într-un
+flow Maestro, ca să ruleze identic în CI.
