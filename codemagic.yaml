@@ -1,8 +1,20 @@
 # Codemagic CI/CD — Ortodoxia iOS -> TestFlight
 #
 # DE CE EXISTĂ: cota EAS Free de build-uri iOS e epuizată (reset 1 nov 2026) și planul plătit
-# nu e activ. Codemagic are 500 min macOS/lună gratis pe planul Individual, iar grupul de
-# variabile `appstore_credentials` conține deja cele 4 valori de semnare.
+# nu e activ. Codemagic are 500 min macOS/lună gratis pe planul Individual.
+#
+# SEMNARE — deliberat MANUALĂ, cu certificatul și profilul NOSTRU (nu `fetch-signing-files`):
+# grupul `appstore_credentials` conține DIST_CERT_P12_B64 + DIST_CERT_P12_PASSWORD (Apple
+# Distribution al nostru) și PROFILE_B64 (profilul App Store pentru ro.ortodoxia.app, cu
+# Push Notifications + Sign In with Apple). Motivul e o eroare reală din buildul 6acb2d11:
+#   error: "Ortodoxia" requires a provisioning profile with the Push Notifications and
+#   Sign In with Apple features.        (după `fetch-signing-files --create`, care luase
+#   alt profil de pe portal — profilul EAS 9D7RH2742F, semnat cu certificatul EAS).
+# Pașii corecți sunt cei din docs.codemagic.io/yaml-code-signing/alternative-code-signing-methods
+# (keychain initialize -> base64 --decode p12 + keychain add-certificates ->
+#  profil în $HOME/Library/MobileDevice/Provisioning Profiles -> xcode-project use-profiles).
+# `xcode-project use-profiles` NU descarcă nimic de pe portal: citește doar profilul local,
+# deci singurul candidat pentru ro.ortodoxia.app este profilul nostru.
 #
 # ATENȚIE (dovedit, nu presupus): numele proiectului Xcode NU este "OrtodoxiaAI".
 # `expo prebuild` redenumește șablonul `expo-template-bare-minimum` (care conține
@@ -64,10 +76,15 @@ workflows:
         script: cd ios && agvtool new-version -all "$APP_BUILD_NUMBER"
       - name: Initialize keychain
         script: keychain initialize
-      - name: Fetch signing files
-        script: app-store-connect fetch-signing-files "$BUNDLE_ID" --type IOS_APP_STORE --create
-      - name: Set up signing certificate
-        script: keychain add-certificates
+      - name: Install our distribution certificate and profile
+        script: |
+          set -e
+          echo "$DIST_CERT_P12_B64" | base64 --decode > /tmp/dist.p12
+          keychain add-certificates --certificate /tmp/dist.p12 --certificate-password "$DIST_CERT_P12_PASSWORD"
+          PROFILES_HOME="$HOME/Library/MobileDevice/Provisioning Profiles"
+          mkdir -p "$PROFILES_HOME"
+          echo "$PROFILE_B64" | base64 --decode > "$PROFILES_HOME/ortodoxia_appstore.mobileprovision"
+          ls -la "$PROFILES_HOME"
       - name: Apply profiles
         script: xcode-project use-profiles
       - name: Build ipa
