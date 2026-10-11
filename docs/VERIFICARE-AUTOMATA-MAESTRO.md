@@ -99,9 +99,14 @@ Trei lucruri fac diferența între „verde" și un roșu care NU e defect al ap
 
 ---
 
-## 4. iOS, în Codemagic (aceleași flow-uri, în CI)
+## 4. iOS: verificare pe GitHub Actions (Codemagic a rămas doar pentru build-ul semnat)
 
-Workflow-ul `ios-verify` din `codemagic.yaml`:
+Mutare făcută la 11.10.2026, la cererea ownerului: coada Codemagic ajunsese singurul lucru lent din
+lanț — 114 min de așteptare pentru o rulare (care apoi a picat din altă cauză). **Maestro nu era
+lent**: cele patru flow-uri rulează în ~4 minute.
+
+Workflow-ul `ios-verify` din `.github/workflows/ios-verify.yml` (aceiași pași ca `ios-verify`-ul care
+exista în `codemagic.yaml`, scos de acolo odată cu mutarea):
 
 1. `npm ci`, scrie `.env` cu valorile publice `EXPO_PUBLIC_*`;
 2. `npx expo prebuild --platform ios --clean`;
@@ -115,42 +120,46 @@ Workflow-ul `ios-verify` din `codemagic.yaml`:
    o captură de ecran a simulatorului pentru fiecare; la final afișează un tabel PASS/FAIL și iese
    cu cod de eroare dacă a picat oricare.
 
-SE PORNEȘTE MANUAL din interfața Codemagic (workflow-ul nu are `triggering`) și **nu în același
-timp cu `ios-testflight`** — regula proiectului este să nu consumăm două instanțe de macOS în
-paralel. Consumul este de minutele de macOS deja incluse în planul Codemagic.
+SE PORNEȘTE **la orice push pe branch-ul `maestro-verify`** (branch-ul de verificare) sau manual, din
+tab-ul Actions / CLI (`gh workflow run ios-verify.yml --ref maestro-verify`). Pornirea se face în
+**secunde** — măsurat 11.10.2026: push la 20:45:35, rularea `38173557861` pornită la 20:45:42.
+Nu se pornește nimic în paralel pe macOS: `concurrency` serializează rulările acestui workflow, iar
+build-ul semnat (`ios-testflight`) se pornește manual, **dimineața, unul per lansare**, nu noaptea.
 
-Atenție la așteptare: pe planul gratuit, un build stă frecvent **1–2 ore în coadă** înainte să primească
-o instanță (măsurat 11.10.2026: ~115 min pentru `ios-verify`, ~75 min pentru `ios-testflight`). Timpul
-din coadă **nu consumă minute** — se scad doar secundele în care instanța chiar rulează (~20 min per
-rulare). Efectul practic: o greșeală în scriptul pasului se plătește cu încă o coadă, deci **verifică
-comanda local, pe același Maestro, înainte de a porni build-ul** (așa a fost prins `-o` → `--output`).
+Costul: pe repo **privat**, minutele de macOS se consumă de **10×** mai repede (din 2.000 min/lună
+rămân ~200 min efective de macOS ≈ 10 rulări complete). De aceea verificarea nu se pornește „la
+fiecare push" pe branch-uri obișnuite, ci doar pe branch-ul de verificare sau la cerere.
 
-Artefacte (se descarcă din pagina build-ului): `.app`-ul construit, `maestro-*.xml`,
-`flow-results.txt`, `ci-screenshots/*.png`.
+Pentru comparație, coada Codemagic (acum doar pentru `ios-testflight`): măsurat 11.10.2026, ~115 min
+și ~75 min de așteptare. Timpul din coadă **nu consumă minute** — se scad doar secundele în care
+instanța chiar rulează (~20 min per rulare). Efectul practic: o greșeală în scriptul pasului se
+plătește cu încă o coadă, deci **verifică comanda local, pe același Maestro, înainte de a porni
+build-ul** (așa a fost prins `-o` → `--output`).
+
+Artefactele le iei din rulare: `gh run download -R casapufosului-lab/ortodoxia-app <run-id>` →
+`.app`-ul construit, `maestro-*.xml` (JUnit), `flow-results.txt`, `ci-screenshots/*.png`.
 
 ---
 
-## 5. Varianta rapidă: GitHub Actions (fără coada Codemagic)
+## 5. Cum pornești verificarea iOS (GitHub Actions)
 
-Coada este singurul lucru lent din tot lanțul (Maestro rulează cele 4 flow-uri în ~4 minute).
-Repo-ul are deja GitHub Actions activ, iar acolo un runner **macOS pornește în secunde**, nu în ore.
-Fișierul: `.github/workflows/ios-verify.yml` (aceiași pași ca `ios-verify` din Codemagic, **fără
-publicare**: build Release pentru simulator, fără semnare).
+Fișierul e gata scris (`.github/workflows/ios-verify.yml`) și rulează deja; ce urmează sunt comenzile
+de zi cu zi:
 
 ```bash
-# se pornește prin push care atinge maestro/** pe branch-ul de verificare
+# pornește verificarea: push pe branch-ul de verificare
 git push origin maestro-verify
-# sau, după ce fișierul ajunge pe branch-ul implicit, direct din CLI:
+# sau manual:
 gh workflow run ios-verify.yml --ref maestro-verify
-gh run list -R casapufosului-lab/ortodoxia-app -L 3      # statusul
+gh run list  -R casapufosului-lab/ortodoxia-app -L 3          # statusul rulărilor
+gh run view  -R casapufosului-lab/ortodoxia-app <run-id>      # pașii, cu durată și verdict
 gh run download -R casapufosului-lab/ortodoxia-app <run-id>   # dovezile (JUnit, flow-results, capturi)
 ```
 
-De ce NU e pornit de la sine la fiecare push: pe repo **privat**, minutele de macOS se consumă de
-**10×** mai repede (din 2.000 min/lună rămân ~200 min efective de macOS ≈ 10 rulări complete).
-Workflow-ul are `paths: ['maestro/**']`, iar modificarea fișierului de workflow nu declanșează nimic;
-`concurrency` serializează rulările lui, dar **nu știe de Codemagic** — verifică întâi că nu rulează
-niciun build acolo înainte de a porni unul aici (regula: un singur macOS care consumă minute, o dată).
+Workflow-ul rulează **doar** pe branch-ul de verificare `maestro-verify` și la cerere (workflow_dispatch).
+Pe branch-urile de lucru nu consumă nimic: acolo rulează doar `CI`-ul de Linux (~1 min). `concurrency`
+serializează rulările acestui workflow, dar **nu știe de Codemagic** — verifică întâi că nu rulează
+`ios-testflight` înainte de a porni o verificare (regula: un singur macOS care consumă minute, o dată).
 
 ## 6. Limite, spuse clar
 

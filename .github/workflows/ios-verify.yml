@@ -31,7 +31,7 @@ concurrency:
 jobs:
   verify:
     name: Simulator iOS + flow-urile Maestro
-    runs-on: macos-14
+    runs-on: macos-15
     timeout-minutes: 60
     env:
       BUNDLE_ID: ro.ortodoxia.app
@@ -45,6 +45,20 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
+
+      # React Native (0.86) cere Xcode >= 16.1: pe imaginea `macos-14` implicitul e 15.4, iar
+      # `pod install` moare cu „Invalid Podfile file: Please upgrade XCode." (patit 11.10.2026, in
+      # rularea 38173557861). Aici doar ne asiguram ca imaginea are ce trebuie, cu mesaj clar.
+      - name: Verifica versiunea de Xcode (>= 16.1)
+        run: |
+          set -e
+          xcodebuild -version
+          VER=$(xcodebuild -version | head -1 | awk '{print $2}')
+          MAJ=${VER%%.*}
+          if [ "$MAJ" -lt 16 ]; then
+            echo "::error::Xcode $VER e prea vechi (React Native cere >= 16.1). Schimba 'runs-on' pe o imagine mai noua."
+            exit 1
+          fi
 
       - name: Instaleaza dependintele
         run: npm ci
@@ -71,7 +85,17 @@ jobs:
           sed 's/=.*//' .env
 
       - name: Expo prebuild (generate ios/)
-        run: npx expo prebuild --platform ios --clean
+        run: |
+          set -euo pipefail
+          npx expo prebuild --platform ios --clean
+          # ATENTIE (dovedit 11.10.2026): `expo prebuild` iese cu cod 0 chiar daca `pod install`
+          # a esuat, deci pasul pare verde si urmatorul pas cade pe un workspace inexistent. De aceea
+          # verificam explicit ca pod install a produs workspace-ul.
+          test -d ios/Ortodoxia.xcworkspace || {
+            echo "::error::pod install nu a produs ios/Ortodoxia.xcworkspace (vezi liniile de mai sus: Xcode prea vechi / Podfile invalid)."
+            exit 1
+          }
+          ls -d ios/Ortodoxia.xcworkspace
 
       - name: Set build number
         run: cd ios && agvtool new-version -all "$APP_BUILD_NUMBER"
