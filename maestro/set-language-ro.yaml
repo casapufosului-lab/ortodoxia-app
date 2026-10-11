@@ -1,0 +1,30 @@
+# PROLOG comun — așază aplicația pe limba ROMÂNĂ înaintea fiecărui flow.
+#
+# DE CE: aplicația urmează limba dispozitivului la prima pornire
+# (src/providers/localization-provider.tsx: `detectDeviceLanguage() ?? 'ro'`), iar emulatorul
+# Android și simulatorul iOS din CI sunt implicit pe engleză. Fără acest prolog, aserțiunile
+# românești din flow-uri pică pe un ecran corect (aplicația merge, doar vorbește engleză).
+#
+# CUM: intrăm în Cont și apăsăm opțiunea de limbă „Română" — numele nativ al limbii e același
+# în orice limbă (src/app/(tabs)/account.tsx: LANGUAGE_LABELS), deci e un selector sigur.
+# Alegerea se salvează în AsyncStorage (`ortodoxia.language`), deci e idempotentă: la a doua
+# rulare limba e deja română și prologul doar confirmă.
+appId: ro.ortodoxia.app
+---
+- tapOn:
+    text: "^(Cont|Account)$"
+    label: "PROLOG: tab-ul de cont (eticheta depinde de limba curentă)"
+- scrollUntilVisible:
+    element:
+      text: "Română"
+    direction: DOWN
+    timeout: 30000
+    label: "PROLOG: secțiunea de limbă din Cont (opțiunea nativă Română)"
+- tapOn: "Română"
+- tapOn:
+    text: "^(Acasă|Home)$"
+    label: "PROLOG: ne întoarcem pe Acasă (eticheta e acum românească)"
+- extendedWaitUntil:
+    visible: "^Acasă$"
+    timeout: 20000
+    label: "PORȚI: prologul a reușit — aplicația vorbește românește"

@@ -15,6 +15,9 @@ appId: ro.ortodoxia.app
 ---
 - launchApp:
     stopApp: true
+# Prolog comun: așază aplicația pe limba ROMÂNĂ (emulatorul/simulatorul e implicit pe engleză,
+# iar aplicația urmează limba dispozitivului la prima pornire — altfel aserțiunile de mai jos pică).
+- runFlow: set-language-ro.yaml
 - extendedWaitUntil:
     visible: "^Acasă$"
     timeout: 45000
@@ -44,36 +47,41 @@ appId: ro.ortodoxia.app
     timeout: 30000
     label: "PORȚI: playerul (suprapunerea video) s-a deschis"
 - extendedWaitUntil:
-    notVisible: "Se încarcă playerul video…"
+    notVisible: "Se încarcă playerul video.*"
     timeout: 60000
     label: "PORȚI: pagina playerului s-a terminat de încărcat"
 - assertVisible: "Player YouTube live"
 # Blocul tehnic e ascuns implicit; butonul care îl arată e 48x48, invizibil, cu etichetă de accesibilitate.
 - tapOn: "Detalii tehnice despre player"
-- assertVisible: "Pagina playerului"
+# Maestro compară textul EXACT (regex pe TOT textul nodului), iar linia reală e
+# „Pagina playerului: <adresa>", deci aserțiunile care acceptă un sufix se termină cu `.*`.
 - assertVisible:
-    text: "incarcat=da"
-    label: "PORȚI: evenimentul de încărcare a venit (nu doar că nu a crăpat)"
+    text: "Pagina playerului: .*"
+    label: "blocul tehnic arată adresa COMISĂ a documentului playerului (linia nu e goală)"
+- extendedWaitUntil:
+    visible: "incarcat=da"
+    timeout: 60000
+    label: "POARTĂ: evenimentul de încărcare a venit (pagina chiar s-a terminat de încărcat)"
 - assertNotVisible:
-    text: "about:blank"
+    text: ".*about:blank.*"
     label: "REGRESIA: documentul playerului nu are voie să fie about:blank"
 - runFlow:
     when:
       platform: iOS
     commands:
       - extendedWaitUntil:
-          visible: "page-ready"
+          visible: "page=.*page-ready.*"
           timeout: 20000
           label: "iOS: pagina NOASTRĂ de embed (ortodoxia.web.app/live-embed) a răspuns"
       - assertVisible:
-          text: "Pagina playerului: https://ortodoxia.web.app/live-embed"
+          text: "Pagina playerului: https://ortodoxia.web.app/live-embed.*"
           label: "iOS: documentul COMIS este pagina noastră de embed (nu about:blank, nu YouTube)"
 - runFlow:
     when:
       platform: Android
     commands:
       - extendedWaitUntil:
-          visible: "ref="
+          visible: "ref=.*"
           timeout: 20000
           label: "Android: sonda injectată a citit referrer-ul paginii YouTube"
 - takeScreenshot: live-player
