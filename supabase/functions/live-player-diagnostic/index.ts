@@ -19,10 +19,21 @@
  * ------------------------------------------------------------------------
  *   video_id, page_url, http_status, error_text, referrer, video_size, webview_size,
  *   page_text, app_version, device        → strings, each at most 2 KB (UTF-8 bytes)
+ *   requested_url, page_state             → strings added for build 21 (see below)
  *   loaded                                → boolean
  *   user_id                               → UUID or null (the app sends null today)
  * Anything else is refused with 400: unknown fields are how a payload smuggles data we never
  * agreed to store.
+ *
+ * BUILD 21: `requested_url` + `page_state`
+ * ---------------------------------------
+ * Every stored row so far (7 rows, two streams, build 20) says `page_url = about:blank` with no
+ * HTTP status and no error: the committed document was empty, and the two values that would say
+ * WHY - the URL the WebView was actually asked for, and what our own page reported - were never
+ * sent. They are accepted here so the next build can be judged from the row instead of a phone
+ * screen. `app_version` is "1.0.0" on every existing row, so it does not separate builds; these
+ * two fields do, because builds <= 20 cannot send them at all (they were refused as unknown).
+ * They stay optional, so a build <= 20 posting its old payload is stored exactly as before.
  *
  * WHAT IS LOGGED: the video id and the response code, nothing else. The body may contain the
  * page's visible text, so it is never echoed into logs and never echoed back in an error message.
@@ -51,6 +62,9 @@ const TEXT_FIELDS = [
   'page_text',
   'app_version',
   'device',
+  // Build 21 only. Builds <= 20 never send these, which is what makes them the build marker.
+  'requested_url',
+  'page_state',
 ] as const;
 
 const KNOWN_FIELDS: ReadonlySet<string> = new Set<string>([...TEXT_FIELDS, 'loaded', 'user_id']);
@@ -100,6 +114,8 @@ type DiagnosticRow = {
   page_text: string | null;
   app_version: string | null;
   device: string | null;
+  requested_url: string | null;
+  page_state: string | null;
   user_id: string | null;
 };
 
@@ -167,6 +183,8 @@ function validate(body: unknown): { row: DiagnosticRow } | { reason: string } {
       page_text: text.page_text ?? null,
       app_version: text.app_version ?? null,
       device: text.device ?? null,
+      requested_url: text.requested_url ?? null,
+      page_state: text.page_state ?? null,
       user_id: typeof userId === 'string' ? userId : null,
     },
   };
