@@ -1,0 +1,222 @@
+name: iOS verify (simulator + Maestro, fara publicare)
+
+# DE CE EXISTA: acelasi lucru pe care il face workflow-ul `ios-verify` din codemagic.yaml, dar pe
+# un runner macOS de la GitHub, care porneste in SECUNDE (fara coada de 1-2 ore a Codemagic).
+#
+# NU publica nimic: nu are pas de TestFlight / App Store Connect, iar build-ul e Release pentru
+# SIMULATOR, fara semnare (CODE_SIGNING_ALLOWED=NO).
+#
+# CAND PORNETE:
+#   - DOAR manual (workflow_dispatch). `on: push` a fost scos pe 11.10.2026: fiecare push pe
+#     `maestro-verify` pornea o rulare macOS, iar macOS pe repo privat consuma minutele de ~10x.
+#     Din CLI: gh workflow run ios-verify.yml --ref maestro-verify
+#   Codemagic NU mai face verificarea pe simulator (workflow-ul `ios-verify` a fost scos din
+#   codemagic.yaml). Acolo a ramas doar `ios-testflight`, pornit manual, dimineata, unul per lansare.
+#
+# REGULA PROIECTULUI: un singur macOS care consuma minute, o data. Nu porni acest workflow in timp ce
+# ruleaza `ios-testflight` (Codemagic) — `concurrency` de mai jos serializeaza doar rulările acestui
+# workflow, nu știe nimic de Codemagic.
+
+on:
+  # DOAR manual. `on: push` a fost scos pe 11.10.2026: fiecare push pe `maestro-verify` pornea o
+  # rulare macOS, iar pe repo privat macOS consuma minutele de ~10x (11.10.2026: ~6 rulari).
+  # Din CLI: gh workflow run ios-verify.yml --ref maestro-verify
+  workflow_dispatch:
+
+concurrency:
+  group: ios-verify-macos
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    name: Simulator iOS + flow-urile Maestro
+    # macos-26 = imaginea cu Xcode 26.6 IMPLICIT (17F113): exact toolchain-ul cu care
+    # Codemagic a compilat .app-ul cu succes. macos-15 are implicit 16.4 (Swift 6.1), iar
+    # "cel mai nou" de pe macos-15 e 26.3 = bug upstream expo/expo#50061.
+    runs-on: macos-26
+    timeout-minutes: 60
+    env:
+      BUNDLE_ID: ro.ortodoxia.app
+      XCODE_WORKSPACE: ios/Ortodoxia.xcworkspace
+      XCODE_SCHEME: Ortodoxia
+      APP_BUILD_NUMBER: "21"
+      MAESTRO_CLI_NO_ANALYTICS: "1"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      # DE CE XCODE 26.6 (si nu altceva):
+      #   - React Native 0.86 cere Xcode >= 16.1 (macos-14 are 15.4 => `pod install` moare);
+      #   - build-ul imbricat "Build ExpoModulesJSI xcframework" are nevoie de Swift tools 6.2,
+      #     iar implicitul macos-15 (Xcode 16.4) are Swift 6.1 =>
+      #     "package 'apple' is using Swift tools version 6.2.0 but the installed version is 6.1.0";
+      #   - Xcode 26.0.1-26.3 au Swift 6.2, dar sunt prea stricte pe C++ si pica in
+      #     RuntimeScheduler.h (bug upstream expo/expo#50061), deci "cel mai nou Xcode" nu e o solutie;
+      #   - imaginea macos-26 are Xcode 26.6 IMPLICIT (17F113) = toolchain-ul cu care Codemagic a
+      #     compilat .app-ul cu succes. Garda de mai jos cere exact 26.6.
+      - name: Verifica Xcode 26.6 (toolchain-ul cu care a construit Codemagic)
+        run: |
+          set -e
+          echo "--- Xcode-uri instalate:"
+          ls -d /Applications/Xcode*.app || true
+          echo "--- Xcode activ:"
+          xcodebuild -version
+          VER=$(xcodebuild -version | head -1 | awk '{print $2}')
+          if [ "$VER" != "26.6" ]; then
+            echo "ATENTIE: Xcode activ $VER, dar build-ul cere 26.6 (Swift 6.2.4)."
+            if [ -d /Applications/Xcode_26.6.app ]; then
+              sudo xcode-select -s /Applications/Xcode_26.6.app/Contents/Developer
+              xcodebuild -version
+              VER=$(xcodebuild -version | head -1 | awk '{print $2}')
+            fi
+          fi
+          if [ "$VER" != "26.6" ]; then
+            echo "::error::Xcode 26.6 nu e disponibil pe acest runner (activ: $VER)."
+            exit 1
+          fi
+          swift --version
+
+      - name: Instaleaza dependintele
+        run: npm ci
+
+      - name: Scrie .env pentru Expo
+        run: |
+          set -e
+          cat > .env <<'EOF'
+          EXPO_PUBLIC_SUPABASE_URL=https://pgjabfgibdpcomegkojg.supabase.co
+          EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY=sb_publishable_jUBqWb3gn6ZDOcUuNJbVKg_CwswrjQr
+          EXPO_PUBLIC_REVENUECAT_APPLE_API_KEY=appl_voOlpavdeOGYDVBEdGegdUTFUbh
+          EXPO_PUBLIC_REVENUECAT_GOOGLE_API_KEY=goog_EIZcHpAwRfOaqQRPjfMGlXOvvGo
+          EXPO_PUBLIC_LEGAL_ENTITY=Ștefan Ștefan
+          EXPO_PUBLIC_SUPPORT_EMAIL=contact@ortodoxiaapp.anonaddy.com
+          EXPO_PUBLIC_LEGAL_POSTAL_ADDRESS=Rm. Vâlcea, județul Vâlcea, România
+          EXPO_PUBLIC_LEGAL_JURISDICTION=România
+          EXPO_PUBLIC_LEGAL_LOCALITY=Rm. Vâlcea
+          EXPO_PUBLIC_LEGAL_EFFECTIVE_DATE=23 septembrie 2026
+          EXPO_PUBLIC_PRIVACY_POLICY_URL=https://ortodoxia.web.app/privacy
+          EXPO_PUBLIC_TERMS_URL=https://ortodoxia.web.app/terms
+          ENVIRONMENT=production
+          EOF
+          echo "--- chei scrise in .env:"
+          sed 's/=.*//' .env
+
+      - name: Expo prebuild (generate ios/)
+        run: |
+          set -euo pipefail
+          npx expo prebuild --platform ios --clean
+          # ATENTIE (dovedit 11.10.2026): `expo prebuild` iese cu cod 0 chiar daca `pod install`
+          # a esuat, deci pasul pare verde si urmatorul pas cade pe un workspace inexistent. De aceea
+          # verificam explicit ca pod install a produs workspace-ul.
+          test -d ios/Ortodoxia.xcworkspace || {
+            echo "::error::pod install nu a produs ios/Ortodoxia.xcworkspace (vezi liniile de mai sus: Xcode prea vechi / Podfile invalid)."
+            exit 1
+          }
+          ls -d ios/Ortodoxia.xcworkspace
+
+      - name: Set build number
+        run: cd ios && agvtool new-version -all "$APP_BUILD_NUMBER"
+
+      - name: Build .app pentru simulator (Release, fara semnare)
+        run: |
+          set -uo pipefail
+          mkdir -p build
+          LOG=build/xcodebuild.log
+          # Fara `| tail`: pe 11.10.2026 exact filtrul acesta a ascuns mesajul de eroare
+          # (ultimele 60 de linii erau doar "note: Disabling previews") si a lasat in log doar
+          # un exit 65 fara nicio explicatie. Scriem tot in fisier si scoatem la iveala erorile.
+          set +e
+          xcodebuild \
+            -workspace "$XCODE_WORKSPACE" \
+            -scheme "$XCODE_SCHEME" \
+            -configuration Release \
+            -sdk iphonesimulator \
+            -destination "generic/platform=iOS Simulator" \
+            -derivedDataPath build/ios-sim \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
+            build > "$LOG" 2>&1
+          CODE=$?
+          set -e
+          echo "xcodebuild exit code: $CODE"
+          grep -n -E "error:|fatal error|Undefined symbol|ld: |\*\* BUILD FAILED \*\*|Command .* failed" "$LOG" | head -60 || true
+          if [ "$CODE" -ne 0 ]; then
+            echo "::error::xcodebuild a picat (exit $CODE). Ultimele 80 de linii din $LOG:"
+            tail -n 80 "$LOG"
+            exit "$CODE"
+          fi
+          ls -d build/ios-sim/Build/Products/Release-iphonesimulator/*.app
+
+      - name: Instaleaza Maestro
+        run: |
+          set -e
+          curl -Ls "https://get.maestro.mobile.dev" | bash
+          echo "$HOME/.maestro/bin" >> "$GITHUB_PATH"
+          "$HOME/.maestro/bin/maestro" --version
+
+      - name: Porneste simulatorul si instaleaza aplicatia
+        run: |
+          set -e
+          DEVICE_UDID=$(xcrun simctl list devices available \
+            | grep -E "iPhone .*\(([0-9A-F-]{36})\)" \
+            | head -1 \
+            | sed -E 's/.*\(([0-9A-F-]{36})\).*/\1/')
+          if [ -z "$DEVICE_UDID" ]; then
+            echo "NU am gasit niciun simulator iPhone disponibil. Lista completa:"
+            xcrun simctl list devices available
+            exit 1
+          fi
+          APP=$(ls -d build/ios-sim/Build/Products/Release-iphonesimulator/*.app | head -1)
+          echo "DEVICE_UDID=$DEVICE_UDID" >> "$GITHUB_ENV"
+          echo "Simulator: $DEVICE_UDID"
+          echo "Aplicatie: $APP"
+          xcrun simctl boot "$DEVICE_UDID" || true
+          xcrun simctl bootstatus "$DEVICE_UDID" -b
+          xcrun simctl install "$DEVICE_UDID" "$APP"
+
+      - name: Ruleaza flow-urile Maestro pe simulator
+        run: |
+          set -uo pipefail
+          export PATH="$PATH:$HOME/.maestro/bin"
+          mkdir -p ci-screenshots
+          : > flow-results.txt
+          FAILED=""
+          for f in maestro/live.yaml maestro/chat.yaml maestro/premium.yaml maestro/notifications.yaml; do
+            name=$(basename "$f" .yaml)
+            echo "======== Maestro: $name ========"
+            # ATENTIE: flagurile corecte sunt --format JUNIT si --output. Cu "-o" Maestro raspunde
+            # "Unknown option: '-o'", iese cu cod 2 si NU ruleaza niciun flow (patit 11.10.2026).
+            maestro --device "$DEVICE_UDID" test "$f" \
+              --format JUNIT --output "maestro-$name.xml" \
+              --debug-output "maestro-$name-debug"
+            code=$?
+            case "$code" in
+              0) printf '%s\tPASS\n' "$name" >> flow-results.txt ;;
+              1) printf '%s\tFAIL (flow, exit 1)\n' "$name" >> flow-results.txt; FAILED="$FAILED $name" ;;
+              2) printf '%s\tEROARE CLI (exit 2): comanda Maestro e gresita, flow-ul NU a rulat\n' "$name" >> flow-results.txt; FAILED="$FAILED $name" ;;
+              *) printf '%s\tFAIL (exit %s)\n' "$name" "$code" >> flow-results.txt; FAILED="$FAILED $name" ;;
+            esac
+            ls -l "maestro-$name.xml" 2>/dev/null || echo "  (nu s-a produs maestro-$name.xml)"
+            xcrun simctl io "$DEVICE_UDID" screenshot "ci-screenshots/$name.png" || true
+          done
+          echo "======== REZULTAT PER FLOW ========"
+          cat flow-results.txt
+          if [ -n "$FAILED" ]; then
+            echo "FLOW-URI PICATE:$FAILED"
+            exit 1
+          fi
+          echo "TOATE FLOW-URILE AU TRECUT."
+
+      - name: Publica dovezile
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-verify-dovezi
+          if-no-files-found: warn
+          path: |
+            build/xcodebuild.log
+            maestro-*.xml
+            maestro-*-debug/**
+            flow-results.txt
+            ci-screenshots/*.png
