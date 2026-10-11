@@ -102,7 +102,13 @@ jobs:
 
       - name: Build .app pentru simulator (Release, fara semnare)
         run: |
-          set -euo pipefail
+          set -uo pipefail
+          mkdir -p build
+          LOG=build/xcodebuild.log
+          # Fara `| tail`: pe 11.10.2026 exact filtrul acesta a ascuns mesajul de eroare
+          # (ultimele 60 de linii erau doar "note: Disabling previews") si a lasat in log doar
+          # un exit 65 fara nicio explicatie. Scriem tot in fisier si scoatem la iveala erorile.
+          set +e
           xcodebuild \
             -workspace "$XCODE_WORKSPACE" \
             -scheme "$XCODE_SCHEME" \
@@ -111,7 +117,16 @@ jobs:
             -destination "generic/platform=iOS Simulator" \
             -derivedDataPath build/ios-sim \
             CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
-            build | tail -n 60
+            build > "$LOG" 2>&1
+          CODE=$?
+          set -e
+          echo "xcodebuild exit code: $CODE"
+          grep -n -E "error:|fatal error|Undefined symbol|ld: |\*\* BUILD FAILED \*\*|Command .* failed" "$LOG" | head -60 || true
+          if [ "$CODE" -ne 0 ]; then
+            echo "::error::xcodebuild a picat (exit $CODE). Ultimele 80 de linii din $LOG:"
+            tail -n 80 "$LOG"
+            exit "$CODE"
+          fi
           ls -d build/ios-sim/Build/Products/Release-iphonesimulator/*.app
 
       - name: Instaleaza Maestro
@@ -181,6 +196,7 @@ jobs:
           name: ios-verify-dovezi
           if-no-files-found: warn
           path: |
+            build/xcodebuild.log
             maestro-*.xml
             maestro-*-debug/**
             flow-results.txt
