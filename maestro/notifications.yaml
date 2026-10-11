@@ -1,0 +1,68 @@
+# T1 — Notificări: butonul chiar schimbă starea (nu doar apasă în gol).
+#
+# LIMITĂ (spusă și în raport): pe simulator NU se pot verifica notificările push reale (APNs/FCM).
+# Ce se verifică aici este tot ce ține de aplicație: cardul „Notificări zilnice", starea afișată,
+# butonul care o schimbă și ecranul pe care ajunge un vizitator neautentificat.
+#
+# Două ramuri REALE, ambele posibile pe un dispozitiv nou:
+#   A. există un cont autentificat -> butonul „Activează notificările" schimbă starea în „Notificările sunt active.";
+#   B. vizitator neautentificat    -> cardul arată „Conectează-te pentru notificări" (account.tsx:526),
+#      iar apăsarea duce pe ecranul de autentificare. Aceasta e schimbarea de stare verificabilă fără cont.
+# Ramura care nu se aplică este sărită; dacă niciuna nu se aplică, flow-ul pică la aserțiunea de stare.
+appId: ro.ortodoxia.app
+---
+- launchApp:
+    stopApp: true
+- extendedWaitUntil:
+    visible: "^Acasă$"
+    timeout: 45000
+    label: "PORȚI: aplicația a pornit"
+- tapOn: "^Cont$"
+- extendedWaitUntil:
+    visible: "Contul meu"
+    timeout: 30000
+    label: "PORȚI: ecranul Cont s-a deschis"
+- scrollUntilVisible:
+    element:
+      text: "Notificări zilnice"
+    direction: DOWN
+    timeout: 30000
+    label: "secțiunea de notificări"
+- assertVisible: "Primești la ora 10:00 versetul, mesajul zilei și sărbătoarea din calendarul ales."
+- assertVisible:
+    text: "Notificările sunt oprite.|Notificările sunt active."
+    label: "PORȚI: cardul afișează o stare explicită (nu e ecran gol)"
+
+# ── Ramura A: cont autentificat — butonul schimbă starea ──────────────────────────────────────────
+- runFlow:
+    when:
+      visible: "Activează notificările"
+    commands:
+      - tapOn: "Activează notificările"
+      - runFlow:
+          when:
+            platform: Android
+          commands:
+            - tapOn:
+                text: "Permite|Allow"
+                optional: true
+                label: "dialogul de permisiune Android 13+ (POST_NOTIFICATIONS)"
+      - extendedWaitUntil:
+          visible: "Notificările sunt active."
+          timeout: 30000
+          label: "PORȚI: starea s-a schimbat în active după apăsare"
+      - assertVisible: "Oprește notificările zilnice"
+      - takeScreenshot: notifications-active
+
+# ── Ramura B: vizitator neautentificat — butonul duce pe autentificare ────────────────────────────
+- runFlow:
+    when:
+      visible: "Conectează-te pentru notificări"
+    commands:
+      - tapOn: "Conectează-te pentru notificări"
+      - extendedWaitUntil:
+          visible: "Bine ai revenit"
+          timeout: 30000
+          label: "PORȚI: butonul chiar duce undeva (ecranul de autentificare)"
+      - assertVisible: "Autentificare"
+      - takeScreenshot: notifications-auth-gate

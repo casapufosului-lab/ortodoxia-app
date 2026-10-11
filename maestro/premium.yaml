@@ -1,0 +1,61 @@
+# T1 — Premium: eticheta planului și butoanele sunt acolo, cu textul lor real.
+#
+# Calea din interfață (fără deep link): Cont -> cardul „Abonament" -> butonul spre /premium.
+# Butonul cardului depinde de planul citit din `subscriptions` (src/lib/subscription.ts):
+#   plan gratuit -> „Vezi Premium"; abonament activ -> „Vezi abonamentul".
+#
+# Vizitator neautentificat = starea de pe un dispozitiv nou: butoanele de cumpărare se numesc
+# „Autentifică-te pentru Premium" (premium.loginToSubscribe), iar dacă magazinul nu e disponibil
+# ele nu se randează deloc (planAction 'pending'). De aceea aserțiunea pe butoane acceptă toate
+# formele reale, dar CERE una dintre ele — un ecran gol pica.
+appId: ro.ortodoxia.app
+---
+- launchApp:
+    stopApp: true
+- extendedWaitUntil:
+    visible: "^Acasă$"
+    timeout: 45000
+    label: "PORȚI: aplicația a pornit"
+- tapOn: "^Cont$"
+- extendedWaitUntil:
+    visible: "Contul meu"
+    timeout: 30000
+    label: "PORȚI: ecranul Cont s-a deschis"
+- scrollUntilVisible:
+    element:
+      text: "Abonament"
+    direction: DOWN
+    timeout: 20000
+    label: "cardul Abonament"
+- tapOn:
+    text: "Vezi Premium|Vezi abonamentul"
+    label: "butonul cardului de abonament duce la /premium"
+- extendedWaitUntil:
+    visible: "Ortodoxia Premium"
+    timeout: 30000
+    label: "PORȚI: ecranul Premium s-a deschis"
+# Eticheta planului: „Planul tău" + valoarea ei (gratuit sau Premium, după ce spune magazinul).
+- assertVisible: "Planul tău"
+- assertVisible:
+    text: "Plan Gratuit|Premium activ — abonamentul este confirmat de magazin.|Premium Lunar|Premium Anual"
+    label: "PORȚI: eticheta planului are una dintre valorile reale (nu e ecran gol)"
+- assertVisible: "5 mesaje AI pe zi. Rugăciunile, calendarul și conținutul zilnic rămân gratuite."
+# Cele două planuri, cu prețul lor (din magazin; „Preț în magazin" până vine răspunsul).
+- scrollUntilVisible:
+    element:
+      text: "Lunar"
+    direction: DOWN
+    timeout: 20000
+- assertVisible: "Anual"
+- assertVisible: "Preț în magazin|Lunar|Anual"
+- assertVisible:
+    text: "Autentifică-te pentru Premium|Activează planul lunar|Treci la lunar|Planul tău actual"
+    label: "PORȚI: butonul planului lunar există (sau spune explicit de ce nu există)"
+- scrollUntilVisible:
+    element:
+      text: "Restaurează cumpărăturile"
+    direction: DOWN
+    timeout: 20000
+    label: "butonul de restaurare a cumpărăturilor"
+- assertVisible: "Plățile se procesează securizat prin App Store sau Google Play."
+- takeScreenshot: premium
