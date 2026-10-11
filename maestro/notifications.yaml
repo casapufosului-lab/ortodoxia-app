@@ -21,10 +21,15 @@ appId: ro.ortodoxia.app
     timeout: 45000
     label: "PORȚI: aplicația a pornit"
 - tapOn: "^Cont$"
-- extendedWaitUntil:
-    visible: "Contul meu"
+# Prologul lasă ecranul Cont derulat la secțiunea de limbă (acolo schimbă limba), iar poziția de
+# Prologul lasă ecranul Cont derulat la secțiunea de limbă (acolo schimbă limba), iar poziția de
+# derulare se păstrează când revii pe tab — deci titlul se caută derulând în SUS, nu se așteaptă.
+- scrollUntilVisible:
+    element:
+      text: "Contul meu"
+    direction: UP
     timeout: 30000
-    label: "PORȚI: ecranul Cont s-a deschis"
+    label: "POARTĂ: ecranul Cont s-a deschis (titlul există, chiar dacă ecranul era derulat)"
 - scrollUntilVisible:
     element:
       text: "Notificări zilnice"

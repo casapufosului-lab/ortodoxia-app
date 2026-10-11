@@ -39,7 +39,15 @@ appId: ro.ortodoxia.app
     visible: "Raportează"
     timeout: 120000
     label: "PORȚI: asistentul a terminat un răspuns (butonul de raportare există doar sub un răspuns complet)"
-- assertVisible: "Ce este rugaciunea?"
+# Mesajul utilizatorului nu mai e pe ecran după ce răspunsul (lung) s-a scris: conversația
+# derulează automat la fund. Deci NU se asertează „vizibil", se derulează până la el.
+- takeScreenshot: chat-answer
+- scrollUntilVisible:
+    element:
+      text: "Ce este rugaciunea?"
+    direction: UP
+    timeout: 20000
+    label: "mesajul utilizatorului chiar a fost trimis (apare în conversație, exact cum a fost scris)"
 - assertNotVisible:
     text: "Răspunsul AI nu a putut fi generat. Încearcă din nou."
     label: "REGRESIA: mesajul de eroare al asistentului"
@@ -52,4 +60,3 @@ appId: ro.ortodoxia.app
 - assertNotVisible:
     text: "Prea multe cereri"
     label: "REGRESIA: cererile au fost limitate (rate limit)"
-- takeScreenshot: chat-answer

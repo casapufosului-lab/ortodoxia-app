@@ -20,10 +20,14 @@ appId: ro.ortodoxia.app
     timeout: 45000
     label: "PORȚI: aplicația a pornit"
 - tapOn: "^Cont$"
-- extendedWaitUntil:
-    visible: "Contul meu"
+# Prologul lasă ecranul Cont derulat la secțiunea de limbă (acolo schimbă limba), iar poziția de
+# derulare se păstrează când revii pe tab — deci titlul se caută derulând în SUS, nu se așteaptă.
+- scrollUntilVisible:
+    element:
+      text: "Contul meu"
+    direction: UP
     timeout: 30000
-    label: "PORȚI: ecranul Cont s-a deschis"
+    label: "POARTĂ: ecranul Cont s-a deschis (titlul există, chiar dacă ecranul era derulat)"
 - scrollUntilVisible:
     element:
       text: "Abonament"
@@ -49,11 +53,23 @@ appId: ro.ortodoxia.app
       text: "Lunar"
     direction: DOWN
     timeout: 20000
+    label: "primul plan (lunar)"
+# Cardurile de plan sunt unul SUB altul, iar derularea se oprește de îndată ce ținta devine vizibilă
+# (poate rămâne chiar la marginea de jos). De aceea fiecare țintă are propriul pas de derulare.
+- scrollUntilVisible:
+    element:
+      text: 'Autentifică-te pentru Premium|Activează planul lunar|Treci la lunar|Planul tău actual|Se procesează…|Acest dispozitiv nu poate face cumpărături în magazin\. Instalează aplicația din Google Play sau App Store și încearcă din nou acolo — nu este o defecțiune a aplicației\.|Magazinul nu este disponibil momentan\.|Planul ales nu este disponibil în magazin\.|Magazinul nu are deocamdată niciun abonament disponibil pentru acest cont\. Reîncearcă mai târziu\.|Magazinul nu a trimis prețul acestui plan, așa că nu îl putem afișa\. Reîncearcă mai târziu\.|Se deschide magazinul\. Schimbarea de plan se face prin App Store; data de la care se aplică și suma apar în fereastra magazinului\.'
+    direction: DOWN
+    timeout: 20000
+    label: "POARTĂ: cardul lunar are un corp explicit — buton de activare/schimbare SAU textul care spune de ce nu există (magazin indisponibil / dispozitiv care nu poate cumpăra / vizitator)"
+- scrollUntilVisible:
+    element:
+      text: "Anual"
+    direction: DOWN
+    timeout: 20000
+    label: "al doilea plan (anual) — se derulează mai jos decât primul"
 - assertVisible: "Anual"
-- assertVisible: "Preț în magazin|Lunar|Anual"
-- assertVisible:
-    text: "Autentifică-te pentru Premium|Activează planul lunar|Treci la lunar|Planul tău actual"
-    label: "PORȚI: butonul planului lunar există (sau spune explicit de ce nu există)"
+- assertVisible: "Abonamentul se reînnoiește automat până îl oprești din magazin."
 - scrollUntilVisible:
     element:
       text: "Restaurează cumpărăturile"
