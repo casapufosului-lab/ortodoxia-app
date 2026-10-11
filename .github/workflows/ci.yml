@@ -80,6 +80,29 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      # `.env` is git-ignored on purpose (the real file stays on the developer machine), but the
+      # release-readiness gate checks that it exists, and the startup budget needs the public
+      # EXPO_PUBLIC_* values to be defined. So CI writes the same public values a developer has;
+      # none of these are secrets (they all end up in the JS bundle).
+      - name: Write .env (public values)
+        run: |
+          cat > .env <<'EOF'
+          EXPO_PUBLIC_SUPABASE_URL=https://pgjabfgibdpcomegkojg.supabase.co
+          EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY=sb_publishable_jUBqWb3gn6ZDOcUuNJbVKg_CwswrjQr
+          EXPO_PUBLIC_REVENUECAT_APPLE_API_KEY=appl_voOlpavdeOGYDVBEdGegdUTFUbh
+          EXPO_PUBLIC_REVENUECAT_GOOGLE_API_KEY=goog_EIZcHpAwRfOaqQRPjfMGlXOvvGo
+          EXPO_PUBLIC_LEGAL_ENTITY=Ștefan Ștefan
+          EXPO_PUBLIC_SUPPORT_EMAIL=contact@ortodoxiaapp.anonaddy.com
+          EXPO_PUBLIC_LEGAL_POSTAL_ADDRESS=Rm. Vâlcea, județul Vâlcea, România
+          EXPO_PUBLIC_LEGAL_JURISDICTION=România
+          EXPO_PUBLIC_LEGAL_LOCALITY=Rm. Vâlcea
+          EXPO_PUBLIC_LEGAL_EFFECTIVE_DATE=23 septembrie 2026
+          EXPO_PUBLIC_PRIVACY_POLICY_URL=https://ortodoxia.web.app/privacy
+          EXPO_PUBLIC_TERMS_URL=https://ortodoxia.web.app/terms
+          ENVIRONMENT=production
+          EOF
+          echo "--- chei scrise in .env:"; sed 's/=.*//' .env
+
       - name: Typecheck app
         run: npm run typecheck
 
