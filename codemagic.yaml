@@ -29,7 +29,7 @@ workflows:
         - appstore_credentials
       node: 22
       vars:
-        BUNDLE_ID: "ro.orthodoxia.app"
+        BUNDLE_ID: "ro.ortodoxia.app"
         XCODE_WORKSPACE: "ios/Ortodoxia.xcworkspace"
         XCODE_SCHEME: "Ortodoxia"
         APP_BUILD_NUMBER: "20"
