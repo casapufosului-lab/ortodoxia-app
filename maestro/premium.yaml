@@ -24,7 +24,7 @@ appId: ro.ortodoxia.app
 # derulare se păstrează când revii pe tab — deci titlul se caută derulând în SUS, nu se așteaptă.
 - scrollUntilVisible:
     element:
-      text: "Contul meu"
+      text: ".*Contul meu.*"
     direction: UP
     timeout: 30000
     label: "POARTĂ: ecranul Cont s-a deschis (titlul există, chiar dacă ecranul era derulat)"
@@ -38,21 +38,21 @@ appId: ro.ortodoxia.app
 # 11.10.2026: "Abonament" la y=2045, bara de jos de la y=2194). Deci se deruleaza pana la buton.
 - scrollUntilVisible:
     element:
-      text: "Vezi Premium|Vezi abonamentul"
+      text: ".*(Vezi Premium|Vezi abonamentul).*"
     direction: DOWN
     timeout: 20000
     label: "butonul cardului de abonament (se deruleaza pana la el, nu se presupune ca e vizibil)"
 - tapOn:
-    text: "Vezi Premium|Vezi abonamentul"
+    text: ".*(Vezi Premium|Vezi abonamentul).*"
     label: "butonul cardului de abonament duce la /premium"
 - extendedWaitUntil:
-    visible: "Ortodoxia Premium"
+    visible: ".*Ortodoxia Premium.*"
     timeout: 30000
     label: "PORȚI: ecranul Premium s-a deschis"
 # Eticheta planului: „Planul tău" + valoarea ei (gratuit sau Premium, după ce spune magazinul).
 - assertVisible: "Planul tău"
 - assertVisible:
-    text: "Plan Gratuit|Premium activ — abonamentul este confirmat de magazin.|Premium Lunar|Premium Anual"
+    text: ".*(Plan Gratuit|Premium activ — abonamentul este confirmat de magazin\\.|Premium Lunar|Premium Anual).*"
     label: "PORȚI: eticheta planului are una dintre valorile reale (nu e ecran gol)"
 - assertVisible: "5 mesaje AI pe zi. Rugăciunile, calendarul și conținutul zilnic rămân gratuite."
 # Cele două planuri, cu prețul lor (din magazin; „Preț în magazin" până vine răspunsul).
@@ -66,7 +66,7 @@ appId: ro.ortodoxia.app
 # (poate rămâne chiar la marginea de jos). De aceea fiecare țintă are propriul pas de derulare.
 - scrollUntilVisible:
     element:
-      text: 'Autentifică-te pentru Premium|Activează planul lunar|Treci la lunar|Planul tău actual|Se procesează…|Acest dispozitiv nu poate face cumpărături în magazin\. Instalează aplicația din Google Play sau App Store și încearcă din nou acolo — nu este o defecțiune a aplicației\.|Magazinul nu este disponibil momentan\.|Planul ales nu este disponibil în magazin\.|Magazinul nu are deocamdată niciun abonament disponibil pentru acest cont\. Reîncearcă mai târziu\.|Magazinul nu a trimis prețul acestui plan, așa că nu îl putem afișa\. Reîncearcă mai târziu\.|Se deschide magazinul\. Schimbarea de plan se face prin App Store; data de la care se aplică și suma apar în fereastra magazinului\.'
+      text: '.*(Autentifică-te pentru Premium|Activează planul lunar|Treci la lunar|Planul tău actual|Se procesează…|Acest dispozitiv nu poate face cumpărături în magazin\. Instalează aplicația din Google Play sau App Store și încearcă din nou acolo — nu este o defecțiune a aplicației\.|Magazinul nu este disponibil momentan\.|Planul ales nu este disponibil în magazin\.|Magazinul nu are deocamdată niciun abonament disponibil pentru acest cont\. Reîncearcă mai târziu\.|Magazinul nu a trimis prețul acestui plan, așa că nu îl putem afișa\. Reîncearcă mai târziu\.|Se deschide magazinul\. Schimbarea de plan se face prin App Store; data de la care se aplică și suma apar în fereastra magazinului\.).*'
     direction: DOWN
     timeout: 20000
     label: "POARTĂ: cardul lunar are un corp explicit — buton de activare/schimbare SAU textul care spune de ce nu există (magazin indisponibil / dispozitiv care nu poate cumpăra / vizitator)"
@@ -80,7 +80,7 @@ appId: ro.ortodoxia.app
 - assertVisible: "Abonamentul se reînnoiește automat până îl oprești din magazin."
 - scrollUntilVisible:
     element:
-      text: "Restaurează cumpărăturile"
+      text: ".*Restaurează cumpărăturile.*"
     direction: DOWN
     timeout: 20000
     label: "butonul de restaurare a cumpărăturilor"
@@ -89,7 +89,7 @@ appId: ro.ortodoxia.app
 # presupune că e vizibil (patit 11.10.2026: `live`+`chat`+`notifications` verzi, aici exit 1).
 - scrollUntilVisible:
     element:
-      text: "Plățile se procesează securizat prin App Store sau Google Play."
+      text: ".*Plățile se procesează securizat prin App Store sau Google Play\\..*"
     direction: DOWN
     timeout: 20000
     label: "subsolul cu informația despre plată"

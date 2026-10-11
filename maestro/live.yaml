@@ -26,24 +26,24 @@ appId: ro.ortodoxia.app
 # „Slujbe LIVE" apare de două ori, deci NU e un selector sigur).
 - scrollUntilVisible:
     element:
-      text: "Slujbe LIVE — Urmărește Sfânta Liturghie în direct"
+      text: ".*Slujbe LIVE — Urmărește Sfânta Liturghie în direct.*"
     direction: DOWN
     timeout: 30000
     label: "cardul LIVE de pe Acasă"
 - tapOn: "Slujbe LIVE — Urmărește Sfânta Liturghie în direct"
 - extendedWaitUntil:
-    visible: "TRINITAS TV"
+    visible: ".*TRINITAS TV.*"
     timeout: 60000
     label: "PORȚI: lista de surse s-a încărcat din funcția de status"
 - assertNotVisible: "Se verifică transmisiunile…"
 # PORȚI. Fără o transmisiune LIVE embeddabilă, playerul NU poate fi deschis, deci nici verificat:
 # preferăm un eșec explicit (cu motivul scris) în locul unui „pass" pe un ecran fără player.
 - assertVisible:
-    text: "Vezi în direct"
+    text: ".*Vezi în direct.*"
     label: "PORȚI: există o transmisiune LIVE embeddabilă (fără ea, playerul nu poate fi verificat)"
 - tapOn: "Vezi în direct"
 - extendedWaitUntil:
-    visible: "Deschide pe YouTube"
+    visible: ".*Deschide pe YouTube.*"
     timeout: 30000
     label: "PORȚI: playerul (suprapunerea video) s-a deschis"
 - extendedWaitUntil:
@@ -59,7 +59,7 @@ appId: ro.ortodoxia.app
     text: "Pagina playerului: .*"
     label: "blocul tehnic arată adresa COMISĂ a documentului playerului (linia nu e goală)"
 - extendedWaitUntil:
-    visible: "incarcat=da"
+    visible: ".*incarcat=da.*"
     timeout: 60000
     label: "POARTĂ: evenimentul de încărcare a venit (pagina chiar s-a terminat de încărcat)"
 - assertNotVisible:
@@ -87,7 +87,7 @@ appId: ro.ortodoxia.app
 - takeScreenshot: live-player
 - tapOn: "Închide playerul video"
 - extendedWaitUntil:
-    visible: "Slujbe LIVE"
+    visible: ".*Slujbe LIVE.*"
     timeout: 15000
     label: "ne-am întors pe ecranul LIVE"
 - assertNotVisible: "Player YouTube live"
