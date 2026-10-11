@@ -1,0 +1,164 @@
+name: iOS verify (simulator + Maestro, fara publicare)
+
+# DE CE EXISTA: acelasi lucru pe care il face workflow-ul `ios-verify` din codemagic.yaml, dar pe
+# un runner macOS de la GitHub, care porneste in SECUNDE (fara coada de 1-2 ore a Codemagic).
+#
+# NU publica nimic: nu are pas de TestFlight / App Store Connect, iar build-ul e Release pentru
+# SIMULATOR, fara semnare (CODE_SIGNING_ALLOWED=NO).
+#
+# CAND PORNETE (atentie, consuma minute de macOS — pe repo privat se scad de 10x mai repede):
+#   - manual (workflow_dispatch), dar butonul „Run workflow" apare doar dupa ce fisierul ajunge pe
+#     branch-ul implicit (master); pana atunci se porneste prin push care atinge `maestro/**`:
+#       git push origin maestro-verify           (dupa o modificare in maestro/)
+#     sau, din CLI, pe branch:  gh workflow run ios-verify.yml --ref maestro-verify
+#   - NU la fiecare push: doar daca se schimba `maestro/**`. Modificarea acestui fisier NU declanseaza
+#     nimic (nu e in `paths`), ca sa nu porneasca din greseala un al doilea macOS in paralel.
+#
+# REGULA PROIECTULUI: un singur macOS care consuma minute, o data. Nu porni acest workflow in timp ce
+# ruleaza `ios-verify` (Codemagic) sau `ios-testflight`. `concurrency` de mai jos serializeaza
+# rulările acestui workflow, dar nu stie nimic de Codemagic — deci verifică intai: `node cm-api.mjs builds <appId>`.
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [maestro-verify]
+    paths:
+      - 'maestro/**'
+
+concurrency:
+  group: ios-verify-macos
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    name: Simulator iOS + flow-urile Maestro
+    runs-on: macos-14
+    timeout-minutes: 60
+    env:
+      BUNDLE_ID: ro.ortodoxia.app
+      XCODE_WORKSPACE: ios/Ortodoxia.xcworkspace
+      XCODE_SCHEME: Ortodoxia
+      APP_BUILD_NUMBER: "21"
+      MAESTRO_CLI_NO_ANALYTICS: "1"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Instaleaza dependintele
+        run: npm ci
+
+      - name: Scrie .env pentru Expo
+        run: |
+          set -e
+          cat > .env <<'EOF'
+          EXPO_PUBLIC_SUPABASE_URL=https://pgjabfgibdpcomegkojg.supabase.co
+          EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY=sb_publishable_jUBqWb3gn6ZDOcUuNJbVKg_CwswrjQr
+          EXPO_PUBLIC_REVENUECAT_APPLE_API_KEY=appl_voOlpavdeOGYDVBEdGegdUTFUbh
+          EXPO_PUBLIC_REVENUECAT_GOOGLE_API_KEY=goog_EIZcHpAwRfOaqQRPjfMGlXOvvGo
+          EXPO_PUBLIC_LEGAL_ENTITY=Ștefan Ștefan
+          EXPO_PUBLIC_SUPPORT_EMAIL=contact@ortodoxiaapp.anonaddy.com
+          EXPO_PUBLIC_LEGAL_POSTAL_ADDRESS=Rm. Vâlcea, județul Vâlcea, România
+          EXPO_PUBLIC_LEGAL_JURISDICTION=România
+          EXPO_PUBLIC_LEGAL_LOCALITY=Rm. Vâlcea
+          EXPO_PUBLIC_LEGAL_EFFECTIVE_DATE=23 septembrie 2026
+          EXPO_PUBLIC_PRIVACY_POLICY_URL=https://ortodoxia.web.app/privacy
+          EXPO_PUBLIC_TERMS_URL=https://ortodoxia.web.app/terms
+          ENVIRONMENT=production
+          EOF
+          echo "--- chei scrise in .env:"
+          sed 's/=.*//' .env
+
+      - name: Expo prebuild (generate ios/)
+        run: npx expo prebuild --platform ios --clean
+
+      - name: Set build number
+        run: cd ios && agvtool new-version -all "$APP_BUILD_NUMBER"
+
+      - name: Build .app pentru simulator (Release, fara semnare)
+        run: |
+          set -euo pipefail
+          xcodebuild \
+            -workspace "$XCODE_WORKSPACE" \
+            -scheme "$XCODE_SCHEME" \
+            -configuration Release \
+            -sdk iphonesimulator \
+            -destination "generic/platform=iOS Simulator" \
+            -derivedDataPath build/ios-sim \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
+            build | tail -n 60
+          ls -d build/ios-sim/Build/Products/Release-iphonesimulator/*.app
+
+      - name: Instaleaza Maestro
+        run: |
+          set -e
+          curl -Ls "https://get.maestro.mobile.dev" | bash
+          echo "$HOME/.maestro/bin" >> "$GITHUB_PATH"
+          "$HOME/.maestro/bin/maestro" --version
+
+      - name: Porneste simulatorul si instaleaza aplicatia
+        run: |
+          set -e
+          DEVICE_UDID=$(xcrun simctl list devices available \
+            | grep -E "iPhone .*\(([0-9A-F-]{36})\)" \
+            | head -1 \
+            | sed -E 's/.*\(([0-9A-F-]{36})\).*/\1/')
+          if [ -z "$DEVICE_UDID" ]; then
+            echo "NU am gasit niciun simulator iPhone disponibil. Lista completa:"
+            xcrun simctl list devices available
+            exit 1
+          fi
+          APP=$(ls -d build/ios-sim/Build/Products/Release-iphonesimulator/*.app | head -1)
+          echo "DEVICE_UDID=$DEVICE_UDID" >> "$GITHUB_ENV"
+          echo "Simulator: $DEVICE_UDID"
+          echo "Aplicatie: $APP"
+          xcrun simctl boot "$DEVICE_UDID" || true
+          xcrun simctl bootstatus "$DEVICE_UDID" -b
+          xcrun simctl install "$DEVICE_UDID" "$APP"
+
+      - name: Ruleaza flow-urile Maestro pe simulator
+        run: |
+          set -uo pipefail
+          export PATH="$PATH:$HOME/.maestro/bin"
+          mkdir -p ci-screenshots
+          : > flow-results.txt
+          FAILED=""
+          for f in maestro/live.yaml maestro/chat.yaml maestro/premium.yaml maestro/notifications.yaml; do
+            name=$(basename "$f" .yaml)
+            echo "======== Maestro: $name ========"
+            # ATENTIE: flagurile corecte sunt --format JUNIT si --output. Cu "-o" Maestro raspunde
+            # "Unknown option: '-o'", iese cu cod 2 si NU ruleaza niciun flow (patit 11.10.2026).
+            maestro --device "$DEVICE_UDID" test "$f" \
+              --format JUNIT --output "maestro-$name.xml" \
+              --debug-output "maestro-$name-debug"
+            code=$?
+            case "$code" in
+              0) printf '%s\tPASS\n' "$name" >> flow-results.txt ;;
+              1) printf '%s\tFAIL (flow, exit 1)\n' "$name" >> flow-results.txt; FAILED="$FAILED $name" ;;
+              2) printf '%s\tEROARE CLI (exit 2): comanda Maestro e gresita, flow-ul NU a rulat\n' "$name" >> flow-results.txt; FAILED="$FAILED $name" ;;
+              *) printf '%s\tFAIL (exit %s)\n' "$name" "$code" >> flow-results.txt; FAILED="$FAILED $name" ;;
+            esac
+            ls -l "maestro-$name.xml" 2>/dev/null || echo "  (nu s-a produs maestro-$name.xml)"
+            xcrun simctl io "$DEVICE_UDID" screenshot "ci-screenshots/$name.png" || true
+          done
+          echo "======== REZULTAT PER FLOW ========"
+          cat flow-results.txt
+          if [ -n "$FAILED" ]; then
+            echo "FLOW-URI PICATE:$FAILED"
+            exit 1
+          fi
+          echo "TOATE FLOW-URILE AU TRECUT."
+
+      - name: Publica dovezile
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-verify-dovezi
+          if-no-files-found: warn
+          path: |
+            maestro-*.xml
+            maestro-*-debug/**
+            flow-results.txt
+            ci-screenshots/*.png
