@@ -119,12 +119,40 @@ SE PORNEȘTE MANUAL din interfața Codemagic (workflow-ul nu are `triggering`) �
 timp cu `ios-testflight`** — regula proiectului este să nu consumăm două instanțe de macOS în
 paralel. Consumul este de minutele de macOS deja incluse în planul Codemagic.
 
+Atenție la așteptare: pe planul gratuit, un build stă frecvent **1–2 ore în coadă** înainte să primească
+o instanță (măsurat 11.10.2026: ~115 min pentru `ios-verify`, ~75 min pentru `ios-testflight`). Timpul
+din coadă **nu consumă minute** — se scad doar secundele în care instanța chiar rulează (~20 min per
+rulare). Efectul practic: o greșeală în scriptul pasului se plătește cu încă o coadă, deci **verifică
+comanda local, pe același Maestro, înainte de a porni build-ul** (așa a fost prins `-o` → `--output`).
+
 Artefacte (se descarcă din pagina build-ului): `.app`-ul construit, `maestro-*.xml`,
 `flow-results.txt`, `ci-screenshots/*.png`.
 
 ---
 
-## 5. Limite, spuse clar
+## 5. Varianta rapidă: GitHub Actions (fără coada Codemagic)
+
+Coada este singurul lucru lent din tot lanțul (Maestro rulează cele 4 flow-uri în ~4 minute).
+Repo-ul are deja GitHub Actions activ, iar acolo un runner **macOS pornește în secunde**, nu în ore.
+Fișierul: `.github/workflows/ios-verify.yml` (aceiași pași ca `ios-verify` din Codemagic, **fără
+publicare**: build Release pentru simulator, fără semnare).
+
+```bash
+# se pornește prin push care atinge maestro/** pe branch-ul de verificare
+git push origin maestro-verify
+# sau, după ce fișierul ajunge pe branch-ul implicit, direct din CLI:
+gh workflow run ios-verify.yml --ref maestro-verify
+gh run list -R casapufosului-lab/ortodoxia-app -L 3      # statusul
+gh run download -R casapufosului-lab/ortodoxia-app <run-id>   # dovezile (JUnit, flow-results, capturi)
+```
+
+De ce NU e pornit de la sine la fiecare push: pe repo **privat**, minutele de macOS se consumă de
+**10×** mai repede (din 2.000 min/lună rămân ~200 min efective de macOS ≈ 10 rulări complete).
+Workflow-ul are `paths: ['maestro/**']`, iar modificarea fișierului de workflow nu declanșează nimic;
+`concurrency` serializează rulările lui, dar **nu știe de Codemagic** — verifică întâi că nu rulează
+niciun build acolo înainte de a porni unul aici (regula: un singur macOS care consumă minute, o dată).
+
+## 6. Limite, spuse clar
 
 - **Notificările push reale (APNs/FCM) nu se pot verifica pe simulator.** Ele rămân test pe telefon.
   `notifications.yaml` verifică tot ce ține de aplicație: cardul, starea afișată, butonul care o
@@ -138,7 +166,7 @@ Artefacte (se descarcă din pagina build-ului): `.app`-ul construit, `maestro-*.
   deci cardul de plan arată textul care explică de ce nu există buton. Flow-ul acceptă ambele
   situații — dar asta înseamnă că **fluxul de cumpărare real nu e acoperit** de testul automat.
 
-## 6. `mobile-mcp` — instalat local, pentru EXPLORARE (nu pentru poartă)
+## 7. `mobile-mcp` — instalat local, pentru EXPLORARE (nu pentru poartă)
 
 [mobile-next/mobile-mcp](https://github.com/mobile-next/mobile-mcp) este un server MCP: îi dai un
 dispozitiv și îl conduci pas cu pas (apasă, citește ecranul, face poză). Poarta de verificare rămâne
