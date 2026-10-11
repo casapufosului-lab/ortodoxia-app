@@ -1,0 +1,79 @@
+# Codemagic CI/CD — Ortodoxia iOS -> TestFlight
+#
+# DE CE EXISTĂ: cota EAS Free de build-uri iOS e epuizată (reset 1 nov 2026) și planul plătit
+# nu e activ. Codemagic are 500 min macOS/lună gratis pe planul Individual, iar grupul de
+# variabile `appstore_credentials` conține deja cele 4 valori de semnare.
+#
+# ATENȚIE (dovedit, nu presupus): numele proiectului Xcode NU este "OrtodoxiaAI".
+# `expo prebuild` redenumește șablonul `expo-template-bare-minimum` (care conține
+# ios/HelloWorld.xcodeproj + ios/HelloWorld.xcodeproj/xcshareddata/xcschemes/HelloWorld.xcscheme)
+# înlocuind "HelloWorld" cu numele sanitizat din app.json: app.json -> "name": "Ortodoxia".
+# Dovezi:
+#   - node_modules/expo/node_modules/@expo/cli/build/src/utils/npm.js:159-174 (renameNpmTarballEntries:
+#     input.replace(/HelloWorld/g, iosName), iosName = XcodeUtils.sanitizedName(expName))
+#   - node_modules/@expo/config-plugins/build/ios/utils/Xcodeproj.js (sanitizedName("Ortodoxia") = "Ortodoxia")
+#   - `npm pack expo-template-bare-minimum@sdk-57` -> package/ios/HelloWorld.xcodeproj/xcshareddata/xcschemes/HelloWorld.xcscheme
+# Deci după prebuild: ios/Ortodoxia.xcodeproj, schemă partajată "Ortodoxia", iar `pod install`
+# (rulat automat de prebuild) generează ios/Ortodoxia.xcworkspace.
+#
+# Fără secrete aici: XCODE_*, BUNDLE_ID și valorile EXPO_PUBLIC_* sunt publice (ajung oricum în
+# bundle-ul JS). Cheile de semnare Apple vin exclusiv din grupul de mediu `appstore_credentials`.
+
+workflows:
+  ios-testflight:
+    name: Ortodoxia iOS -> TestFlight
+    max_build_duration: 120
+    instance_type: mac_mini_m2
+    environment:
+      groups:
+        - appstore_credentials
+      node: 22
+      vars:
+        BUNDLE_ID: "ro.orthodoxia.app"
+        XCODE_WORKSPACE: "ios/Ortodoxia.xcworkspace"
+        XCODE_SCHEME: "Ortodoxia"
+        APP_BUILD_NUMBER: "20"
+      # Valorile publice EXPO_PUBLIC_* + ENVIRONMENT se scriu în .env de scriptul de mai jos
+      # (exact valorile din .env-ul local / profilul EAS "production").
+    scripts:
+      - name: Install npm dependencies
+        script: npm ci
+      - name: Write .env for Expo
+        script: |
+          set -e
+          cat > .env <<'EOF'
+          EXPO_PUBLIC_SUPABASE_URL=https://pgjabfgibdpcomegkojg.supabase.co
+          EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY=sb_publishable_jUBqWb3gn6ZDOcUuNJbVKg_CwswrjQr
+          EXPO_PUBLIC_REVENUECAT_APPLE_API_KEY=appl_voOlpavdeOGYDVBEdGegdUTFUbh
+          EXPO_PUBLIC_REVENUECAT_GOOGLE_API_KEY=goog_EIZcHpAwRfOaqQRPjfMGlXOvvGo
+          EXPO_PUBLIC_LEGAL_ENTITY=Ștefan Ștefan
+          EXPO_PUBLIC_SUPPORT_EMAIL=contact@ortodoxiaapp.anonaddy.com
+          EXPO_PUBLIC_LEGAL_POSTAL_ADDRESS=Rm. Vâlcea, județul Vâlcea, România
+          EXPO_PUBLIC_LEGAL_JURISDICTION=România
+          EXPO_PUBLIC_LEGAL_LOCALITY=Rm. Vâlcea
+          EXPO_PUBLIC_LEGAL_EFFECTIVE_DATE=23 septembrie 2026
+          EXPO_PUBLIC_PRIVACY_POLICY_URL=https://ortodoxia.web.app/privacy
+          EXPO_PUBLIC_TERMS_URL=https://ortodoxia.web.app/terms
+          ENVIRONMENT=production
+          EOF
+          echo "--- chei scrise in .env:"
+          sed 's/=.*//' .env
+      - name: Expo prebuild (generate ios/)
+        script: npx expo prebuild --platform ios --clean
+      - name: Set build number
+        script: cd ios && agvtool new-version -all "$APP_BUILD_NUMBER"
+      - name: Initialize keychain
+        script: keychain initialize
+      - name: Fetch signing files
+        script: app-store-connect fetch-signing-files "$BUNDLE_ID" --type IOS_APP_STORE --create
+      - name: Set up signing certificate
+        script: keychain add-certificates
+      - name: Apply profiles
+        script: xcode-project use-profiles
+      - name: Build ipa
+        script: xcode-project build-ipa --workspace "$XCODE_WORKSPACE" --scheme "$XCODE_SCHEME"
+    artifacts:
+      - build/ios/ipa/*.ipa
+    publishing:
+      app_store_connect:
+        submit_to_testflight: true
