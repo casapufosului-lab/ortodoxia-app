@@ -1,5 +1,17 @@
 import { createClient } from 'npm:@supabase/supabase-js@2';
 import { corsHeaders, createJsonResponder, preflightResponse } from '../_shared/http.ts';
+import {
+    AI_CHAIN,
+    authHeaders,
+    extractDelta,
+    extractText,
+    frameFailed,
+    hasUsableStep,
+    pickStep,
+    preferredRemainingHeader,
+    requestUrl,
+    type ChainStep,
+} from '../_shared/ai-chain.ts';
 import { buildLimitIdentity, normalizeAddress, normalizeDevice } from './limit-identity.ts';
 
 const ALLOWED_HEADERS = 'authorization, x-client-info, apikey, content-type';
@@ -115,22 +127,6 @@ function sseFrame(event: string | null, payload: Record<string, unknown>) {
     const data = `data: ${JSON.stringify(payload)}\n\n`;
     return event === null ? data : `event: ${event}\n${data}`;
 }
-/** Textul unei bucăți de răspuns, dacă evenimentul primit de la model e o bucată de text. */
-function frameText(frame: ModelFrame) {
-    if (frame.event !== 'response.output_text.delta' || typeof frame.data !== 'object' || frame.data === null)
-        return '';
-    const delta = (frame.data as { delta?: unknown }).delta;
-    return typeof delta === 'string' ? delta : '';
-}
-/**
- * `true` dacă modelul a raportat un eșec în mijlocul streamului (`response.failed`, `error`).
- *
- * Motivul de la furnizor NU se întoarce spre aplicație: se înregistrează doar în logurile funcției, ca
- * niciun detaliu de furnizor să nu ajungă la utilizator (aceeași regulă ca la `catch`-urile de mai jos).
- */
-function frameFailed(frame: ModelFrame) {
-    return frame.event === 'response.failed' || frame.event === 'error';
-}
 /**
  * Citește cadrele complete dintr-un buffer SSE și păstrează restul pentru bucata următoare.
  *
@@ -179,8 +175,17 @@ Deno.serve(async (req: Request) => {
         const supabaseUrl = Deno.env.get('SUPABASE_URL');
         const anonKey = Deno.env.get('SUPABASE_ANON_KEY');
         const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
-        const openAIKey = Deno.env.get('OPENAI_API_KEY');
-        if (!supabaseUrl || !anonKey || !serviceRoleKey || !openAIKey) {
+        // Cascada (§3.1): pasul OpenAI stă stins cât timp contul n-are credit; se aprinde din mediu,
+        // fără nicio modificare de cod (AI_CHAIN_ENABLE_OPENAI=true), ca ownerul să-l poată pune primul.
+        const enableOpenAI = (Deno.env.get('AI_CHAIN_ENABLE_OPENAI') ?? '').trim().toLowerCase() === 'true';
+        const providerKeys: Record<string, string | undefined> = {
+            OPENAI_API_KEY: Deno.env.get('OPENAI_API_KEY'),
+            GROQ_API_KEY: Deno.env.get('GROQ_API_KEY'),
+            GEMINI_API_KEY: Deno.env.get('GEMINI_API_KEY'),
+            MISTRAL_API_KEY: Deno.env.get('MISTRAL_API_KEY'),
+        };
+        // „Configurat" acum înseamnă: avem baza + cel puțin un pas de cascadă cu cheie pusă în secrete.
+        if (!supabaseUrl || !anonKey || !serviceRoleKey || !hasUsableStep(providerKeys, enableOpenAI)) {
             return json({ error: 'Chatul AI nu este configurat încă.' }, 503);
         }
         const authHeader = req.headers.get('Authorization');
@@ -364,14 +369,13 @@ Deno.serve(async (req: Request) => {
                 content: string;
             }[];
         }
-        // 2. Call OpenAI (streaming)
+        // 2. Cascada de furnizori AI (toți gratuiți): primul pas care mai are loc azi răspunde.
+        //    Contractele rămân cele de dinainte, alese prin `Accept`:
+        //      · fără `text/event-stream` → JSON {reply, threadId, remaining, dailyLimit} (aplicația v4)
+        //      · cu `text/event-stream`    → SSE  meta · delta · done · error (clientul din repo)
+        const wantsStream = (req.headers.get('Accept') ?? '').toLowerCase().includes('text/event-stream');
         const aiStartedAt = Date.now();
         const encoder = new TextEncoder();
-        /**
-         * Timeout pe INACTIVITATE, nu pe durata totală: un răspuns lung are voie să dureze (înainte era
-         * tăiat la 30 de secunde), dar un model care tace prea mult se taie. Plafonul total rămâne doar
-         * o plasă de siguranță, ca un stream blocat să nu țină conexiunea la infinit.
-         */
         const upstreamAbort = new AbortController();
         let idleTimer: ReturnType<typeof setTimeout> | undefined;
         const totalTimer = setTimeout(() => upstreamAbort.abort(), AI_TOTAL_TIMEOUT_MS);
@@ -390,108 +394,250 @@ Deno.serve(async (req: Request) => {
             if (savedUserMessage)
                 await admin.from('chat_messages').delete().eq('id', savedUserMessage.id);
         };
-        let upstream: Response;
-        try {
-            bumpIdle();
-            upstream = await fetch('https://api.openai.com/v1/responses', {
-                method: 'POST',
-                signal: upstreamAbort.signal,
-                headers: {
-                    Authorization: `Bearer ${openAIKey}`,
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                    model: 'gpt-5.4-mini',
-                    instructions: systemInstructions,
-                    input: (history ?? []).reverse().map((item) => ({ role: item.role, content: item.content })),
-                    reasoning: { effort: 'none' },
-                    text: { verbosity: 'low' },
-                    max_output_tokens: 700,
-                    safety_identifier: user.id,
-                    store: false,
-                    // Modelul scrie bucată cu bucată, iar noi trimitem fiecare bucată imediat mai departe.
-                    stream: true,
-                }),
-            });
-        }
-        catch {
-            clearTimers();
-            await dropSavedUserMessage();
-            return json({ error: AI_UNAVAILABLE_MESSAGE }, 502);
-        }
-        const upstreamBody = upstream.body;
-        // Un răspuns care nu e `text/event-stream` nu poate fi livrat incremental: îl tratăm ca eșec,
-        // exact ca înainte, când un răspuns fără text însemna 502 și curățarea mesajului optimist.
-        if (!upstream.ok || !upstreamBody ||
-            !(upstream.headers.get('content-type') ?? '').includes('text/event-stream')) {
-            clearTimers();
-            await dropSavedUserMessage();
-            return json({ error: AI_UNAVAILABLE_MESSAGE }, 502);
-        }
-        const reader = upstreamBody.getReader();
+        const modelHistory = (history ?? []).reverse().map((item) => ({ role: item.role, content: item.content }));
+        const MAX_OUTPUT_TOKENS = 700;
+        /** Textul adunat de la furnizorul care a răspuns; până la primul text nu a plecat nimic spre client. */
+        let reply = '';
+        /** Streamul furnizorului care a răspuns (doar pe calea SSE). */
+        let reader: ReadableStreamDefaultReader<Uint8Array> | null = null;
         const decoder = new TextDecoder();
         let carry = '';
+        let queue: ModelFrame[] = [];
         let ended = false;
         let failed = false;
-        let reply = '';
-        let queue: ModelFrame[] = [];
+        let ttftMs = 0;
+        /** Pasul care a răspuns efectiv: el dă adresa, modelul și forma cadrelor. */
+        let usedStep: ChainStep | null = null;
+        /** Contoarele zilei cunoscute în acest proces: un pas epuizat nu mai e cerut a doua oară. */
+        const counters: Record<string, number> = {};
+        const exhausted = (id: string) => {
+            const step = AI_CHAIN.find((candidate) => candidate.id === id);
+            if (step)
+                counters[id] = step.switchAt;
+        };
         /**
-         * Citește până la PRIMA bucată de text. Până acolo nu am trimis nimic aplicației, deci un eșec se
-         * poate întoarce încă în format JSON — contractul de erori de dinainte, neschimbat.
+         * Ultima valoare raportată de furnizor (`x-ratelimit-remaining-requests`) se scrie în tabelă,
+         * dar NU are voie să strice răspunsul: o statistică nu merită un 502.
          */
-        const readUntilFirstText = async () => {
-            for (;;) {
-                const { done, value } = await reader.read();
-                if (done) {
-                    ended = true;
-                    return;
-                }
-                bumpIdle();
-                carry += decoder.decode(value, { stream: true }).replace(/\r/g, '');
-                const parsed = takeFrames(carry);
-                carry = parsed.rest;
-                for (let index = 0; index < parsed.frames.length; index += 1) {
-                    const frame = parsed.frames[index];
-                    if (frameFailed(frame)) {
-                        failed = true;
-                        return;
-                    }
-                    const delta = frameText(frame);
-                    if (delta) {
-                        reply = delta;
-                        // Cadrele din aceeași bucată rămase neprocesate nu se pierd.
-                        queue = parsed.frames.slice(index + 1);
-                        return;
-                    }
-                    if (frame.event === 'done') {
-                        ended = true;
-                        return;
-                    }
-                }
+        const recordProviderRemaining = (stepId: string, headers: Headers) => {
+            const remaining = preferredRemainingHeader(headers);
+            if (remaining === null)
+                return;
+            try {
+                const pending = admin.rpc('record_ai_provider_remaining', { p_step: stepId, p_remaining: remaining });
+                void Promise.resolve(pending).catch(() => undefined);
+            }
+            catch {
+                // ignorat intenționat: doar o statistică
             }
         };
+        /**
+         * Încearcă un pas: rezervă atomic o cerere în bază, cheamă furnizorul, iar pe calea SSE citește
+         * până la PRIMA bucată de text. Până acolo nu am trimis nimic aplicației, deci un eșec poate
+         * însemna „treci la următorul furnizor" sau, dacă toți cad, exact eroarea de dinainte.
+         */
+        const attemptStep = async (step: ChainStep, key: string): Promise<boolean> => {
+            bumpIdle();
+            let upstream: Response;
+            try {
+                upstream = await fetch(requestUrl(step), {
+                    method: 'POST',
+                    signal: upstreamAbort.signal,
+                    headers: authHeaders(step, key),
+                    body: JSON.stringify(step.api === 'responses'
+                        ? {
+                            model: step.model,
+                            instructions: systemInstructions,
+                            input: modelHistory,
+                            reasoning: { effort: 'none' },
+                            text: { verbosity: 'low' },
+                            max_output_tokens: 700,
+                            safety_identifier: user.id,
+                            store: false,
+                            stream: wantsStream,
+                        }
+                        : {
+                            model: step.model,
+                            messages: [{ role: 'system', content: systemInstructions }, ...modelHistory],
+                            max_tokens: MAX_OUTPUT_TOKENS,
+                            stream: wantsStream,
+                        }),
+                });
+            }
+            catch {
+                return false;
+            }
+            // 429 / 402 / 5xx / răspuns fără corp: pasul e considerat indisponibil ACUM, trecem mai departe.
+            if (!upstream.ok || !upstream.body)
+                return false;
+            recordProviderRemaining(step.id, upstream.headers);
+            if (!wantsStream) {
+                try {
+                    const payload: unknown = await upstream.json();
+                    const text = extractText(payload, step.api).trim();
+                    if (!text)
+                        return false;
+                    reply = text;
+                    ttftMs = Date.now() - aiStartedAt;
+                    return true;
+                }
+                catch {
+                    return false;
+                }
+            }
+            const upstreamReader = upstream.body.getReader();
+            reader = upstreamReader;
+            carry = '';
+            queue = [];
+            ended = false;
+            failed = false;
+            try {
+                for (;;) {
+                    const { done, value } = await upstreamReader.read();
+                    if (done) {
+                        ended = true;
+                        break;
+                    }
+                    bumpIdle();
+                    carry += decoder.decode(value, { stream: true }).replace(/\r/g, '');
+                    const parsed = takeFrames(carry);
+                    carry = parsed.rest;
+                    let found = false;
+                    for (let index = 0; index < parsed.frames.length; index += 1) {
+                        const frame = parsed.frames[index];
+                        if (frameFailed(frame)) {
+                            failed = true;
+                            break;
+                        }
+                        const delta = extractDelta(frame, step.api);
+                        if (delta) {
+                            reply = delta;
+                            // Cadrele din aceeași bucată rămase neprocesate nu se pierd.
+                            queue = parsed.frames.slice(index + 1);
+                            found = true;
+                            break;
+                        }
+                        if (frame.event === 'done') {
+                            ended = true;
+                            break;
+                        }
+                    }
+                    if (found || failed || ended)
+                        break;
+                }
+            }
+            catch {
+                failed = true;
+            }
+            if (failed || !reply)
+                return false;
+            ttftMs = Date.now() - aiStartedAt;
+            return true;
+        };
         try {
-            await readUntilFirstText();
+            for (;;) {
+                const step = pickStep(counters, { enableOpenAI });
+                if (!step)
+                    break;
+                const key = (providerKeys[step.keyEnv] ?? '').trim();
+                if (!key) {
+                    // Cheia lipsește din secretele Supabase: pasul nu poate fi folosit, dar nu blocăm restul.
+                    exhausted(step.id);
+                    continue;
+                }
+                // Poarta atomică din bază: două cereri simultane nu pot trece amândouă de prag.
+                const gateResult = await admin.rpc('reserve_ai_provider_step', {
+                    p_step: step.id,
+                    p_switch_at: step.switchAt,
+                }).single<{ allowed: boolean; requests: number }>();
+                const gate = gateResult.data;
+                if (gateResult.error || !gate || typeof gate.allowed !== 'boolean') {
+                    // Contorul zilei nu e disponibil (migraţia lipseşte sau baza ezită): un defect de
+                    // infrastructură nu are voie să oprească chatul. Mergem mai departe la furnizor;
+                    // dacă el e chiar la plafon, răspunde 429 şi cascada trece singură la pasul următor.
+                    console.warn('chat: poarta pasului nu a răspuns', step.id);
+                }
+                else if (!gate.allowed) {
+                    exhausted(step.id);
+                    continue;
+                }
+                const requests = gate && Number.isInteger(gate.requests) ? gate.requests : step.switchAt;
+                counters[step.id] = Math.min(requests, step.switchAt);
+                if (await attemptStep(step, key)) {
+                    usedStep = step;
+                    break;
+                }
+                // Pasul a refuzat acum: pentru cererea aceasta nu-l mai încercăm; următoarea îl poate
+                // testa din nou, iar contorul din bază rămâne singura sursă de adevăr pentru zi.
+                exhausted(step.id);
+            }
         }
         catch {
             clearTimers();
             await dropSavedUserMessage();
             return json({ error: AI_UNAVAILABLE_MESSAGE }, 502);
         }
-        if (!reply) {
+        if (!reply || !usedStep) {
             clearTimers();
             await dropSavedUserMessage();
             return json({ error: AI_UNAVAILABLE_MESSAGE }, 502);
         }
         // Măsurătoarea cerută de OB.1: timpul până la primul text, scris în logurile funcției.
-        console.log('chat-stream ttft', JSON.stringify({ ttftMs: Date.now() - aiStartedAt }));
+        console.log('chat-stream ttft', JSON.stringify({ ttftMs }));
+        // Un singur rând de log, fără secrete: cine a răspuns, nu cu ce cheie.
+        console.log('chat', JSON.stringify({
+            step: usedStep.id,
+            provider: usedStep.provider,
+            streaming: wantsStream,
+            ttftMs,
+            totalMs: Date.now() - aiStartedAt,
+        }));
         const quota = { threadId, remaining: reservation.remaining_limit, dailyLimit };
+
+        /**
+         * Istoricul se scrie doar pentru conturi reale, niciodată pentru anonimi, şi o singură dată
+         * per răspuns: pe calea JSON imediat, pe calea SSE la finalul streamului, după ce textul a
+         * plecat deja spre aplicaţie. Un singur loc ⇒ nicio cale nu poate uita gardul de cont real.
+         */
+        const saveAssistantReply = async (): Promise<boolean> => {
+            if (user && !isAnonymous && threadId) {
+                const { error: saveAssistantError } = await admin
+                    .from('chat_messages')
+                    .insert({ thread_id: threadId, user_id: user.id, role: 'assistant', content: reply });
+                if (saveAssistantError)
+                    return false;
+                await admin
+                    .from('chat_threads')
+                    .update({ updated_at: new Date().toISOString() })
+                    .eq('id', threadId)
+                    .eq('user_id', user.id);
+            }
+            return true;
+        };
+
+        // ── Calea NON-stream: contractul JSON de dinainte (aplicația instalată, v4) ─────────────
+        if (!wantsStream) {
+            clearTimers();
+            try {
+                if (!(await saveAssistantReply()))
+                    return json({ error: 'Răspunsul a fost generat, dar nu a putut fi salvat.' }, 500);
+            }
+            catch {
+                return json({ error: 'Răspunsul a fost generat, dar nu a putut fi salvat.' }, 500);
+            }
+            console.log('chat-stream total', JSON.stringify({
+                totalMs: Date.now() - aiStartedAt,
+                chars: reply.length,
+            }));
+            return json({ reply, threadId, remaining: reservation.remaining_limit, dailyLimit });
+        }
+
+        // ── Calea SSE: meta · delta · done · error (clientul nou din repo) ──────────────────────
         let clientGone = false;
         /**
          * De aici înainte răspunsul e un stream SSE, iar aplicația afișează fiecare bucată când sosește.
-         * Ordinea cadrelor: `event: meta` (contoarele de cotă), apoi bucățile de text, apoi `event: done`
-         * sau `event: error`. Contoarele pleacă ÎNAINTE de text, ca bara de cotă să fie corectă din prima
-         * secundă și ca un text care sosește să nu rămână niciodată fără context.
+         * Contoarele pleacă ÎNAINTE de text, ca bara de cotă să fie corectă din prima secundă și ca un
+         * text care sosește să nu rămână niciodată fără context.
          */
         const stream = new ReadableStream({
             async start(controller) {
@@ -508,7 +654,7 @@ Deno.serve(async (req: Request) => {
                                 failed = true;
                                 break;
                             }
-                            const delta = frameText(frame);
+                            const delta = extractDelta(frame, usedStep.api);
                             if (delta) {
                                 reply += delta;
                                 send(sseFrame(null, { delta }));
@@ -517,7 +663,10 @@ Deno.serve(async (req: Request) => {
                         queue = [];
                         if (failed || ended || clientGone)
                             break;
-                        const { done, value } = await reader.read();
+                        const activeReader = reader;
+                        if (activeReader === null)
+                            break;
+                        const { done, value } = await activeReader.read();
                         if (done) {
                             ended = true;
                             break;
@@ -545,18 +694,8 @@ Deno.serve(async (req: Request) => {
                 }
                 // Istoricul se scrie la FINALUL streamului, după ce textul a plecat deja spre aplicație.
                 try {
-                    if (user && !isAnonymous && threadId) {
-                        const { error: saveAssistantError } = await admin
-                            .from('chat_messages')
-                            .insert({ thread_id: threadId, user_id: user.id, role: 'assistant', content: reply });
-                        if (saveAssistantError)
-                            throw new Error('assistant insert failed');
-                        await admin
-                            .from('chat_threads')
-                            .update({ updated_at: new Date().toISOString() })
-                            .eq('id', threadId)
-                            .eq('user_id', user.id);
-                    }
+                    if (!(await saveAssistantReply()))
+                        throw new Error('assistant insert failed');
                     send(sseFrame('done', {}));
                 }
                 catch {
@@ -569,11 +708,13 @@ Deno.serve(async (req: Request) => {
                 controller.close();
             },
             cancel() {
-                // Aplicația a plecat (sau a anulat): oprim și apelul către model, ca să nu plătim generarea
-                // unui răspuns pe care nimeni nu îl mai citește. Răspunsul parțial NU se scrie în istoric.
+                // Aplicația a plecat (sau a anulat): oprim și apelul către furnizor, ca să nu consumăm
+                // cotă pentru un răspuns pe care nimeni nu îl mai citește. Răspunsul parțial NU se salvează.
                 clientGone = true;
                 clearTimers();
-                void reader.cancel().catch(() => undefined);
+                const activeReader = reader;
+                if (activeReader)
+                    void activeReader.cancel().catch(() => undefined);
                 upstreamAbort.abort();
             },
         });

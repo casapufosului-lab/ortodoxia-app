@@ -142,7 +142,14 @@ test('semnarea de release nu mai poate cădea în keystore-ul de debug (A9)', ()
     false,
     'șablonul folosea chiar cheia de debug pentru release',
   );
-  assert.match(releaseBlock, /def hasUploadKeystore = System\.getenv\('ORTODOXIA_UPLOAD_STORE_FILE'\) \|\| findProperty\('android\.injected\.signing\.store\.file'\)/);
+  // EAS nu trimite `android.injected.signing.*` pe linia de comandă: patch-ește direct fișierul,
+  // deci singurul semnal disponibil în Gradle este variabila de mediu pusă de EAS Build.
+  assert.match(releaseBlock, /def onEasBuild = System\.getenv\('EAS_BUILD'\) == 'true'/);
+  assert.match(
+    releaseBlock,
+    /def hasUploadKeystore = System\.getenv\('ORTODOXIA_UPLOAD_STORE_FILE'\) \|\| findProperty\('android\.injected\.signing\.store\.file'\) \|\| onEasBuild/,
+    'semnarea are trei surse: mediul local, proprietățile injectate și mediul EAS Build',
+  );
   assert.match(releaseBlock, /signingConfig hasUploadKeystore \? signingConfigs\.release : signingConfigs\.debug/);
   assert.match(releaseBlock, /throw new GradleException/);
 

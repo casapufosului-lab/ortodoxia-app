@@ -9,8 +9,18 @@
  *   - One-off videoId never enters permanent source configuration.
  *   - Disabled sources cause zero YouTube discovery quota usage.
  *   - Concurrent stale callers reuse cache or UNKNOWN (no duplicate searches).
+ *
+ * Discovery ladder (in order, see `discoverLiveStatus`):
+ *   1. the public channel `/live` page (`channel-live-page.ts`) - it hands over
+ *      CANDIDATE ids, which are verified in one batched `videos.list` call - the only
+ *      path that covers permanent 24/7 streams;
+ *   2. `search.list?eventType=live` (the original path);
+ *   3. the channel's uploads playlist (newest videos).
+ * A LIVE from any step wins. If no step finds a stream but one of them failed for
+ * an API reason, the verdict is UNKNOWN - never NOT_LIVE.
  */
 
+import type { LivePageProbe, LivePageResolver } from './channel-live-page.ts';
 import type { YouTubeClient, LiveSearchResult, VideoVerification } from './youtube.ts';
 
 // ─── Timing constants (centralised) ────────────────────────────────────────
@@ -19,6 +29,20 @@ export const DISCOVERY_REFRESH_MS = 90 * 60 * 1000;
 export const LIVE_REVALIDATE_MS = 5 * 60 * 1000;
 export const LEASE_MS = 60 * 1000;
 export const STALE_LIVE_REUSE_MS = 5 * 60 * 1000;
+/**
+ * Retry window for a verdict that is NOT a verdict: missing API key, API error,
+ * malformed response, unverifiable candidate.
+ *
+ * Such a row must not be cached for the 90-minute discovery interval - that is how
+ * a run without `YOUTUBE_DATA_API_KEY` kept every source at `unknown` for 90
+ * minutes after the key had already been set. Five minutes re-probes quickly
+ * without turning a systematically failing API into a hot loop; the day-scoped
+ * search budget still bounds the quota either way. `not_live` keeps the full
+ * 90-minute interval - it is a real answer, not a failure.
+ */
+export const UNKNOWN_RETRY_MS = 5 * 60 * 1000;
+/** How many uploads are inspected by the last discovery step. */
+export const UPLOAD_CANDIDATE_LIMIT = 3;
 
 // ─── Status model ───────────────────────────────────────────────────────────
 
@@ -75,22 +99,178 @@ export type YouTubeDiscoveryOutcome = {
 
 /**
  * Discover whether a source is currently live.
- * Steps: search.list → videos.list verify → reject wrong channel / ended.
- * Any error → UNKNOWN (never silently NOT_LIVE).
+ *
+ * Ladder: channel `/live` page candidates → search.list → uploads playlist, every
+ * candidate verified through videos.list against the official channel id.
+ * Any unanswered API error leaves the source UNKNOWN (never silently NOT_LIVE).
  */
 export async function discoverLiveStatus(
   youtube: YouTubeClient,
   source: SourceDef,
+  livePage?: LivePageResolver,
 ): Promise<YouTubeDiscoveryOutcome> {
+  // Set when step 1 found no candidate because the page could not be read. It only
+  // ever turns a NOT_LIVE verdict into UNKNOWN, never the other way round.
+  let pageUnlooked = false;
+
+  // Step 1 - permanent 24/7 streams. search.list does not list them and the
+  // uploads playlist does not contain them (both measured 2026-10-10), so the
+  // public channel page is asked for candidate ids, which are then verified through
+  // the official videos.list endpoint exactly like any other candidate.
+  if (livePage) {
+    const attempt = await tryChannelLivePage(youtube, source, livePage);
+    if (attempt.kind === 'LIVE') return attempt.outcome;
+    // A failed videos.list here is an API failure, so it stays UNKNOWN.
+    if (attempt.kind === 'UNRESOLVED') return { status: 'UNKNOWN' };
+    if (attempt.kind === 'NONE' && attempt.unlooked) pageUnlooked = true;
+  }
+
+  // Step 2 - the original path: search.list with eventType=live.
+  const searchAttempt = await trySearchLive(youtube, source);
+  if (searchAttempt.kind === 'LIVE') return searchAttempt.outcome;
+
+  // Step 3 - newest uploads (cheap: 2 units for the list + 1 per candidate).
+  const uploadAttempt = await tryRecentUploads(youtube, source);
+  if (uploadAttempt.kind === 'LIVE') return uploadAttempt.outcome;
+
+  if (
+    searchAttempt.kind === 'UNRESOLVED'
+    || uploadAttempt.kind === 'UNRESOLVED'
+    || pageUnlooked
+  ) {
+    return { status: 'UNKNOWN' };
+  }
+
+  return { status: 'NOT_LIVE' };
+}
+
+/**
+ * Result of one rung of the ladder.
+ *
+ * `NONE` means "a valid lookup that found no live stream" - only if EVERY rung
+ * says `NONE` is the source NOT_LIVE. `UNRESOLVED` means the question could not be
+ * answered (API error, malformed payload, unverifiable candidate) and must keep
+ * the source UNKNOWN.
+ *
+ * `unlooked` on `NONE` means "nothing found, and one lookup could not even be made"
+ * (the channel page was unreachable). The caller then refuses NOT_LIVE: an unread
+ * page is not evidence that a channel is offline.
+ */
+type DiscoveryAttempt =
+  | { kind: 'LIVE'; outcome: YouTubeDiscoveryOutcome }
+  | { kind: 'NONE'; unlooked?: true }
+  | { kind: 'UNRESOLVED' };
+
+/**
+ * A candidate counts as LIVE only on the official field for it:
+ * `snippet.liveBroadcastContent === 'live'`, same channel, no `actualEndTime`.
+ * `liveStartedAt` is optional on purpose - the task handed to this function says a
+ * permanent stream may not report `actualStartTime`, and a missing timestamp must
+ * not turn a live broadcast into UNKNOWN.
+ */
+function confirmedLive(
+  verification: VideoVerification | null,
+  source: SourceDef,
+): YouTubeDiscoveryOutcome | null {
+  if (!verification) return null;
+  if (verification.channelId !== source.officialChannelId) return null;
+  if (verification.actualEndTime) return null;
+  if (verification.liveBroadcastContent !== 'live') return null;
+
+  return {
+    status: 'LIVE',
+    videoId: verification.videoId,
+    channelId: verification.channelId,
+    title: verification.title,
+    embeddable: verification.embeddable,
+    liveStartedAt: verification.actualStartTime,
+  };
+}
+
+/**
+ * Step 1: channel `/live` page candidates → ONE batched videos.list verification.
+ *
+ * The page yields candidates, not an answer: on the live page the first `"videoId"`
+ * belongs to a related-video prefetch and changes between requests (measured from the
+ * edge 2026-10-10), so all of them are verified together and the live one owned by the
+ * source channel wins. Batching keeps this at one quota unit per source.
+ */
+async function tryChannelLivePage(
+  youtube: YouTubeClient,
+  source: SourceDef,
+  livePage: LivePageResolver,
+): Promise<DiscoveryAttempt> {
+  let probe: LivePageProbe;
+  try {
+    probe = await livePage(source.officialChannelId);
+  } catch {
+    // The page is only a hint, so the Data API rungs still get their chance - but a
+    // page we could not read must not harden into NOT_LIVE either.
+    return { kind: 'NONE', unlooked: true };
+  }
+
+  const candidates = probe?.candidates ?? [];
+  if (candidates.length === 0) {
+    return probe?.unreachable ? { kind: 'NONE', unlooked: true } : { kind: 'NONE' };
+  }
+
+  let verifications: VideoVerification[];
+  try {
+    verifications = youtube.verifyVideos
+      ? await youtube.verifyVideos(candidates)
+      : await verifyCandidatesOneByOne(youtube, candidates);
+  } catch {
+    // Verifying is an API call: a failure is not an answer.
+    return { kind: 'UNRESOLVED' };
+  }
+
+  for (const verification of verifications) {
+    const outcome = confirmedLive(verification, source);
+    if (outcome) return { kind: 'LIVE', outcome };
+  }
+
+  // A candidate that is not (or is no longer) live - including one that belongs to
+  // another channel, e.g. a recommendation lifted from the page - is discarded rather
+  // than reported as NOT_LIVE.
+  return { kind: 'NONE' };
+}
+
+/**
+ * Fallback for a client without the batched call: one `videos.list` per candidate.
+ * Same verdict, more quota units - `verifyVideos` exists so callers can avoid it.
+ */
+async function verifyCandidatesOneByOne(
+  youtube: YouTubeClient,
+  candidates: string[],
+): Promise<VideoVerification[]> {
+  const verified: VideoVerification[] = [];
+  for (const videoId of candidates) {
+    const verification = await youtube.verifyVideo(videoId);
+    if (verification) verified.push(verification);
+  }
+  return verified;
+}
+
+/**
+ * Step 2: `search.list?eventType=live` + per-candidate verification.
+ *
+ * The rules of this rung are unchanged from the original implementation (a
+ * candidate needs `liveStreamingDetails`, no `actualEndTime` and an
+ * `actualStartTime`), because the existing suites pin exactly this behaviour.
+ */
+async function trySearchLive(
+  youtube: YouTubeClient,
+  source: SourceDef,
+): Promise<DiscoveryAttempt> {
   let candidates: LiveSearchResult[];
   try {
     candidates = await youtube.searchLive(source.officialChannelId);
   } catch {
-    return { status: 'UNKNOWN' };
+    return { kind: 'UNRESOLVED' };
   }
 
   if (candidates.length === 0) {
-    return { status: 'NOT_LIVE' };
+    return { kind: 'NONE' };
   }
 
   let sawUnverifiedCandidate = false;
@@ -102,7 +282,7 @@ export async function discoverLiveStatus(
     try {
       verification = await youtube.verifyVideo(candidate.videoId);
     } catch {
-      return { status: 'UNKNOWN' };
+      return { kind: 'UNRESOLVED' };
     }
 
     if (!verification) continue;
@@ -115,16 +295,54 @@ export async function discoverLiveStatus(
     }
 
     return {
-      status: 'LIVE',
-      videoId: verification.videoId,
-      channelId: verification.channelId,
-      title: verification.title,
-      embeddable: verification.embeddable,
-      liveStartedAt: verification.actualStartTime,
+      kind: 'LIVE',
+      outcome: {
+        status: 'LIVE',
+        videoId: verification.videoId,
+        channelId: verification.channelId,
+        title: verification.title,
+        embeddable: verification.embeddable,
+        liveStartedAt: verification.actualStartTime,
+      },
     };
   }
 
-  return { status: sawUnverifiedCandidate ? 'UNKNOWN' : 'NOT_LIVE' };
+  return { kind: sawUnverifiedCandidate ? 'UNRESOLVED' : 'NONE' };
+}
+
+/**
+ * Step 3: newest uploads of the channel, verified like any other candidate.
+ *
+ * Skipped silently when the client does not implement `listRecentUploads` (the
+ * in-repo fakes), where it degrades to the previous two-rung behaviour.
+ */
+async function tryRecentUploads(
+  youtube: YouTubeClient,
+  source: SourceDef,
+): Promise<DiscoveryAttempt> {
+  const listRecentUploads = youtube.listRecentUploads;
+  if (typeof listRecentUploads !== 'function') return { kind: 'NONE' };
+
+  let uploadIds: string[];
+  try {
+    uploadIds = await listRecentUploads.call(youtube, source.officialChannelId, UPLOAD_CANDIDATE_LIMIT);
+  } catch {
+    return { kind: 'UNRESOLVED' };
+  }
+
+  for (const videoId of uploadIds.slice(0, UPLOAD_CANDIDATE_LIMIT)) {
+    let verification: VideoVerification | null;
+    try {
+      verification = await youtube.verifyVideo(videoId);
+    } catch {
+      return { kind: 'UNRESOLVED' };
+    }
+
+    const outcome = confirmedLive(verification, source);
+    if (outcome) return { kind: 'LIVE', outcome };
+  }
+
+  return { kind: 'NONE' };
 }
 
 // ─── Sanitise cache → response ─────────────────────────────────────────────
@@ -265,6 +483,7 @@ export async function computeSourceStatus(
   nowMs: number,
   apiKeyPresent: boolean,
   budget?: DiscoveryBudget,
+  livePage?: LivePageResolver,
 ): Promise<SanitizedResponse> {
   const row = await cache.get(source.id);
 
@@ -284,7 +503,10 @@ export async function computeSourceStatus(
       embeddable: null,
       checked_at: new Date(nowMs).toISOString(),
       live_started_at: null,
-      next_refresh_at: new Date(nowMs + DISCOVERY_REFRESH_MS).toISOString(),
+      // Short retry: a missing secret is a configuration error, not an answer.
+      // Caching it for the full discovery interval kept every source `unknown`
+      // long after the key had been restored in Supabase.
+      next_refresh_at: new Date(nowMs + UNKNOWN_RETRY_MS).toISOString(),
       refresh_lease_until: null,
     });
     return unknownResponse(source.id, nowMs);
@@ -328,7 +550,7 @@ export async function computeSourceStatus(
   }
 
   // We hold the lease → YouTube discovery
-  const outcome = await discoverLiveStatus(youtube, source);
+  const outcome = await discoverLiveStatus(youtube, source, livePage);
 
   if (outcome.status === 'LIVE' && outcome.videoId) {
     await cache.upsert({
@@ -409,7 +631,9 @@ export async function computeSourceStatus(
     embeddable: null,
     checked_at: new Date(nowMs).toISOString(),
     live_started_at: null,
-    next_refresh_at: new Date(nowMs + DISCOVERY_REFRESH_MS).toISOString(),
+    // An API failure is not a verdict: retry soon instead of caching `unknown`
+    // for the 90-minute discovery interval (see UNKNOWN_RETRY_MS).
+    next_refresh_at: new Date(nowMs + UNKNOWN_RETRY_MS).toISOString(),
     refresh_lease_until: null,
   });
   return unknownResponse(source.id, nowMs);
@@ -425,11 +649,12 @@ export async function computeAllSourceStatuses(
   nowMs: number,
   apiKeyPresent: boolean,
   budget: DiscoveryBudget = createDiscoveryBudget(),
+  livePage?: LivePageResolver,
 ): Promise<SanitizedResponse[]> {
   const results: SanitizedResponse[] = [];
   for (const source of sources) {
     results.push(
-      await computeSourceStatus(source, youtube, cache, nowMs, apiKeyPresent, budget),
+      await computeSourceStatus(source, youtube, cache, nowMs, apiKeyPresent, budget, livePage),
     );
   }
   return results;

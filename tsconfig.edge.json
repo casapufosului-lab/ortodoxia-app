@@ -33,6 +33,12 @@
   ],
   "exclude": [
     "supabase/functions/**/*.test.mjs",
+    // The test suites under supabase/functions are also discovered and run by scripts/run-tests.mjs,
+    // and they are the only files there that import Node built-ins (node:test, node:fs) and the
+    // `typescript` compiler, none of which exist in the Edge runtime (and @types/node is not a
+    // dependency of this project). They stay out of the Edge program for the same reason the .mjs
+    // suites already did: this program type-checks the code that actually runs on the edge.
+    "supabase/functions/**/*.test.ts",
     "supabase/functions/typecheck-stubs/**/*"
   ]
 }

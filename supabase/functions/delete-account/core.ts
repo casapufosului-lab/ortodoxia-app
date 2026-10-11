@@ -58,6 +58,7 @@ export const EXPLICITLY_DELETED_TABLES: readonly string[] = [
   'verse_favorites',
   'usage_daily',
   'profiles',
+  'live_player_diagnostics',
 ];
 
 /**
@@ -156,6 +157,14 @@ export async function deleteOwnedData(admin: DeleteAdmin, userId: string): Promi
 
   // 9. profiles (cheia e `id`, nu `user_id`)
   record('profiles', '', (await admin.from('profiles').delete().eq('id', userId)).error);
+
+  // 10. live_player_diagnostics (runda finală) — jurnalul de diagnostic al playerului live. NU are
+  // cheie externă către auth.users (coloana `user_id` e uuid simplu, poate fi null), deci nu dispare
+  // prin cascadă; `checkDeletionCoverage` cere ștergere explicită pentru orice tabelă care ține un
+  // UUID de utilizator fără FK. În rapoartele de azi `user_id` e mereu null (playerul live nu are
+  // utilizator autentificat), dar ștergerea rămâne: o completare viitoare a câmpului nu trebuie să
+  // lase urme după ștergerea contului.
+  record('live_player_diagnostics', '', (await admin.from('live_player_diagnostics').delete().eq('user_id', userId)).error);
 
   return { errors, skipped };
 }

@@ -11,8 +11,9 @@ import { deleteChatHistoryForSession, shouldOfferChatHistoryDeletion } from '@/l
 import { logChatLatency } from '@/lib/chat-latency';
 import { streamChatReply, type ChatStreamFailure } from '@/lib/chat-stream';
 import { chatGuestSupabase, ensureGuestChatSession, supabase, supabasePublishableKey, supabaseUrl } from '@/lib/supabase';
-import { FREE_DAILY_AI_LIMIT, hasPremiumAccess, PREMIUM_DAILY_AI_LIMIT, type SubscriptionRow } from '@/lib/subscription';
+import { FREE_DAILY_AI_LIMIT, PREMIUM_DAILY_AI_LIMIT } from '@/lib/subscription';
 import { useRevenueCat } from '@/hooks/use-revenuecat';
+import { useSubscription } from '@/hooks/use-subscription';
 import { useAuth } from '@/providers/auth-provider';
 import { useLocalization } from '@/providers/localization-provider';
 
@@ -185,6 +186,11 @@ function ChatConversation() {
   const { user } = useAuth();
   const { languageCode, region, t } = useLocalization();
   const { priceFor } = useRevenueCat();
+  // T2 (10.10.2026) — ACELEASI valori pe care le arata ecranul Premium si cardul din Cont: limita
+  // zilnica si accesul vin din entitlement-ul RevenueCat (`entitlements.active['premium']`), nu din
+  // randul din `subscriptions`. Randul ramane expus DOAR informativ (`subscriptionRowActive`), ca sa
+  // putem spune explicit cand magazinul confirma si serverul inca nu are randul (activare in curs).
+  const { dailyAiLimit: entitlementDailyLimit, isPremium: storeConfirmsPremium, subscriptionRowActive } = useSubscription();
   // Localized store price for the monthly plan; null until offerings load.
   const monthlyPrice = priceFor('monthly');
   const [input, setInput] = useState('');
@@ -332,9 +338,11 @@ function ChatConversation() {
       return;
     }
 
-    const nextLimit = hasPremiumAccess(subscriptionResult.data as SubscriptionRow | null)
-      ? PREMIUM_DAILY_AI_LIMIT
-      : FREE_DAILY_AI_LIMIT;
+    // T2 (10.10.2026) — limita afisata vine din ACEEASI valoare ca ecranul Premium si cardul din Cont
+    // (`entitlementDailyLimit`, derivata din entitlement-ul RevenueCat in `use-subscription.ts`), nu
+    // din `hasPremiumAccess(randul din subscriptions)`: doua surse insemnau doua raspunsuri pe acelasi
+    // telefon (bug-ul raportat pe build 16/18). Randul ramane citit mai sus doar ca informatie.
+    const nextLimit = entitlementDailyLimit;
     setDailyLimit(nextLimit);
     setRemaining(Math.max(0, nextLimit - (usageResult.data?.ai_messages ?? 0)));
 
@@ -368,7 +376,7 @@ function ChatConversation() {
 
     setIsLoading(false);
     lastLoadCompletedAtRef.current = Date.now();
-  }, [t, user]);
+  }, [entitlementDailyLimit, t, user]);
 
   useFocusEffect(
     useCallback(() => {
@@ -728,6 +736,13 @@ function ChatConversation() {
               count: remaining,
               limit: dailyLimit,
             })}</Text>
+          {/* T2-4 (10.10.2026): magazinul a confirmat abonamentul (entitlement-ul `premium` e activ), dar
+              randul din `subscriptions` scris de webhook-ul RevenueCat nu a ajuns inca. Mesaj scurt,
+              INFORMATIV — nu blocheaza nimic: omul poate scrie in continuare, iar limita aratata aici este
+              exact cea din Premium si din Cont (aceeasi valoare, `entitlementDailyLimit`). */}
+          {storeConfirmsPremium && !subscriptionRowActive ? (
+            <Text accessibilityLiveRegion="polite" style={styles.activationPending}>{t('premium.activationPending')}</Text>
+          ) : null}
         </Card>
         {/* B2: ștergerea istoricului, pe cerere, disponibilă și fără cont. Butonul apare doar când
             există o conversație de șters, ca omul să nu apese pe un buton care nu face nimic. */}
@@ -855,6 +870,9 @@ const styles = StyleSheet.create({
   flex: { flex: 1 },
   limitCard: { backgroundColor: palette.blueSoft, paddingVertical: 12 },
   limit: { color: palette.blue, fontSize: 13, fontWeight: '700', textAlign: 'center' },
+  /* T2-4 (10.10.2026): nota „activarea e in curs" din cardul de limita — informativa, nu un avertisment:
+     acelasi albastru ca limita, fara sa alerte omul. */
+  activationPending: { color: palette.blue, fontSize: 12, lineHeight: 17, textAlign: 'center', paddingTop: 4 },
   messages: { gap: 10 },
   chatScreen: { backgroundColor: palette.skyLight },
   message: { maxWidth: '88%', paddingHorizontal: 15, paddingVertical: 12, borderRadius: 16 },

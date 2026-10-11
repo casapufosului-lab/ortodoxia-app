@@ -16,9 +16,13 @@
 - Sursele permanente **nu conțin niciodată** un `videoId` curent ca
   configurație permanentă. Un `videoId` de o singură emisiune aparține doar
   unui obiect tranzitoriu `CurrentLiveBroadcast` (LIVE-B).
-- Detecția dinamică folosește **doar YouTube Data API v3** (oficial,
-  `search.list` + `videos.list`). Nicio răzuire HTML, niciun endpoint
-  intern/documentat greșit, niciun serviciu terț de scraping.
+- Detecția dinamică folosește **YouTube Data API v3** (oficial) pentru orice
+  verdict: `search.list` + `videos.list` + `playlistItems.list` (uploads).
+  În plus, pentru streamurile permanente 24/7, pagina publică
+  `https://www.youtube.com/channel/<Channel ID>/live` este citită **doar ca
+  indiciu** (vezi „Scara de descoperire”): un `videoId` luat de acolo nu devine
+  niciodată LIVE fără confirmarea `videos.list`. Nu există scraping de conținut,
+  nu se stochează HTML, nu se folosesc endpoint-uri interne sau servicii terțe.
 
 ## Surse candidate
 
@@ -135,15 +139,52 @@ Clientul **nu poate trimite** `channelId` sau `videoId`: canalul este rezolvat
 Sursa server este legată de registrul client (`src/live/live-services.ts`) printr-un
 **test de drift strict** (`tests/drift.test.mjs` — ID-uri, Channel ID, enabled).
 
-### Detecție curentă live (YouTube Data API v3)
+### Detecție curentă live — scara de descoperire (3 trepte)
 
-1. `search.list` — `part=snippet`, `channelId=<Channel ID verificat>`,
-   `eventType=live`, `type=video`, `maxResults=5` (căutare de descoperire).
-2. `videos.list` — `part=snippet,liveStreamingDetails,status` pentru fiecare
-   candidat (verificare): se respinge orice candidat cu **Channel ID diferit**,
-   cu `actualEndTime` (emisiune încheiată) sau fără `liveStreamingDetails`.
-3. LIVE doar după confirmare oficială proaspătă. `NOT_LIVE` doar după o
-   căutare oficială validă fără candidat live.
+Măsurat pe 10.10.2026 (TRINITAS TV, `UCcqFHIDYfKsaJ5KXZjzW7ZQ`): `search.list`
+cu `eventType=live` întoarce **zero** rezultate pentru un canal care are un
+stream **permanent 24/7** în direct, iar streamul respectiv **nu** apare nici în
+primele uploaduri (a fost urcat demult). De aceea descoperirea are trei trepte,
+încercate în ordine; LIVE de la orice treaptă câștigă.
+
+1. **Pagina publică a canalului** — `channel-live-page.ts` cere
+   `GET https://www.youtube.com/channel/<Channel ID>/live` și extrage **lista
+   ordonată de candidați** (până la `MAX_CANDIDATES = 24` id-uri unice, din
+   `"videoId":"..."` plus canonical / `og:url`). Canalul cerut vine **doar** din
+   registrul canonic server-side; ID-urile necanonice nu se cer. Textul paginii
+   nu se stochează.
+   Măsurat pe 10.10.2026 (edge, TRINITAS TV): `/live` **nu** redirectează — YouTube
+   randează pagina de watch chiar la acel URL, deci URL-ul final nu e o sursă de
+   id; iar de pe edge pagina vine **degradată** (canonical `"undefined"`, fără
+   `og:url`, `<title>` gol), cu ordinea candidaților **instabilă** de la o cerere
+   la alta (id-ul real a ieșit când pe poziția 0, când pe 1). De aceea nu se alege
+   un id după poziție sau după o singură regulă: **toți candidații sunt verificați
+   într-un singur apel batch** `videos.list?id=<a,b,c…>` (1 unitate de cotă pentru
+   toată lista, față de 100 la `search.list`).
+   - `live` **doar** dacă `snippet.liveBroadcastContent === "live"`;
+   - `embeddable` din `status.embeddable`, titlu din `snippet.title`,
+     `liveStartedAt` din `liveStreamingDetails.actualStartTime` (**opțional** —
+     un stream permanent poate să nu raporteze `actualStartTime`);
+   - se respinge un candidat cu **Channel ID diferit** (ex. o recomandare
+     ridicată din pagină — măsurat: un astfel de candidat chiar era live, pe alt
+     canal, și a fost respins corect).
+   O eroare a paginii nu decide verdictul (se trece la treapta 2); o eroare
+   `videos.list` la verificarea indiciului → **UNKNOWN**, fără a mai cheltui
+   cotă pe treptele următoare.
+2. **`search.list`** — `part=snippet`, `channelId=<Channel ID verificat>`,
+   `eventType=live`, `type=video`, `maxResults=5`, apoi `videos.list`
+   (`part=snippet,liveStreamingDetails,status`) pentru fiecare candidat: se
+   respinge orice candidat cu Channel ID diferit, cu `actualEndTime` sau fără
+   `liveStreamingDetails`.
+3. **Uploaduri** — `channels.list` (`contentDetails` → playlistul `UU…`), apoi
+   `playlistItems.list` (`part=contentDetails`, `maxResults=3`); fiecare id este
+   verificat ca mai sus. Treapta asta costă 2 unități + 1 per candidat, dar
+   **nu** prinde streamurile permanente (de aceea e ultima).
+
+Verdictul final: LIVE doar după confirmare oficială proaspătă. `NOT_LIVE` doar
+dacă **toate** treptele au răspuns valid și niciuna nu a găsit un live. Dacă o
+treaptă nu a putut răspunde (eroare API/cheie, răspuns malformat, candidat
+neverificabil) → **UNKNOWN**.
 
 ### Model cu trei stări
 
@@ -175,6 +216,16 @@ Constante centralizate (`status.ts`):
 | `LIVE_REVALIDATE_MS` | ~5 min | re-verificare `videos.list` pentru un live cunoscut |
 | `LEASE_MS` | ~60 s | durată lease single-flight |
 | `STALE_LIVE_REUSE_MS` | ~5 min | reutilizare LIVE cache recent în timpul refresh |
+| `UNKNOWN_RETRY_MS` | ~5 min | reîncercare când verdictul **nu** e un verdict (eroare API/cheie, răspuns malformat) |
+| `UPLOAD_CANDIDATE_LIMIT` | 3 | câte uploaduri verifică ultima treaptă |
+
+**De ce `UNKNOWN_RETRY_MS`**: `unknown` însemna un singur lucru pe disc — „nu am
+putut întreba API-ul” (cheie lipsă, eroare, răspuns malformat). Cache-uit pe
+intervalul de descoperire (90 min) a produs chiar bug-ul din 10.10.2026: după ce
+secretul `YOUTUBE_DATA_API_KEY` a fost setat în Supabase, funcția a răspuns în
+continuare `unknown` pentru toate sursele, din rândurile vechi. Acum un `unknown`
+se reîncearcă în ~5 minute; `not_live` rămâne pe 90 de minute, pentru că acela
+este un răspuns real, nu o eroare.
 
 **Single-flight / lease**: înainte de a apela YouTube, funcția revendică
 atomistic `refresh_lease_until` (UPDATE condiționat). Alți apelanți concurenți
@@ -233,13 +284,15 @@ Google, stack traces, date personale.
 | `src/live/live-status-client.ts` | Client fetch Edge Function (live-services-status) + validare răspuns |
 | `src/live/live-playback.ts` | Decizie playback (EMBED/EXTERNAL_CURRENT/OFFICIAL_SOURCE) + URL YouTube |
 | `src/live/youtube-embed.tsx` | Barrel/TS-resolve stub (re-exportă .native pentru TypeScript) |
-| `src/live/youtube-embed.native.tsx` | Player YouTube WebView (React Native) |
+| `src/live/youtube-embed.native.tsx` | Player YouTube WebView (React Native) \u2014 overlay full-screen randat ca frate al `<Screen>`, **NU** \u00eentr-un `<Modal>` (pe iOS un WKWebView \u00eentr-un modal `pageSheet` r\u0103m\u00e2nea negru, 10.10.2026); se \u00eenchide cu butonul propriu, plus `BackHandler` pe Android. Build 15: WebView direct cu HTML propriu (f\u0103r\u0103 libr\u0103ria de iframe), `baseUrl` \u0219i `origin=` = `https://ortodoxia.web.app` (EROAREA 153 = YouTube refuz\u0103 embed-ul f\u0103r\u0103 un referer valid), f\u0103r\u0103 `mute=1`/`autoplay=1` (sunet), f\u0103r\u0103 comutare automat\u0103 pe browser |
 | `src/live/youtube-embed.web.tsx` | Player YouTube iframe fallback (web) |
 | `supabase/functions/live-services-status/index.ts` | Edge Function entry (GET/OPTIONS, wiring) |
 | `supabase/functions/live-services-status/sources.ts` | Registru server canonic (legat de LIVE-A prin test de drift) |
-| `supabase/functions/live-services-status/youtube.ts` | Client YouTube Data API (search.list + videos.list) |
-| `supabase/functions/live-services-status/status.ts` | Motor de status LIVE/NOT_LIVE/UNKNOWN + intervale + lease |
+| `supabase/functions/live-services-status/youtube.ts` | Client YouTube Data API (search.list + videos.list + uploads) |
+| `supabase/functions/live-services-status/channel-live-page.ts` | Resolver pentru streamurile permanente 24/7: pagina publică `/channel/<id>/live` → **listă ordonată de candidați** (verificați obligatoriu, în batch, cu `videos.list`) |
+| `supabase/functions/live-services-status/status.ts` | Motor de status LIVE/NOT_LIVE/UNKNOWN + scara de descoperire + intervale + lease |
 | `supabase/functions/live-services-status/tests/live-status.test.mjs` | Teste mock live-status (fără YouTube real) |
+| `supabase/functions/live-services-status/tests/channel-live-page.test.mjs` | Teste resolver 24/7 + scara de descoperire + cache `unknown` (fetch simulat, fără rețea) |
 | `supabase/functions/live-services-status/tests/drift.test.mjs` | Teste drift registru + migrare + securitate |
 | `supabase/migrations/20260902100000_add_live_service_status_cache.sql` | Cache persistent (RLS deny client) |
 | `supabase/config.toml` | Înregistrare funcție `live-services-status` |

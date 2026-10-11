@@ -10,7 +10,11 @@ test('LOW #22 native LIVE player uses selected localization', () => {
   assert.match(native, /const \{ t \} = useLocalization\(\);/);
   assert.doesNotMatch(native, /translate\('ro'/);
   assert.match(native, /t\('live\.playerAccessibilityLabel'\)/);
-  assert.doesNotMatch(native, /t\('live\.closePlayer/);
+  // 10.10.2026: the player is no longer a <Modal> (iOS rendered the WKWebView inside it
+  // black), so it now carries the same localized close control as the web player instead
+  // of relying on the pageSheet swipe-to-dismiss, which only existed on iOS.
+  assert.match(native, /t\('live\.closePlayerAccessibilityLabel'\)/);
+  assert.match(native, /t\('live\.closePlayer'\)/);
 });
 
 test('LOW #22 web LIVE player uses selected localization', () => {

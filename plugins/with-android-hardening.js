@@ -25,11 +25,12 @@
  *
  * DE CE E ÎN SIGURANȚĂ PENTRU EAS
  * ------------------------------
- * Keystore-ul poate veni din două surse, verificate în ordine: variabilele de mediu
- * `ORTODOXIA_UPLOAD_*` (build local) sau proprietățile `android.injected.signing.*` (injectate de
- * EAS Build). Dacă niciuna nu există, build-ul de release se oprește — nu produce un artefact
- * semnat greșit. Un eșec zgomotos se vede în log; un AAB semnat cu cheia de debug se vede abia la
- * încărcarea în Play.
+ * Keystore-ul poate veni din trei surse, verificate în ordine: variabilele de mediu
+ * `ORTODOXIA_UPLOAD_*` (build local), proprietățile `android.injected.signing.*` (injectate pe linia
+ * de comandă) sau mediul EAS Build (`EAS_BUILD=true`; EAS nu trimite proprietăți, ci patch-ește
+ * direct `android/app/build.gradle`, deci semnarea există prin construcție). Dacă niciuna nu există,
+ * build-ul de release se oprește — nu produce un artefact semnat greșit. Un eșec zgomotos se vede în
+ * log; un AAB semnat cu cheia de debug se vede abia la încărcarea în Play.
  *
  * IDEMPOTENȚĂ
  * -----------
@@ -170,7 +171,13 @@ const HARDENED_RELEASE_BLOCK = [
   '            // upload. Preferăm un build oprit, cu mesaj clar, în locul unui artefact inutil.',
   '            // Verificarea se face doar când se cere un build de release: altfel și un `gradlew',
   '            // installDebug` ar avea nevoie de keystore-ul de upload.',
-  "            def hasUploadKeystore = System.getenv('ORTODOXIA_UPLOAD_STORE_FILE') || findProperty('android.injected.signing.store.file')",
+  '            // Pe EAS, variabila `EAS_BUILD=true` este pusă de EAS Build. EAS nu trimite',
+  '            // `android.injected.signing.*` ca proprietăți de linie de comandă: el patch-ește',
+  '            // direct android/app/build.gradle ("Injecting signing config into build.gradle")',
+  '            // și deci proprietățile injectate nu pot fi verificate aici. Semnarea există prin',
+  '            // construcție, iar verificarea de mai jos nu mai blochează build-ul de producție.',
+  "            def onEasBuild = System.getenv('EAS_BUILD') == 'true'",
+  "            def hasUploadKeystore = System.getenv('ORTODOXIA_UPLOAD_STORE_FILE') || findProperty('android.injected.signing.store.file') || onEasBuild",
   '            def requestedTasks = gradle.startParameter.taskNames.collect { it.toLowerCase() }',
   "            def debugOnly = !requestedTasks.isEmpty() && requestedTasks.every { it.contains('debug') }",
   '            def nonBuilding = requestedTasks.isEmpty() || requestedTasks.every { name ->',

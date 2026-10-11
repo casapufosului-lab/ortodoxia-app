@@ -12,7 +12,19 @@ verify_jwt = false
 [functions.revenuecat-webhook]
 verify_jwt = false
 
+# T3 (10.10.2026): reconcilierea ceruta de aplicatie (entitlement activ, rand lipsa/expirat).
+# `verify_jwt = true` DELIBERAT, spre deosebire de webhook: identitatea utilizatorului trebuie sa vina
+# dintr-un token de sesiune verificat de platforma, nu dintr-un id trimis de client.
+[functions.revenuecat-sync-user]
+verify_jwt = true
 [functions.live-services-status]
+verify_jwt = false
+
+[functions.live-player-diagnostic]
+# Diagnosticul playerului live: aplicatia trimite masuratorile de pe ecran (max 3 per deschidere).
+# `verify_jwt = false` deliberat: cheia publica a aplicatiei (`sb_publishable_...`) NU este un JWT,
+# iar dispozitivul nu are si nu trebuie sa aiba vreun secret. Functia isi face singura validarea
+# stricta (campuri cunoscute, 2 KB/camp, 4 KB/corp) si scrie doar cu `service_role`.
 verify_jwt = false
 
 [auth]

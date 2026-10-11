@@ -328,3 +328,216 @@ test('HIGH #7 server config requires secret RevenueCat API key', () => {
   );
   assert.ok(!env.includes('EXPO_PUBLIC_REVENUECAT_API_KEY'));
 });
+
+// ---------------------------------------------------------------------------
+// T6 / R3 + U1b - testele cerute de taskul de premium (10.10.2026)
+//
+// Ce se dovedeste aici, la nivel de functia webhook:
+//   (a) un eveniment `environment = 'sandbox'` SCRIE randul (acceptarea sandbox e permanenta in
+//       cod, nu depinde de vreun flag de mediu) - inainte raspundea 200 {skipped:true} si nu
+//       scria nimic, exact in TestFlight, unde se face testarea;
+//   (b) un produs cu sufixul de Google Play (`<id>:<basePlanId>`) scrie randul;
+//   (c) un id de produs pe care codul nu il cunoaste, dar cu entitlement-ul `premium` in
+//       Customer Info, scrie randul (id viitor, fara schimbare de cod);
+//   (d) un produs necunoscut FARA entitlement premium: NU scrie nimic, dar id-ul apare in log
+//       si in raspuns (fara tacere si fara "success" orbeste).
+// ---------------------------------------------------------------------------
+
+const PLAY_MONTHLY = 'ro.ortodoxia.premium.monthly:monthly';
+const PLAY_ANNUAL = 'ro.ortodoxia.premium.annual:annual';
+const FUTURE_IOS = 'ro.ortodoxia.premium.yearly.v2';
+
+function webhookRequest(event) {
+  return new Request('https://local/revenuecat-webhook', {
+    method: 'POST',
+    headers: {
+      Authorization: 'Bearer webhook-secret',
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ event }),
+  });
+}
+
+function webhookDeps({ customerInfoPayload, onRpc }) {
+  return {
+    webhookAuthToken: 'webhook-secret',
+    revenueCatApiKey: 'rc-secret',
+    fetcher: async () =>
+      new Response(JSON.stringify(customerInfoPayload), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      }),
+    admin: {
+      rpc: async (name, args) => {
+        onRpc?.(name, args);
+        return { data: true, error: null };
+      },
+    },
+  };
+}
+
+test('T6/R3 sandbox event writes the subscription row (no environment flag needed)', async () => {
+  let rpcArgs = null;
+  const result = await handleWebhook(
+    webhookRequest({
+      type: 'INITIAL_PURCHASE',
+      app_user_id: USER_ID,
+      product_id: MONTHLY,
+      store: 'APP_STORE',
+      environment: 'sandbox',
+    }),
+    webhookDeps({
+      customerInfoPayload: customerInfo(),
+      onRpc: (_name, args) => {
+        rpcArgs = args;
+      },
+    }),
+  );
+
+  assert.equal(result.status, 200);
+  assert.equal(result.body.applied, true);
+  assert.equal(result.body.skipped, undefined);
+  assert.ok(rpcArgs, 'RPC-ul trebuie apelat pentru un eveniment de sandbox');
+  assert.equal(rpcArgs.p_environment, 'sandbox');
+  assert.equal(rpcArgs.p_status, 'active');
+  assert.equal(rpcArgs.p_user_id, USER_ID);
+});
+
+test('T6/U1b(b) Play-suffixed product id writes the row', async () => {
+  // Customer Info as RevenueCat returns it for a Play purchase: the subscription is keyed by
+  // the Play id and carries `store: 'play_store'` (the provider is derived from there).
+  const playInfo = customerInfo({ productId: PLAY_MONTHLY });
+  playInfo.subscriber.subscriptions[PLAY_MONTHLY].store = 'play_store';
+
+  let rpcArgs = null;
+  const result = await handleWebhook(
+    webhookRequest({
+      type: 'INITIAL_PURCHASE',
+      app_user_id: USER_ID,
+      product_id: PLAY_MONTHLY,
+      store: 'PLAY_STORE',
+      environment: 'production',
+    }),
+    webhookDeps({
+      customerInfoPayload: playInfo,
+      onRpc: (_name, args) => {
+        rpcArgs = args;
+      },
+    }),
+  );
+
+  assert.equal(result.status, 200);
+  assert.equal(result.body.applied, true);
+  assert.ok(rpcArgs, 'RPC-ul trebuie apelat pentru un produs cu sufix Play');
+  assert.equal(rpcArgs.p_product_id, PLAY_MONTHLY);
+  assert.equal(rpcArgs.p_plan, 'monthly');
+  assert.equal(rpcArgs.p_provider, 'google');
+  assert.equal(rpcArgs.p_environment, 'production');
+
+  // aceeasi regula si pentru varianta anuala
+  const annual = resolveCustomerSnapshot(
+    customerInfo({ productId: PLAY_ANNUAL }),
+    PLAY_ANNUAL,
+  );
+  assert.ok(annual);
+  assert.equal(annual.status, 'active');
+  assert.equal(annual.plan, 'annual');
+});
+
+test('T6/U1b(a) future product id with the premium entitlement still grants Premium', async () => {
+  // Un id pe care codul nu il cunoaste (produs viitor), dar RevenueCat il raporteaza in
+  // entitlement-ul `premium`: inainte de corectie, `resolveCustomerSnapshot` intorcea null si
+  // webhook-ul raspundea 502 "Raspuns RevenueCat invalid." - o achizitie reala, pierduta.
+  const snapshot = resolveCustomerSnapshot(customerInfo({ productId: FUTURE_IOS }), FUTURE_IOS);
+  assert.ok(snapshot, 'entitlement-ul premium trebuie sa fie suficient pentru un id nou');
+  assert.equal(snapshot.status, 'active');
+  assert.equal(snapshot.product_id, FUTURE_IOS);
+
+  let rpcArgs = null;
+  const result = await handleWebhook(
+    webhookRequest({
+      type: 'INITIAL_PURCHASE',
+      app_user_id: USER_ID,
+      product_id: FUTURE_IOS,
+      entitlement_ids: ['premium'],
+      store: 'APP_STORE',
+      environment: 'production',
+    }),
+    webhookDeps({
+      customerInfoPayload: customerInfo({ productId: FUTURE_IOS }),
+      onRpc: (_name, args) => {
+        rpcArgs = args;
+      },
+    }),
+  );
+
+  assert.equal(result.status, 200);
+  assert.equal(result.body.applied, true);
+  assert.ok(rpcArgs, 'RPC-ul trebuie apelat pentru un id viitor cu entitlement premium');
+  assert.equal(rpcArgs.p_product_id, FUTURE_IOS);
+  assert.equal(rpcArgs.p_status, 'active');
+});
+
+test('T6/U1b(c) unknown product without the premium entitlement is logged, never written', async () => {
+  const unknown = 'ro.romarg.ceva.necunoscut:base';
+  let rpcCalls = 0;
+  const warnings = [];
+  const originalWarn = console.warn;
+  console.warn = (...args) => {
+    warnings.push(
+      args
+        .map((value) => (typeof value === 'string' ? value : JSON.stringify(value)))
+        .join(' '),
+    );
+  };
+
+  let result;
+  try {
+    result = await handleWebhook(
+      webhookRequest({
+        type: 'INITIAL_PURCHASE',
+        app_user_id: USER_ID,
+        product_id: unknown,
+        entitlement_ids: [],
+        store: 'APP_STORE',
+      }),
+      webhookDeps({
+        // Customer Info fara entitlement-ul premium: nu exista nicio dovada de Premium.
+        customerInfoPayload: customerInfo({ entitlement: false }),
+        onRpc: () => {
+          rpcCalls += 1;
+        },
+      }),
+    );
+  } finally {
+    console.warn = originalWarn;
+  }
+
+  assert.equal(result.status, 200);
+  assert.equal(result.body.success, false);
+  assert.equal(result.body.ignored, true);
+  assert.equal(result.body.reason, 'unknown_product');
+  assert.equal(result.body.product_id, unknown);
+  assert.equal(rpcCalls, 0, 'un produs necunoscut nu are voie sa scrie in baza');
+  assert.ok(
+    warnings.some((line) => line.includes(unknown)),
+    'id-ul necunoscut trebuie sa apara explicit in log',
+  );
+});
+
+test('T6/R3 sandbox acceptance is in code, not behind an environment flag', () => {
+  const core = readFileSync('supabase/functions/revenuecat-webhook/core.ts', 'utf8');
+  const index = readFileSync('supabase/functions/revenuecat-webhook/index.ts', 'utf8');
+
+  const code = core
+    .split('\n')
+    .filter((line) => !line.trim().startsWith('//') && !line.trim().startsWith('*'))
+    .join('\n');
+
+  assert.ok(!/REVENUECAT_ACCEPT_SANDBOX/.test(code), 'codul nu are voie sa citeasca acest flag');
+  assert.ok(!/acceptsSandboxEvents/.test(core));
+  assert.ok(!/sandbox_event_ignored/.test(code));
+  assert.ok(!/REVENUECAT_ACCEPT_SANDBOX/.test(index));
+  // environment-ul este totusi inregistrat pe rand
+  assert.match(core, /p_environment: environment/);
+});

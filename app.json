@@ -10,10 +10,16 @@
     "userInterfaceStyle": "light",
     "ios": {
       "bundleIdentifier": "ro.ortodoxia.app",
-      "buildNumber": "1",
+      "buildNumber": "14",
+      "supportsTablet": false,
+      "usesAppleSignIn": true,
       "infoPlist": {
         "NSSpeechRecognitionUsageDescription": "Permite aplicației Ortodoxia să transforme vocea dictată în text.",
-        "NSMicrophoneUsageDescription": "Permite aplicației Ortodoxia să folosească microfonul pentru dictarea întrebărilor."
+        "NSMicrophoneUsageDescription": "Permite aplicației Ortodoxia să folosească microfonul pentru dictarea întrebărilor.",
+        "ITSAppUsesNonExemptEncryption": false,
+        "NSPhotoLibraryUsageDescription": "Permite aplicației Ortodoxia să acceseze fotografiile tale pentru a afișa imaginile din aplicație.",
+        "NSPhotoLibraryAddUsageDescription": "Permite aplicației Ortodoxia să salveze imagini în galeria ta.",
+        "CFBundleLocalizations": ["ro", "en", "el", "sr", "bg", "mk", "uk", "ka", "ru", "sq"]
       }
     },
     "android": {

@@ -42,6 +42,18 @@ vm.runInNewContext(limitIdentityCompiled, { exports: limitIdentityModule.exports
 const limitIdentity = limitIdentityModule.exports;
 assert.equal(typeof limitIdentity.buildLimitIdentity, 'function', 'limit-identity must compile');
 
+// Same trap, third module: the endpoint now walks the free-provider cascade (`../_shared/ai-chain.ts`).
+// It is pure (no imports of its own) and the require stub below answers every specifier, so it must be
+// compiled and dispatched by specifier too — otherwise pickStep() is undefined and every request 500s.
+const aiChainFile = resolve('supabase/functions/_shared/ai-chain.ts');
+const aiChainCompiled = ts.transpileModule(readFileSync(aiChainFile, 'utf8'), {
+  compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
+}).outputText;
+const aiChainModule = { exports: {} };
+vm.runInNewContext(aiChainCompiled, { exports: aiChainModule.exports });
+const aiChain = aiChainModule.exports;
+assert.equal(typeof aiChain.pickStep, 'function', 'ai-chain must compile');
+
 /** The app always sends its per-install identifier; a harness request must not look like a bare bot. */
 const deviceId = 'aaaaaaaa-bbbb-2222-cccc-3333dddd4444';
 
@@ -89,6 +101,30 @@ const deltaFrame = (text) => ({ event: 'response.output_text.delta', data: { typ
 const completedFrame = { event: 'response.completed', data: { type: 'response.completed' } };
 const failedFrame = { event: 'response.failed', data: { type: 'response.failed', response: { error: { message: 'private upstream details' } } } };
 
+/**
+ * Aceleaşi cadre, în dialectul `chat/completions` vorbit de furnizorii gratuiţi ai cascadei.
+ * Testele descriu ce spune modelul; traducerea o face suportul, ca fiecare aşteptare să rămână
+ * valabilă indiferent care pas al cascadei răspunde.
+ */
+function toChatFrame(frame) {
+  if (typeof frame.data?.delta === 'string')
+    return { event: '', data: { choices: [{ delta: { content: frame.data.delta } }] } };
+  // Responses API pune motivul sub `data.response.error`; chat/completions direct sub `data.error`.
+  const upstreamError = frame.data?.error ?? frame.data?.response?.error
+    ?? (frame.event === 'response.failed' ? { message: 'upstream failed' } : null);
+  if (upstreamError)
+    return { event: '', data: { error: upstreamError } };
+  return { event: '', data: { choices: [{ finish_reason: 'stop' }] } };
+}
+
+/** Textul pe care îl „spune" furnizorul fals, oricare ar fi dialectul cerut. */
+function upstreamText(options) {
+  if (options.frames)
+    return options.frames.map(frame => (typeof frame.data?.delta === 'string' ? frame.data.delta : '')).join('');
+  if (options.payload === undefined) return 'răspuns';
+  return typeof options.payload?.output_text === 'string' ? options.payload.output_text : '';
+}
+
 /** Textul brut al unui răspuns SSE: pentru fiecare cadru, `event:` + `data:` + linie goală. */
 function sseBody(frames) {
   return frames.map(({ event, data }) => `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`).join('');
@@ -122,7 +158,11 @@ function harness(options = {}) {
     auth: { getUser: async () => ({ data: { user: options.user === false ? null : { id: userId, is_anonymous: options.user !== true } } }) },
     rpc(name, args) {
       mark({ kind: 'rpc', name, args });
-      return { single: async () => ({ data: options.reservation ?? RESERVATION_DEFAULTS, error: options.rpcError ?? null }) };
+      // The cascade asks a second question before every provider call: may this step still answer today?
+      const data = name === 'reserve_ai_provider_step'
+        ? (typeof options.gate === 'function' ? options.gate(String(args.p_step)) : (options.gate ?? { allowed: true, requests: 1 }))
+        : (options.reservation ?? RESERVATION_DEFAULTS);
+      return { single: async () => ({ data, error: options.rpcError ?? null }) };
     },
     from(table) {
       const event = { kind: 'query', table, filters: [] };
@@ -147,9 +187,11 @@ function harness(options = {}) {
   };
   vm.runInNewContext(compiled, {
     exports: {},
-    require: specifier => (String(specifier).includes('limit-identity')
-      ? limitIdentity
-      : { createClient: () => client, ...sharedHttp }),
+    require: specifier => (String(specifier).includes('ai-chain')
+      ? aiChain
+      : String(specifier).includes('limit-identity')
+        ? limitIdentity
+        : { createClient: () => client, ...sharedHttp }),
     Request, Response, AbortSignal,
     // Endpointul care livrează bucată cu bucată are nevoie de aceste globale, exact ca în runtime-ul
     // Edge: altfel fiecare cerere cade în `catch`-ul general şi răspunde 500 (fără ele, streamingul nu
@@ -164,14 +206,34 @@ function harness(options = {}) {
     ...(options.noCrypto ? {} : { crypto: globalThis.crypto }),
     TextEncoder,
     Deno: {
-      env: { get: key => (options.env ?? {})[key] ?? (options.missingConfig ? undefined : 'test-only') },
+      // `openaiFirst` aprinde pasul OpenAI exact aşa cum o face producţia: din variabila de configurare,
+      // nu din cod. Implicit el e stins (contul n-are credit), deci primul pas e un furnizor gratuit.
+      env: {
+        get: key => (options.env ?? {})[key]
+          ?? (options.openaiFirst && key === 'AI_CHAIN_ENABLE_OPENAI'
+            ? 'true'
+            : (options.missingConfig ? undefined : 'test-only')),
+      },
       serve: callback => { handler = callback; },
     },
     fetch: async (url, init) => {
-      mark({ kind: 'fetch', url, body: JSON.parse(init.body), signal: init.signal });
+      const request = JSON.parse(init.body);
+      mark({ kind: 'fetch', url, body: request, signal: init.signal });
       if (options.networkError) throw new Error('private upstream details');
       if ((options.upstreamStatus ?? 200) >= 400) return new Response('refuzat', { status: options.upstreamStatus });
-      const body = options.invalidJson ? 'broken' : sseBody(options.frames ?? defaultFrames(options.payload));
+      // Dialectul cererii spune cum răspunde furnizorul: pasul OpenAI vorbeşte Responses API (`input`),
+      // pasul gratuit vorbeşte chat/completions (`messages`).
+      const chatDialect = request.input === undefined;
+      if (request.stream !== true) {
+        return new Response(JSON.stringify(chatDialect
+          ? { choices: [{ message: { role: 'assistant', content: upstreamText(options) } }] }
+          : { output_text: upstreamText(options) }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      const frames = options.frames ?? defaultFrames(options.payload);
+      const body = options.invalidJson ? 'broken' : sseBody(chatDialect ? frames.map(toChatFrame) : frames);
       const pieces = chunkText(body, options.chunkBytes ?? body.length);
       let index = 0;
       /**
@@ -206,6 +268,8 @@ function harness(options = {}) {
       headers: {
         ...(options.identity === false ? {} : { 'x-device-id': deviceId }),
         ...(options.user === false ? {} : { Authorization: 'Bearer test-only' }),
+        // Clientul din repo cere explicit streaming; fără acest antet răspunsul e JSON (aplicaţia v4).
+        ...(options.json ? {} : { Accept: 'text/event-stream' }),
         ...extraHeaders,
       },
       ...(method === 'POST' ? { body: typeof body === 'string' ? body : JSON.stringify(body) } : {}),
@@ -290,13 +354,15 @@ test('C13: an implausible device value falls back to the address, never to a sha
   assert.notEqual(call.p_ip_hash, call.p_client_hash);
 });
 test('guest success reserves quota before AI and returns server counters', async () => {
-  const h = harness(); const response = await h.run({ guestId, message: ' question ', threadId: 'foreign' });
+  const h = harness({ openaiFirst: true }); const response = await h.run({ guestId, message: ' question ', threadId: 'foreign' });
   assert.equal(response.status, 200);
   const { text, meta } = await readSse(response);
   assert.deepEqual(meta, { threadId: null, remaining: 4, dailyLimit: 5 });
   assert.equal(text, 'răspuns');
   // Contoarele vin înaintea textului, iar rezervarea cotei înaintea apelului AI (ordinea din `seq`).
-  assert.deepEqual(h.events.filter(e => e.kind !== 'log' && e.kind !== 'upstream-end').map(e => e.kind), ['rpc', 'fetch']);
+  assert.deepEqual(h.events.filter(e => e.kind !== 'log' && e.kind !== 'upstream-end').map(e => e.kind), ['rpc', 'rpc', 'fetch']);
+  // Ambele rezervări se fac ÎNAINTE de apelul AI: cota utilizatorului şi pasul cascadei.
+  assert.deepEqual(h.events.filter(e => e.kind === 'rpc').map(e => e.name), ['reserve_ai_request', 'reserve_ai_provider_step']);
   assert.ok(h.events[0].seq < h.events.find(e => e.kind === 'fetch').seq, 'rezervarea se face ÎNAINTE de apelul AI');
   const quotaCall = JSON.parse(JSON.stringify(h.events[0].args));
   assert.equal(quotaCall.p_user_id, userId);
@@ -340,7 +406,7 @@ test('database or malformed reservation never calls AI', async () => {
   }
 });
 test('authenticated identity comes from verified user, and history is chronological', async () => {
-  const h = harness({ user: true, reservation: { ...RESERVATION_DEFAULTS, remaining_limit: 49, daily_limit: 50 } });
+  const h = harness({ user: true, openaiFirst: true, reservation: { ...RESERVATION_DEFAULTS, remaining_limit: 49, daily_limit: 50 } });
   const response = await h.run({ guestId: 'forged', userId: 'forged', message: 'question', threadId: 'thread-owned' });
   assert.equal(response.status, 200); assert.equal((await readSse(response)).meta.dailyLimit, 50);
   assert.equal(h.events.find(e => e.kind === 'rpc').args.p_user_id, userId);
@@ -418,7 +484,10 @@ test('a missing Web Crypto or a missing salt refuses before any database access'
   // An unset dedicated salt falls back to the service-role key, which is already server-only.
   const fallback = harness({
     user: true,
-    env: { SUPABASE_URL: 'u', SUPABASE_ANON_KEY: 'a', SUPABASE_SERVICE_ROLE_KEY: 's', OPENAI_API_KEY: 'k' },
+    env: {
+      SUPABASE_URL: 'u', SUPABASE_ANON_KEY: 'a', SUPABASE_SERVICE_ROLE_KEY: 's',
+      OPENAI_API_KEY: 'k', AI_CHAIN_ENABLE_OPENAI: 'true',
+    },
   });
   assert.equal((await fallback.run({ message: 'q' })).status, 200);
 });
@@ -538,4 +607,51 @@ test('streaming: anularea din aplicație oprește modelul și nu salvează un r�
   await new Promise(resolve => setTimeout(resolve, 0));
   assert.equal(h.events.some(event => event.value?.role === 'assistant'), false, 'răspunsul parțial nu se scrie în istoric');
   assert.equal(h.events.find(event => event.kind === 'fetch').signal.aborted, true, 'apelul către model se oprește');
+});
+
+// ─── cascada de furnizori gratuiți (09.10.2026) ──────────────────────────────────────────────
+
+test('cascada implicită: fără OpenAI, răspunde primul furnizor gratuit, cu același contract SSE', async () => {
+  const h = harness();
+  const response = await h.run({ guestId, message: 'question' });
+  assert.equal(response.status, 200);
+  const { text, meta, done, error } = await readSse(response);
+  assert.equal(error, null);
+  assert.equal(done, true);
+  assert.equal(text, 'răspuns');
+  assert.deepEqual(meta, { threadId: null, remaining: 4, dailyLimit: 5 });
+
+  const calls = h.events.filter(event => event.kind === 'fetch');
+  assert.equal(calls.length, 1, 'un singur furnizor consumă o cerere');
+  assert.match(String(calls[0].body.model), /gpt-oss-120b/, 'primul pas al cascadei');
+  assert.equal(calls[0].body.stream, true, 'se cere streaming de la furnizor');
+  assert.equal(calls[0].body.store, undefined, 'câmpurile Responses API nu se trimit unui furnizor chat');
+
+  // Poarta din bază e întrebată cu pasul şi pragul lui, înainte de apelul la furnizor.
+  const gate = h.events.find(event => event.kind === 'rpc' && event.name === 'reserve_ai_provider_step');
+  assert.deepEqual([gate.args.p_step, gate.args.p_switch_at], ['groq-120b', 999]);
+  assert.ok(gate.seq < calls[0].seq, 'pragul se verifică înainte de a chema furnizorul');
+  assert.equal(h.events.find(event => event.kind === 'log' && event.line.startsWith('chat ')).line.includes('groq'), true);
+  assert.equal(JSON.stringify(h.events).includes('test-only'), false, 'cheia folosită nu apare în loguri');
+});
+
+test('fără `Accept`, contractul e JSON (aplicația instalată), cu aceeași cascadă', async () => {
+  const h = harness({ json: true });
+  const response = await h.run({ guestId, message: 'question' });
+  assert.equal(response.status, 200);
+  assert.match(response.headers.get('content-type') ?? '', /application\/json/);
+  assert.deepEqual(await response.json(), { reply: 'răspuns', threadId: null, dailyLimit: 5, remaining: 4 });
+  const calls = h.events.filter(event => event.kind === 'fetch');
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].body.stream, false, 'pe calea JSON nu se cere streaming');
+});
+
+test('un pas sărit de prag nu cheamă furnizorul: răspunde următorul din cascadă', async () => {
+  const h = harness({ gate: step => (step === 'groq-120b' ? { allowed: false, requests: 999 } : { allowed: true, requests: 1 }) });
+  const response = await h.run({ guestId, message: 'question' });
+  assert.equal(response.status, 200);
+  const calls = h.events.filter(event => event.kind === 'fetch');
+  assert.equal(calls.length, 1);
+  assert.match(String(calls[0].body.model), /qwen3\.8-27b/, 'al doilea pas al cascadei');
+  assert.equal((await readSse(response)).text, 'răspuns');
 });

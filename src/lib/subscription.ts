@@ -2,6 +2,13 @@ import type { TranslationKey } from '@/i18n/config';
 
 export const FREE_DAILY_AI_LIMIT = 5;
 export const PREMIUM_DAILY_AI_LIMIT = 50;
+/**
+ * Cat timp are voie starea „magazinul nu a raspuns inca” sa tina butoanele de cumparare ascunse
+ * (T4, 10.10.2026). Dupa atat, fereastra „necunoscut” se inchide si ecranul Premium trece pe „inactiv”,
+ * cu butoanele VIZIBILE: un om care poate cumpara nu are voie sa ramana fara niciun buton pentru ca o
+ * citire `CustomerInfo` nu s-a terminat niciodata.
+ */
+export const STORE_STATE_UNKNOWN_TIMEOUT_MS = 10_000;
 
 export type SubscriptionRow = {
   status: string;
@@ -54,11 +61,138 @@ export function premiumScreenState(
 }
 
 /**
- * Butoanele de cumpărare se ascund cât timp magazinul confirmă deja un abonament: altfel plătitorul
- * este împins să cumpere a doua oară exact în fereastra în care așteaptă activarea.
+ * Butoanele de cumparare se ascund DOAR cand magazinul confirma deja un abonament activ: altfel
+ * plătitorul este împins să cumpere a doua oară exact în fereastra în care așteaptă activarea.
+ *
+ * T4 (10.10.2026) — regula, formulată explicit: butoanele sunt VIZIBILE pentru orice utilizator
+ * NECONFIRMAT de magazin (`'free'`), inclusiv după ce fereastra „necunoscut” s-a închis (vezi
+ * `premiumUiState` și `STORE_STATE_UNKNOWN_TIMEOUT_MS`). „Necunoscut” nu este o a treia stare
+ * ascunsă: este doar `'free'` amanat puțin, iar după expirare (sau după o citire eșuată)
+ * butoanele apar.
  */
 export function shouldShowPurchaseButtons(state: PremiumScreenState): boolean {
   return state === 'free';
+}
+
+/**
+ * Starea Premium AFISATA, derivata dintr-o SINGURA valoare (build 18, 10.10.2026) + regula „fara
+ * butoane ascunse” (T4, 10.10.2026).
+ *
+ * De ce exista: pe build 16 ownerul a vazut „Plan Gratuit” SI butoanele de cumparare disparute —
+ * eticheta planului venea din randul din `subscriptions`, iar butoanele din entitlement-ul
+ * RevenueCat. Doua expresii diferite, deci doua raspunsuri diferite pe acelasi ecran. Aici amandoua
+ * ies din ACELASI `premiumActive`, care la randul lui vine dintr-un singur loc
+ * (`customerInfo.entitlements.active['premium']`, calculat o data in `use-revenuecat.ts`):
+ *
+ *   `premiumActive` true  -> „Premium activ” + data de expirare + butoane ASCUNSE;
+ *   `premiumActive` false -> „Plan Gratuit” + butoane VIZIBILE.
+ *
+ * `storeStateKnown` (fail-closed): cand magazinul e configurat, dar nicio citire de `CustomerInfo`
+ * nu a reusit inca, starea este NECUNOSCUTA, nu „fara abonament” — un om care poate fi deja abonat
+ * nu are voie sa fie impins sa cumpere a doua oara (pozitia B1 din audit).
+ *
+ * T4 (10.10.2026) — dar „necunoscut” nu are voie sa fie vesnic: fereastra se inchide cand citirea a
+ * eșuat explicit (`storeStateUnknownError`) sau cand au trecut `STORE_STATE_UNKNOWN_TIMEOUT_MS`
+ * (`storeStateUnknownExpired`). Din acel moment starea afisata este „inactiv” (eticheta „Plan Gratuit”,
+ * corecta: chiar nu avem nicio dovada de abonament), iar butoanele se ARATA — fara login, butonul
+ * cere autentificare, nu cumpara. Marcajul intern pentru fereastra deschisa ramane
+ * `'activation-pending'`, dar el NU ajunge niciodata pe ecran ca text de plan: eticheta de acolo este
+ * mereu una dintre cele doua de mai sus.
+ */
+export type PremiumUiState = {
+  /** Cheia textului afisat ca „planul tau". */
+  labelKey: TranslationKey;
+  /** Data de expirare care se afiseaza (ISO) sau `null` cand nu exista abonament activ. */
+  expirationDate: string | null;
+  /** Butoanele de cumparare se afiseaza? */
+  showPurchaseButtons: boolean;
+};
+
+/**
+ * Rezumatul abonamentului pentru cardul „Abonament" din ecranul Cont (bug raportat de owner pe
+ * build 18, 10.10.2026).
+ *
+ * De ce exista: ecranul Premium scria „Premium activ — abonamentul este confirmat de magazin.", iar
+ * cardul din Cont scria „Plan Gratuit" + „Ai 5 mesaje AI pe zi" — pe ACELASI telefon, in aceeasi
+ * secunda. Cauza: doua surse de adevar. Contul citea `useSubscription().isPremium`, adica randul din
+ * tabelul `subscriptions`, iar randul acela este scris de webhook-ul RevenueCat (intarziere de
+ * secunde, sau webhook oprit ⇒ ramane „Plan Gratuit" la nesfarsit); ecranul Premium citea
+ * entitlement-ul „premium" din `CustomerInfo` (`entitlements.active['premium'].isActive`).
+ *
+ * Aici intra DOAR acea valoare unica (`premiumActive`, calculata o singura data in
+ * `use-revenuecat.ts`): eticheta planului, limita AI si butonul ies toate din ea, deci cardul din
+ * Cont nu mai poate contrazice ecranul Premium. Numele planului (lunar/anual) se citeste tot din
+ * entitlement (`entitlement.plan`), nu din randul din baza de date.
+ */
+export type PlanSummary = {
+  /** Eticheta planului: „Premium Lunar"/„Premium Anual" sau „Plan Gratuit". */
+  labelKey: TranslationKey;
+  /** Textul despre limita AI (cheia careia i se aplica `{count}`, cand `bodyCount` nu e `null`). */
+  bodyKey: TranslationKey;
+  /** Numarul de mesaje AI pe zi, sau `null` cand textul nu are `{count}`. */
+  bodyCount: number | null;
+  /** Butonul secundar: „Vezi abonamentul" (abonat) sau „Vezi Premium" (neabonat). */
+  buttonKey: TranslationKey;
+};
+
+export function planSummary(input: {
+  /** `entitlements.active['premium'].isActive` — singura sursa de adevar. */
+  premiumActive: boolean;
+  /** `entitlement.plan` („annual"/„monthly"), tot din acelasi entitlement. */
+  entitlementPlan?: string | null;
+}): PlanSummary {
+  if (input.premiumActive !== true) {
+    return {
+      labelKey: 'premium.planFree',
+      bodyKey: 'account.freeMessagesPerDay',
+      bodyCount: null,
+      buttonKey: 'account.viewPremiumButton',
+    };
+  }
+
+  return {
+    // Aceeasi expresie ca in `src/app/premium.tsx` (numele planului, din acelasi entitlement).
+    labelKey: input.entitlementPlan === 'annual' ? 'premium.statusAnnual' : 'premium.statusMonthly',
+    bodyKey: 'account.aiMessagesPerDay',
+    bodyCount: PREMIUM_DAILY_AI_LIMIT,
+    buttonKey: 'account.viewSubscriptionButton',
+  };
+}
+
+export function premiumUiState(input: {
+  /** `entitlements.active['premium'].isActive` — singura sursa de adevar. */
+  premiumActive: boolean;
+  premiumExpirationDate: string | null | undefined;
+  storeStateKnown: boolean;
+  /**
+   * T4 (10.10.2026): citirea `CustomerInfo` a eșuat explicit — fereastra „necunoscut” se inchide.
+   * Optional, ca apelantii care nu au informatia sa nu fie obligati sa o inventeze.
+   */
+  storeStateUnknownError?: boolean;
+  /** T4 (10.10.2026): au trecut `STORE_STATE_UNKNOWN_TIMEOUT_MS` fără nicio citire reușită. */
+  storeStateUnknownExpired?: boolean;
+}): PremiumUiState {
+  if (input.premiumActive === true) {
+    // Entitlement activ: „Premium activ" + expirare, FARA butoane de cumparare.
+    return {
+      labelKey: 'premium.entitlementActive',
+      expirationDate: input.premiumExpirationDate ?? null,
+      showPurchaseButtons: false,
+    };
+  }
+
+  const windowClosed = input.storeStateUnknownError === true || input.storeStateUnknownExpired === true;
+  // Fereastra „necunoscut" tine butoanele ascunse DOAR cat timp nu s-a terminat prima determinare.
+  const unknown = input.storeStateKnown === false && !windowClosed;
+  // Marcajul intern al ferestrei deschise: `'activation-pending'` (folosit si de `premiumScreenState`
+  // pentru mesajul „activarea e in curs"). Nu ajunge niciodata ca eticheta de plan: mai jos, eticheta
+  // este „Plan Gratuit" oricum, pentru ca nu avem nicio dovada de abonament.
+  const storeState: PremiumScreenState = unknown ? 'activation-pending' : 'free';
+  return {
+    labelKey: 'premium.planFree',
+    expirationDate: null,
+    showPurchaseButtons: shouldShowPurchaseButtons(storeState),
+  };
 }
 
 /**

@@ -10,6 +10,8 @@ import type { CompleteLanguageCode, TranslationKey } from '@/i18n/config';
 import { AccountDeletionError, requestAccountDeletion } from '@/lib/account-deletion';
 import { calendarDisplayDescription, calendarDisplayName } from '@/lib/calendar-labels';
 import { supportMailtoUrl } from '@/lib/legal-fields';
+import { manageSubscriptionUrl } from '@/lib/store-links';
+import { planSummary } from '@/lib/subscription';
 import { registerForPushNotificationsAsync } from '@/lib/notifications';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/providers/auth-provider';
@@ -55,7 +57,12 @@ const LANGUAGE_LABELS: Record<CompleteLanguageCode, string> = {
 
 export default function AccountScreen() {
   const { isLoading, user, signOut } = useAuth();
-  const { dailyAiLimit, error: planError, isLoading: isPlanLoading, isPremium, planLabel } = useSubscription();
+  // Sursa de adevar pentru abonament este entitlement-ul „premium" din RevenueCat
+  // (`entitlements.active['premium'].isActive`), expus de hook ca `premiumActive` — EXACT valoarea pe
+  // care o citeste si ecranul Premium. `isPremium` (randul din `subscriptions`, scris de webhook-ul
+  // RevenueCat) NU se mai foloseste pentru eticheta, limita AI sau buton: de acolo venea contradictia
+  // raportata de owner (Premium spunea „Premium activ", Cont spunea „Plan Gratuit").
+  const { entitlement, error: planError, isLoading: isPlanLoading, premiumActive } = useSubscription();
   const {
     availableCalendars,
     calendar,
@@ -157,6 +164,12 @@ export default function AccountScreen() {
   // operator supplies an address, so the app never fabricates one.
   const supportMailto = supportMailtoUrl();
 
+  // T5 (Apple 5.1.1(v), 10.10.2026): calea de gestionare a abonamentului vine din `store-links.ts`
+  // (App Store pe iOS, pagina de abonamente Play pe Android). Se calculează o singură dată, la
+  // nivel de ecran, ca să fie folosită în două locuri: cardul "Abonament" și dialogul de
+  // ștergere a contului. Pe platformele fără magazin nu există link (nu se randează un link mort).
+  const manageSubscriptionHref = manageSubscriptionUrl(Platform.OS);
+
   const saveProfile = async () => {
     if (!user || !hasCurrentProfile || saving || isSavingRef.current) return;
     isSavingRef.current = true;
@@ -206,11 +219,20 @@ export default function AccountScreen() {
       return;
     }
     // First confirmation — explain what will happen.
+    // T5 (Apple 5.1.1(v), 10.10.2026): Apple cere ca ecranul de ștergere să spună explicit că
+    // abonamentul NU se oprește și să ofere calea de anulare în ACELAȘI loc. De aceea dialogul are
+    // acum și o a treia opțiune, care duce direct la pagina de abonamente a magazinului (App Store pe
+    // iOS / Google Play pe Android) — fără dependențe noi: adresa vine din `store-links.ts`.
+    // Pe platformele fără magazin lista e goală, ca să nu existe o opțiune care nu face nimic.
+    const manageButtons = manageSubscriptionHref
+      ? [{ text: t('premium.manageSubscription'), onPress: () => void Linking.openURL(manageSubscriptionHref) }]
+      : [];
     Alert.alert(
       t('account.deleteAccountTitle'),
       t('account.deleteAccountMessage'),
       [
         { text: t('account.cancelButton'), style: 'cancel' },
+        ...manageButtons,
         {
           text: t('account.continueButton'),
           style: 'destructive',
@@ -369,6 +391,16 @@ export default function AccountScreen() {
     return <Screen><PageHeader title={t('account.loading')} /></Screen>;
   }
 
+  // Cardul „Abonament": toate cele trei texte ies din `planSummary(...)`, adica din `premiumActive` —
+  // aceeasi valoare pe care o afiseaza ecranul Premium. Nu se mai poate intampla ca ecranele sa spuna
+  // lucruri diferite despre acelasi abonament. (Eticheta de „se verifica" ramane pe timpul citirii.)
+  const plan = planSummary({ premiumActive, entitlementPlan: entitlement.plan });
+  const planLabelText = isPlanLoading ? t('account.planChecking') : t(plan.labelKey);
+  const planBodyText =
+    plan.bodyCount === null
+      ? t(plan.bodyKey)
+      : t(plan.bodyKey).replace('{count}', String(plan.bodyCount));
+
   return (
     <Screen>
       <PageHeader eyebrow={t('account.eyebrow')} title={t('account.pageTitle')} subtitle={t('account.pageSubtitle')} />
@@ -497,10 +529,21 @@ export default function AccountScreen() {
       </Card>
       <SectionTitle>{t('account.subscriptionSectionTitle')}</SectionTitle>
       <Card>
-        <Text style={styles.plan}>{isPlanLoading ? t('account.planChecking') : planLabel}</Text>
-        <Text style={styles.body}>{isPremium ? t('account.aiMessagesPerDay').replace('{count}', String(dailyAiLimit)) : t('account.freeMessagesPerDay')}</Text>
+        <Text style={styles.plan}>{planLabelText}</Text>
+        <Text style={styles.body}>{planBodyText}</Text>
         {planError ? <Text style={styles.planError}>{planError}</Text> : null}
-        <SecondaryButton label={isPremium ? t('account.viewSubscriptionButton') : t('account.viewPremiumButton')} onPress={() => router.push('/premium')} />
+        <SecondaryButton label={t(plan.buttonKey)} onPress={() => router.push('/premium')} />
+        {/* T5 (Apple 5.1.1(v), 10.10.2026): linkul "Gestionează abonamentul" rămâne vizibil în
+            TOATE stările cardului (abonament activ / plan gratuit / "se verifică"), cu același text
+            ca pe ecranul Premium. Se ascunde doar pe platformele fără magazin, ca să nu fie un link mort. */}
+        {manageSubscriptionHref ? (
+          <Pressable
+            accessibilityRole="link"
+            onPress={() => void Linking.openURL(manageSubscriptionHref)}
+          >
+            <Text style={styles.rowLink}>{t('premium.manageSubscription')}</Text>
+          </Pressable>
+        ) : null}
         <PrimaryButton label={t('account.openAiChatButton')} onPress={() => router.replace('/chat')} />
       </Card>
       <SectionTitle>{t('account.aboutSectionTitle')}</SectionTitle>

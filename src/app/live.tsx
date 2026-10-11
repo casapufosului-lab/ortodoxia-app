@@ -137,75 +137,85 @@ export default function LiveScreen() {
   }
 
   return (
-    <Screen>
-      <PageHeader
-        eyebrow={t('live.eyebrow')}
-        title={t('live.title')}
-        subtitle={t('live.subtitle')}
-      />
-      {error ? (
-        <Card style={styles.errorCard}>
-          <Text accessibilityLiveRegion="polite" style={styles.errorText}>{error}</Text>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel={t('live.retry')}
-            onPress={() => void loadStatuses()}
-            style={({ pressed }) => [styles.retryButton, pressed && styles.pressed]}
-          >
-            <Text style={styles.retryText}>{t('live.retry')}</Text>
-          </Pressable>
-        </Card>
-      ) : null}
-      {isLoading ? (
-        <View style={styles.loading}>
-          <ActivityIndicator size="small" color={palette.blue} />
-          <Text style={styles.loadingText}>{t('live.loading')}</Text>
-        </View>
-      ) : sources.map((source) => {
-        const status = sourceStatuses.get(source.id) ?? null;
-        const vm: SourceViewModel = { source, status };
-        const label = getStatusLabel(status, source);
-        return (
-          <Card key={source.id} style={styles.sourceCard}>
-            <View style={styles.sourceHeader}>
-              <Text style={styles.sourceName}>{source.name}</Text>
-              <Text style={styles.location}>{localizeLocation(source.location, t)}</Text>
-            </View>
-            <Text style={styles.provider}>{t('live.providerLabel').replace('{provider}', source.provider)}</Text>
-            {source.scheduleNote ? (
-              <Text style={styles.scheduleNote}>{source.scheduleNote}</Text>
-            ) : null}
-            <View style={styles.statusRow}>
-              <Text style={styles.statusEmoji}>{label.emoji}</Text>
-              <Text accessibilityLiveRegion="polite" style={[styles.statusText, { color: label.color }]}>
-                {label.text}
-              </Text>
-            </View>
-            {status?.status === 'live' && status.currentBroadcast?.title ? (
-              <Text style={styles.broadcastTitle} numberOfLines={2}>
-                {status.currentBroadcast.title}
-              </Text>
-            ) : null}
+    <View style={styles.root}>
+      <Screen>
+        <PageHeader
+          eyebrow={t('live.eyebrow')}
+          title={t('live.title')}
+          subtitle={t('live.subtitle')}
+        />
+        {error ? (
+          <Card style={styles.errorCard}>
+            <Text accessibilityLiveRegion="polite" style={styles.errorText}>{error}</Text>
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel={`${getActionLabel(vm)} ${source.name}`}
-              onPress={() => void handleSourceAction(vm)}
-              style={({ pressed }) => [styles.actionButton, pressed && styles.pressed]}
+              accessibilityLabel={t('live.retry')}
+              onPress={() => void loadStatuses()}
+              style={({ pressed }) => [styles.retryButton, pressed && styles.pressed]}
             >
-              <Text style={styles.actionButtonText}>{getActionLabel(vm)}</Text>
+              <Text style={styles.retryText}>{t('live.retry')}</Text>
             </Pressable>
           </Card>
-        );
-      })}
-      <Text style={styles.disclaimer}>
-        {t('live.disclaimer')}
-      </Text>
+        ) : null}
+        {isLoading ? (
+          <View style={styles.loading}>
+            <ActivityIndicator size="small" color={palette.blue} />
+            <Text style={styles.loadingText}>{t('live.loading')}</Text>
+          </View>
+        ) : sources.map((source) => {
+          const status = sourceStatuses.get(source.id) ?? null;
+          const vm: SourceViewModel = { source, status };
+          const label = getStatusLabel(status, source);
+          return (
+            <Card key={source.id} style={styles.sourceCard}>
+              <View style={styles.sourceHeader}>
+                <Text style={styles.sourceName}>{source.name}</Text>
+                <Text style={styles.location}>{localizeLocation(source.location, t)}</Text>
+              </View>
+              <Text style={styles.provider}>{t('live.providerLabel').replace('{provider}', source.provider)}</Text>
+              {source.scheduleNote ? (
+                <Text style={styles.scheduleNote}>{source.scheduleNote}</Text>
+              ) : null}
+              <View style={styles.statusRow}>
+                <Text style={styles.statusEmoji}>{label.emoji}</Text>
+                <Text accessibilityLiveRegion="polite" style={[styles.statusText, { color: label.color }]}>
+                  {label.text}
+                </Text>
+              </View>
+              {status?.status === 'live' && status.currentBroadcast?.title ? (
+                <Text style={styles.broadcastTitle} numberOfLines={2}>
+                  {status.currentBroadcast.title}
+                </Text>
+              ) : null}
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={`${getActionLabel(vm)} ${source.name}`}
+                onPress={() => void handleSourceAction(vm)}
+                style={({ pressed }) => [styles.actionButton, pressed && styles.pressed]}
+              >
+                <Text style={styles.actionButtonText}>{getActionLabel(vm)}</Text>
+              </Pressable>
+            </Card>
+          );
+        })}
+        <Text style={styles.disclaimer}>
+          {t('live.disclaimer')}
+        </Text>
+      </Screen>
+      {/*
+        Full-screen overlay, deliberately NOT a React Native <Modal>: on iOS a WKWebView
+        mounted inside a presented modal (pageSheet) stays black (no picture, no sound)
+        on the TestFlight build 8 of 10.10.2026. Rendered as a sibling of <Screen> so it
+        is not inside the screen ScrollView and covers the whole screen.
+      */}
       <YouTubeEmbed videoId={activePlayerVideoId} onClose={closePlayer} />
-    </Screen>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
+  // Root of the route: <Screen> fills it and the player overlay is its absolute sibling.
+  root: { flex: 1, backgroundColor: palette.skyLight },
   sourceCard: { gap: 8 },
   sourceHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10 },
   sourceName: { color: palette.ink, fontSize: 17, fontWeight: '800', flex: 1 },

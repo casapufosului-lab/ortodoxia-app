@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Alert, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import * as AppleAuthentication from 'expo-apple-authentication';
 import { router, useLocalSearchParams } from 'expo-router';
 import * as WebBrowser from 'expo-web-browser';
 
@@ -48,6 +49,20 @@ function friendlyAuthError(error: unknown, t: (key: TranslationKey) => string): 
     return t('auth.errorNetwork');
   }
   return t('auth.errorGeneric');
+}
+
+/**
+ * Utilizatorul a inchis foaia "Sign in with Apple" fara sa se autentifice.
+ *
+ * Nu e o eroare si nu are voie sa produca o alerta: exact ca la anularea fluxului
+ * Google. Codul vine de la sistem prin `expo-apple-authentication`
+ * (`ERR_REQUEST_CANCELED`), deci se verifica `code`, nu textul mesajului - un mesaj
+ * localizat s-ar putea schimba, codul nu.
+ */
+function isAppleSignInCancelled(error: unknown): boolean {
+  return typeof error === 'object'
+    && error !== null
+    && (error as { code?: unknown }).code === 'ERR_REQUEST_CANCELED';
 }
 
 function hasRecoveryRedirect() {
@@ -185,6 +200,13 @@ export default function AuthScreen() {
   const [loading, setLoading] = useState(false);
   // B1: `null` cât timp verificarea nu a răspuns → butoanele se afișează (fail-open).
   const [providerAvailability, setProviderAvailability] = useState<AuthProviderAvailability>(null);
+  /*
+    Sign in with Apple se arata doar daca SISTEMUL il are (`isAvailableAsync()`), nu
+    dupa numele platformei: pe iOS e adevarat, oriunde altundeva modulul raspunde
+    `false` singur. Pana la raspuns starea e `false` - un buton care nu poate functiona
+    nu are ce cauta pe ecran; daca verificarea pica, la fel.
+  */
+  const [appleAvailable, setAppleAvailable] = useState(false);
   // Synchronous in-flight guard shared by submit() and sendResetEmail(). React state
   // cannot prevent a second dispatch that arrives before the re-render.
   const submitInFlightRef = useRef(false);
@@ -227,6 +249,19 @@ export default function AuthScreen() {
     void loadAuthProviderAvailability().then((availability) => {
       if (active) setProviderAvailability(availability);
     });
+    return () => { active = false; };
+  }, []);
+
+  /*
+    Apple: disponibilitatea se cere o singura data, la montare. `isAvailableAsync()`
+    nu ajunge la retea (intreaba sistemul), dar poate arunca pe o platforma fara
+    modulul nativ - atunci butonul ramane ascuns, nu crapa ecranul.
+  */
+  useEffect(() => {
+    let active = true;
+    void AppleAuthentication.isAvailableAsync()
+      .then((available) => { if (active) setAppleAvailable(available); })
+      .catch(() => { if (active) setAppleAvailable(false); });
     return () => { active = false; };
   }, []);
 
@@ -408,6 +443,58 @@ export default function AuthScreen() {
     }
   };
 
+  /*
+    Sign in with Apple, pe iOS, prin fluxul nativ de IdToken.
+
+    DE CE ASA, SI NU PRIN `signInWithOAuth`
+    ----------------------------------------
+    Apple cere (ghid de review 4.8) ca o aplicatie care ofera autentificare sociala
+    terta - aici Google - sa ofere si Sign in with Apple. Calea corecta pe iOS e cea
+    nativa: foaia sistemului se deschide peste aplicatie, iar raspunsul e un
+    `identityToken` pe care Supabase il verifica pe server
+    (`signInWithIdToken`). Fluxul web cu redirect ar scoate omul in browser si ar avea
+    nevoie de un Services ID configurat separat - aici client id-ul din Supabase este
+    bundle id-ul aplicatiei, deci calea nativa.
+
+    `nonce` nu se trimite: tokenul e legat de cererea facuta de aplicatie pe dispozitiv
+    si e valabil cateva minute, iar Supabase verifica semnatura, emitentul si publicul.
+  */
+  const signInWithApple = async () => {
+    if (loading) return;
+    setLoading(true);
+
+    try {
+      const credential = await AppleAuthentication.signInAsync({
+        requestedScopes: [
+          AppleAuthentication.AppleAuthenticationScope.FULL_NAME,
+          AppleAuthentication.AppleAuthenticationScope.EMAIL,
+        ],
+      });
+
+      // `signInAsync` arunca deja daca lipseste tokenul, dar tipul il da `string | null`:
+      // fara verificare, TypeScript nu stie ca nu poate fi null.
+      if (!credential.identityToken) {
+        showAuthAlert(t('auth.signInFailedTitle'), t('auth.errorGeneric'));
+        return;
+      }
+
+      const { error } = await withTimeout(
+        supabase.auth.signInWithIdToken({ provider: 'apple', token: credential.identityToken }),
+        OAUTH_REQUEST_TIMEOUT_MS,
+        'network timeout',
+      );
+      if (error) throw error;
+
+      router.replace(destination);
+    } catch (error) {
+      // Inchiderea foii de catre utilizator nu e o eroare: fara alerta (ca la Google).
+      if (isAppleSignInCancelled(error)) return;
+      showAuthAlert(t('auth.signInFailedTitle'), friendlyAuthError(error, t));
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const sendResetEmail = async () => {
     // Same synchronous guard as submit(): two taps in one tick previously produced two
     // resetPasswordForEmail calls, which counts against Supabase's email rate limit.
@@ -531,11 +618,31 @@ export default function AuthScreen() {
               <Text style={styles.socialIcon}>G</Text>
               <Text style={styles.socialButtonText}>{t('auth.continueWithGoogle')}</Text>
             </Pressable>
-            {/* B1: butonul Apple apare doar daca providerul e activat in Supabase.
+            {Platform.OS === 'ios' && appleAvailable ? (
+              /*
+                Butonul OFICIAL al sistemului (`ASAuthorizationAppleIDButton` prin
+                `expo-apple-authentication`): arata, se localizeaza si se comporta exact
+                cum cere Apple, deci nu iese din stilul impus (HIG). Nu se deseneaza
+                manual, iar culorile/colturile se dau prin `buttonStyle`/`cornerRadius`
+                - `backgroundColor` si `borderRadius` din `style` nu se folosesc.
+                Latimea si inaltimea sunt obligatorii, altfel butonul nu apare.
+              */
+              <AppleAuthentication.AppleAuthenticationButton
+                buttonType={AppleAuthentication.AppleAuthenticationButtonType.SIGN_IN}
+                buttonStyle={AppleAuthentication.AppleAuthenticationButtonStyle.BLACK}
+                cornerRadius={14}
+                onPress={signInWithApple}
+                style={styles.appleButton}
+              />
+            ) : null}
+            {/* Butonul Apple scris manual (flux web OAuth) ramane doar pe non-iOS:
+                acolo Apple nu impune nimic, iar butonul oficial nu exista. Apare doar
+                daca providerul e activat in Supabase; pe iOS nu se mai randeaza deloc,
+                ca sa nu existe doua butoane Apple pe acelasi ecran.
                 Azi GET /auth/v1/settings raspunde "apple": false, deci butonul dispare;
                 in ziua in care providerul e pornit, reapare singur. Fara verificare
                 (stare null) butonul ramane vizibil - fail-open. */}
-            {isProviderEnabled(providerAvailability, 'apple') ? (
+            {Platform.OS !== 'ios' && isProviderEnabled(providerAvailability, 'apple') ? (
               <Pressable
                 accessibilityRole="button"
                 disabled={loading}
@@ -567,6 +674,9 @@ const styles = StyleSheet.create({
   termsCheck: { color: palette.goldDark, fontSize: 14, fontWeight: '900', lineHeight: 18 },
   termsText: { flex: 1, color: palette.muted, fontSize: 13, lineHeight: 19 },
   socialSection: { gap: 10, marginBottom: 4 },
+  // Butonul Apple nativ are nevoie de latime si inaltime explicite (altfel nu se
+  // randeaza deloc); inaltimea o aliniaza cu butonul Google de deasupra.
+  appleButton: { width: '100%', height: 50 },
   socialButton: { minHeight: 50, borderColor: palette.line, borderWidth: 1, borderRadius: 14, backgroundColor: '#FFFFFF', alignItems: 'center', justifyContent: 'center', flexDirection: 'row', gap: 10, paddingHorizontal: 14 },
   pressed: { opacity: 0.82 },
   socialIcon: { color: palette.ink, fontSize: 18, fontWeight: '900', width: 22, textAlign: 'center' },

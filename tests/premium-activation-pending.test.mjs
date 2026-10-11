@@ -14,6 +14,14 @@
  *
  * Ce NU dovedește: randarea reală a componentei (proiectul nu are renderer de React Native) și fluxul
  * real de cumpărare. Structural + logic, fără credențiale și fără apeluri către magazine.
+ *
+ * BUILD 18 (10.10.2026): al doilea argument al `premiumScreenState` este CHIAR `premiumActive` —
+ * valoarea unica a ecranului, derivata in `use-revenuecat.ts` din
+ * `customerInfo.entitlements.active['premium']`. Inainte, ecranul isi calcula separat starea
+ * magazinului (`Boolean(revenueCatActive && isRevenueCatConfigured())`), iar butoanele de cumparare
+ * aveau o a treia expresie (`shouldShowPurchaseButtons(screenState) && !entitlementActive`): pe
+ * build 16 asta a produs „Plan Gratuit" cu butoanele ascunse deja. Vezi
+ * `tests/premium-single-source.test.mjs` pentru paza noua.
  */
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -100,11 +108,16 @@ describe('B1: plasa de siguranță pentru Premium (webhook oprit/întârziat)', 
 describe('B1: cablajul ecranului Premium (STRUCTURAL)', () => {
   test('STRUCTURAL: starea ecranului derivă din rândul din baza de date + entitlement-ul magazinului', () => {
     assert.match(PREMIUM_SCREEN, /import \{[^}]*premiumScreenState[^}]*\} from '@\/lib\/subscription'/);
-    assert.match(PREMIUM_SCREEN, /premiumScreenState\(subscription,\s*Boolean\(revenueCatActive && isRevenueCatConfigured\(\)\)\)/);
+    assert.match(PREMIUM_SCREEN, /premiumScreenState\(subscription, premiumActive\)/);
   });
 
   test('STRUCTURAL: butoanele de cumpărare sunt condiționate de shouldShowPurchaseButtons', () => {
-    assert.match(PREMIUM_SCREEN, /shouldShowPurchaseButtons\(screenState\)/);
+    // Build 18: butoanele NU mai au o expresie separata — ies din aceeasi valoare ca eticheta.
+    assert.match(PREMIUM_SCREEN, /showPurchaseButtons \} = premiumUiState\(\{/);
+    assert.ok(
+      !/shouldShowPurchaseButtons\(screenState\)/.test(PREMIUM_SCREEN),
+      'interzis: a doua expresie care decide butoanele',
+    );
     const occurrences = (PREMIUM_SCREEN.match(/\{showPurchaseButtons \?/g) ?? []).length;
     assert.equal(occurrences, 2, 'ambele planuri (lunar + anual) trebuie condiționate');
   });

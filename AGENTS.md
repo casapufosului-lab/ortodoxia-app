@@ -6,7 +6,7 @@ Read the exact versioned docs at https://docs.expo.dev/versions/v57.0.0/ before 
 
 # Regulile proiectului (obligatorii)
 
-**Reguli: v2 — 2026-09-27 · 61 de reguli (textul de mai jos e v1, 46 de reguli; H 47-61 sunt în sursă).** Copie din sursa unică
+**Reguli: v4 — 2026-10-10 · 63 de reguli (textul de mai jos e v1, 46 de reguli; H 47-63 sunt în sursă).** Copie din sursa unică
 `C:\Users\pcgar\Documents\REGULI-PROIECTE.md`. Dacă diferă ceva, sursa câștigă. Regulile noi sau
 schimbate se scriu întâi în sursă, apoi se copiază aici.
 
@@ -35,6 +35,10 @@ schimbate se scriu întâi în sursă, apoi se copiază aici.
   fără sursă verificată.
 - Conținut religios: fără sfaturi medicale sau promisiuni de vindecare (regula 36).
 - Notificările sunt deja folosite — vezi `docs\NOTIFICATION_STATUS.md`.
+- **Poze și video AI:** acest calculator NU are placă NVIDIA, deci generarea se face pe un **GPU închiriat
+  (Runpod) cu ComfyUI**. Rețeta dovedită, modelele, licențele, parametrii care merg și costul sunt în
+  `docs\CUM-GENERAM-POZE-VIDEO.md` — citește-l înainte să propui altă cale. **Nimic plătit nu se pornește
+  fără decizia ownerului** (0,89 $/oră cât rulează podul).
 
 ## 2. Reguli de cod (R1–R10)
 
@@ -159,6 +163,11 @@ schimbate se scriu întâi în sursă, apoi se copiază aici.
 59. **Verifici înainte să declari**: nu „cred că merge", ci „am rulat X, a ieșit Y".
 60. **Când ceva pică, spui cauza reală**, nu o presupunere. Dacă n-ai găsit cauza, spui că n-ai găsit.
 61. **La finalul fiecărui task dai un raport scurt**: ce ai făcut, ce ai verificat, ce a rămas.
+62. **Pozele și video se fac pe GPU închiriat, nu local.** Calculatorul nostru nu are placă NVIDIA, deci
+    generarea (poze și video) se face pe un GPU închiriat cu plata la oră (Runpod + ComfyUI). Rețeta
+    dovedită — modele, licențe, parametrii care merg, timpi măsurați și cost — stă în
+    `C:\Users\pcgar\Documents\CUM-GENERAM-POZE-VIDEO.md` și se citește înainte de a propune altă cale.
+    **Nimic plătit nu se pornește fără acordul meu**, iar podul se oprește când nu se lucrează.
 
 ---
 
@@ -167,3 +176,39 @@ schimbate se scriu întâi în sursă, apoi se copiază aici.
 Cerințele Apple / Google se verifică la sursa oficială, nu din memorie, și se notează cu link.
 Regula 46 se aplică înainte de fiecare publicare. **Nu declar „gata de publicat" fără dovada
 verificării** (R5 și R10).
+63. **Nu te opri la jumătatea taskului — continuă până la capăt.** Când apare „Stopped: max iterations
+    reached" SAU o trunchiere de context („trim 10%", compactare, mesaj de context plin), **NU aștepți
+    confirmare**: reiei de la ultimul pas neterminat, cureți fișierele temporare pe care le-ai făcut tu și
+    duci taskul până la capăt. Raportezi **o singură dată, la final, cu dovezi**. Un task oprit în mijloc
+    fără motiv e o greșeală, nu o limită. Se aplică oricărui agent care lucrează pentru mine (Open Worker,
+    Jaguar, chat-uri de agent).
+
+## Reguli de execuție după dezastrul din 10.10.2026 (LEGE în orice chat)
+
+Fiecare regulă de mai jos a fost plătită azi cu ~20 de build-uri, zeci de ore de om și bani reali.
+Obligatorii pentru orice agent care lucrează la acest proiect (Open Worker, Jaguar, chat-uri de agent).
+
+64. **Întâi instrumentul, apoi reparația.** Nicio modificare de comportament pe dispozitiv nu se livrează
+    înainte ca aplicația să poată raporta singură ce vede (ecran + server). Fără instrument, nu se schimbă cod.
+65. **O măsurătoare corectă pentru întrebarea greșită e mai rea decât nicio măsurătoare.** Se scrie explicit
+    la ce întrebare răspunde o dovadă și la ce NU răspunde.
+66. **Ierarhia dovezilor:** ecran/dispozitiv > citire înapoi din serviciu > sursa bibliotecii > test unitar.
+    Un test unitar nu închide niciodată un bug de dispozitiv.
+67. **O singură schimbare per build; dacă efectul nu se vede, se REVINE înainte de a adăuga alt strat.**
+68. **După orice schimbare de configurare, citește înapoi TOT sistemul**, nu doar câmpul scris.
+69. **O singură sursă de adevăr per concept.** Accesul la conținut plătit = entitlement-ul din magazin.
+70. **Contra documentației oficiale a furnizorului nu se inventează fluxuri.** Se citește docul întâi.
+71. **Fail-safe, nu fail-closed mincinos.** Starea necunoscută degenerează în ceva folosibil și onest,
+    cu limită de timp.
+72. **Succesul tăcut e bug.** Orice integrare care înghite evenimente le scoate la suprafață (log/status/rând).
+73. **Citește înainte să afirmi.** Nicio afirmație despre cod/config/rezultat fără fișierul citit sau comanda rulată în acel turn.
+74. **Nu scrii un secret pe care nu l-ai verificat.** Se validează prin format + apel real.
+75. **Un artifact = un scop.** Inventarul nu e ordin de lucru; un task are un domeniu și o listă de „interzis".
+76. **Execuți literal instrucțiunea ownerului.** „Dă-mi taskul" = scrie-l, nu porni-l. „Oprește" = oprește.
+77. **Nu întreba a doua oară.** Ce a fost respins o dată devine decizie scrisă.
+78. **Regula opririi:** după 2 runde consecutive fără dovadă nouă, oprire și raport BLOCKED cu ce lipsește.
+79. **Nicio acțiune scumpă fără întrebarea la care răspunde.** Build-ul se pornește doar dacă se știe ce măsoară.
+80. **Igiena între sesiuni:** un domeniu per sesiune; înainte de build, arborele are doar modificări verificate.
+81. **Raportul spune doar ce are dovadă** și se închide cu DONE / PARTIAL / BLOCKED.
+82. **Limita se declară la început** și canalul de verificare se proiectează înainte de a atinge codul.
+83. **„Task livrat" ≠ „muncă făcută".** Se verifică artifactul: fișiere, linii, ore de modificare, citiri înapoi.

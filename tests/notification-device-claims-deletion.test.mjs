@@ -12,6 +12,11 @@
  *
  * Testele de mai jos pot PICA: dacă cineva scoate cele două ștergeri din `core.ts`, mutația din testul 3
  * dovedește că poarta raportează tabela ca neacoperită.
+ *
+ * RUNDA FINALĂ (10.10.2026) — a doua tabelă-jurnal: migrarea nouă creează
+ * `public.live_player_diagnostics` (diagnosticul playerului live), care ține `user_id uuid` FĂRĂ cheie
+ * externă, exact tiparul B3. Ea e ȘTEARSĂ explicit în `core.ts` (pasul 10), nu exceptată: poarta cere
+ * acoperire reală, nu o promisiune. Lista așteptată de mai jos e fixată cu ambele tabele.
  */
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -25,6 +30,8 @@ import { checkDeletionCoverage, runDeletion, scanUserAuditTables } from '../scri
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const USER_ID = 'user-0000-1111';
 const TABLE = 'notification_device_claims';
+/** A doua tabelă-jurnal care ține UUID de utilizator fără FK (runda finală, playerul live). */
+const DIAGNOSTIC_TABLE = 'live_player_diagnostics';
 const MIGRATION = '20260915000200_harden_notification_device_claim.sql';
 const CORE = path.join(root, 'supabase/functions/delete-account/core.ts');
 
@@ -62,8 +69,17 @@ test('B3: delete-account șterge ambele urme (new_user_id ȘI previous_user_id)'
 
 test('B3: poarta de acoperire e verde pe arborele real', async () => {
   const result = await checkDeletionCoverage({ root });
-  assert.deepEqual(result.auditTables, [TABLE], `tabele de audit: ${result.auditTables.join(', ')}`);
+  assert.deepEqual(
+    result.auditTables,
+    [TABLE, DIAGNOSTIC_TABLE],
+    `tabele de audit: ${result.auditTables.join(', ')}`,
+  );
   assert.deepEqual(result.auditMissing, [], `tabele de audit neșterse: ${result.auditMissing.join(', ')}`);
+  assert.ok(
+    result.deletedTables.includes(DIAGNOSTIC_TABLE),
+    `jurnalul de diagnostic se șterge explicit, nu se exceptează: ${JSON.stringify(result.deletedTables)}`,
+  );
+  assert.deepEqual(result.auditExempt, [], 'nicio tabelă-jurnal nu se exceptează tacit');
   assert.deepEqual(result.missing, []);
   assert.deepEqual(result.unknownExplicit, []);
 });

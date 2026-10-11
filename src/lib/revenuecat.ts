@@ -297,4 +297,92 @@ export function isPurchaseCancelledError(error: unknown) {
   return false;
 }
 
+/**
+ * Textul unei erori de cumpărare/restaurare, pentru ecran.
+ *
+ * Motivul (build 12, 10.10.2026): când `purchasePackage` arunca, ecranul Premium scria doar
+ * „nu s-a putut finaliza cumpărarea", iar mesajul real al SDK-ului (cod + motiv) se pierdea.
+ * Așa, un eșec al magazinului nu se mai poate confunda cu „nu s-a întâmplat nimic": codul
+ * RevenueCat (`code`), mesajul lui (`message`) și cauza din magazin (`underlyingErrorMessage`)
+ * ajung amândouă pe ecran, mici, sub buton.
+ */
+export function describePurchaseError(error: unknown): string {
+  if (error && typeof error === 'object') {
+    const candidate = error as {
+      code?: unknown;
+      message?: unknown;
+      underlyingErrorMessage?: unknown;
+    };
+    const parts = [
+      typeof candidate.code === 'string' || typeof candidate.code === 'number'
+        ? `code ${String(candidate.code)}`
+        : null,
+      typeof candidate.message === 'string' && candidate.message.trim().length > 0
+        ? candidate.message.trim()
+        : null,
+      typeof candidate.underlyingErrorMessage === 'string' && candidate.underlyingErrorMessage.trim().length > 0
+        ? candidate.underlyingErrorMessage.trim()
+        : null,
+    ].filter((part): part is string => part !== null);
+    if (parts.length > 0) return parts.join(' | ');
+  }
+  return String(error);
+}
+
+/**
+ * Entitlement-ul Premium citit dupa `lookup_key = 'premium'`.
+ *
+ * `CustomerInfo.entitlements.active` este indexat chiar dupa `lookup_key`-ul definit in panoul
+ * RevenueCat, deci `active[PREMIUM_ENTITLEMENT_ID]` ESTE entitlement-ul cerut — nu unul dedus din
+ * numele produsului. Ecranul Premium avea nevoie de trei lucruri pe care `isPremiumActive` nu le
+ * dadea: data de expirare (ca s-o arate omului), planul (lunar/anual) si dovada a ce a intors
+ * RevenueCat atunci cand entitlement-ul NU e activ desi magazinul a confirmat plata.
+ */
+export type PremiumEntitlement = {
+  isActive: boolean;
+  plan: RevenueCatPlan | null;
+  expirationDate: string | null;
+  willRenew: boolean;
+  productIdentifier: string | null;
+};
+
+export function readPremiumEntitlement(
+  info: CustomerInfo | null | undefined,
+): PremiumEntitlement {
+  const entitlement = info?.entitlements.active[PREMIUM_ENTITLEMENT_ID];
+  const productIdentifier = entitlement?.productIdentifier ?? null;
+  const isActive = Boolean(entitlement?.isActive);
+  return {
+    isActive,
+    plan: isActive ? (productIdentifier?.includes('annual') ? 'annual' : 'monthly') : null,
+    expirationDate: entitlement?.expirationDate ?? null,
+    willRenew: entitlement?.willRenew === true,
+    productIdentifier,
+  };
+}
+
+/**
+ * Diagnosticul afisat mic pe ecran cand `entitlements.active` e gol desi magazinul a confirmat
+ * plata (build 13, 10.10.2026): ce utilizator vede RevenueCat, ce chei are in `active` si ce chei
+ * are in `all`. Fara el, „butoanele de cumparare au reapărut" nu se poate deosebi de „entitlement-ul
+ * e pe alt utilizator" sau de „cheia din panou nu e `premium`".
+ *
+ * Build 14 (10.10.2026, cerinta 3): `originalAppUserId` singur nu a fost destul — RevenueCat nu vedea
+ * niciun entitlement activ pentru niciun client recent, desi Apple confirma plata. `managementURL`
+ * este linkul cu care Apple isi gestioneaza abonamentul: daca exista, magazinul stie de un abonament
+ * pentru utilizatorul asta; daca e gol, nu stie. Se afiseaza permanent, mic, pe ecranul Premium.
+ */
+export function describeEntitlements(info: CustomerInfo | null | undefined): string[] {
+  if (!info) return ['customerInfo = null (starea de abonament inca nu a fost citita)'];
+  const active = Object.keys(info.entitlements.active ?? {});
+  const all = Object.keys(info.entitlements.all ?? {});
+  return [
+    `customerInfo.originalAppUserId = ${info.originalAppUserId}`,
+    `entitlements.active (${active.length}): ${active.length > 0 ? active.join(', ') : '(gol)'}`,
+    `entitlements.all (${all.length}): ${all.length > 0 ? all.join(', ') : '(gol)'}`,
+    `customerInfo.managementURL = ${info.managementURL ? info.managementURL : '(gol)'}`,
+    `'${PREMIUM_ENTITLEMENT_ID}' activ = ${isPremiumActive(info)}`,
+  ];
+}
+
 

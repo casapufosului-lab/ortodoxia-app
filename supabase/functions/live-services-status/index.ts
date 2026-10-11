@@ -13,6 +13,7 @@
 import { createClient } from 'npm:@supabase/supabase-js@2';
 import { getEligibleSources, getSourceById, LIVE_SOURCES, type LiveSourceDef } from './sources.ts';
 import { createYouTubeClient, type YouTubeClient } from './youtube.ts';
+import { createChannelLivePageResolver } from './channel-live-page.ts';
 import type { CacheStore, CachedStatusRow, SanitizedResponse } from './status.ts';
 import {
   computeAllSourceStatuses,
@@ -29,6 +30,12 @@ const ALLOWED_HEADERS = 'authorization, x-client-info, apikey, content-type, x-c
 /** One throttle and one discovery budget per deployed instance (see the headers of both modules). */
 const statusLimiter = createWindowRateLimiter();
 const discoveryBudget = createDayScopedDiscoveryBudget();
+/**
+ * Resolver for permanent 24/7 streams (see `channel-live-page.ts`): the Data API
+ * cannot list them. Stateless, so one instance is enough; it only ever fetches
+ * channel ids that come from the canonical registry below.
+ */
+const livePage = createChannelLivePageResolver();
 
 /**
  * C17: `json` se construiește în handler, legat de cererea curentă (`createJsonResponder`
@@ -201,13 +208,13 @@ Deno.serve(async (req: Request) => {
         currentBroadcast: null,
       });
     }
-    const result = await computeSourceStatus(source, youtube, cache, nowMs, apiKeyPresent, budget);
+    const result = await computeSourceStatus(source, youtube, cache, nowMs, apiKeyPresent, budget, livePage);
     console.log('live-status budget', { day: discoveryBudget.dayKey(), ...discoveryBudgetSummary(budget) });
     return json({ sources: [result] });
   }
 
   const eligible = getEligibleSources(requestedCountryCode);
-  const results = await computeAllSourceStatuses(eligible, youtube, cache, nowMs, apiKeyPresent, budget);
+  const results = await computeAllSourceStatuses(eligible, youtube, cache, nowMs, apiKeyPresent, budget, livePage);
 
   console.log('live-status budget', { day: discoveryBudget.dayKey(), ...discoveryBudgetSummary(budget) });
   return json({ sources: results });
