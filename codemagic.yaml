@@ -161,10 +161,13 @@ workflows:
         XCODE_SCHEME: "Ortodoxia"
         APP_BUILD_NUMBER: "21"
         MAESTRO_CLI_NO_ANALYTICS: "1"
-        # (a) SUBSET DE FLOW-URI: gol = TOATE flow-urile din maestro/ (mai putin prologul).
+        # (a) SUBSET DE FLOW-URI: "toate" = TOATE flow-urile din maestro/ (mai putin prologul).
         # Se poate suprascrie la pornirea build-ului (API: environment.variables, sau
         # "Start new build" din Codemagic), fara sa se editeze fisierul, ex. "chat,live".
-        IOS_FLOWS: ""
+        # ATENTIE: valoarea NU are voie sa fie goala - Codemagic respinge build-ul la validarea
+        # configuratiei ("ensure this value has at least 1 characters", dovada: build 6acd0b56,
+        # 12.10.2026 16:31:19Z). Pasul trateaza oricum "" si nedefinit ca "toate" (IOS_FLOWS:-...).
+        IOS_FLOWS: "toate"
         # Numar de treceri: 3 = verificarea finala (cerinta owner). Pentru sondaje: 1 sau 2.
         IOS_PASSES: "3"
     scripts:
