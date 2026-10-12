@@ -45,7 +45,7 @@ appId: ro.ortodoxia.app
     label: "POARTĂ: aplicația a pornit (bara de tab-uri s-a desenat)"
 # Navigăm pe calea din interfață (tab-ul din bara de jos), nu prin deep link.
 - tapOn:
-    text: ".*(Calendar).*"
+    text: "^Calendar$"
     label: "tab-ul Calendar din bara de jos"
 - extendedWaitUntil:
     visible: "Calendar ortodox"

@@ -77,6 +77,12 @@ appId: ro.ortodoxia.app
     timeout: 20000
     centerElement: true
     label: "secțiunea de alegere a cărții (bible.bookSection)"
+- scrollUntilVisible:
+    element:
+      text: "^Capitol$"
+    direction: DOWN
+    timeout: 20000
+    label: "PORȚI: derulăm până la secțiunea Capitol (grila cu 27 de cărți o împinge sub zona vizibilă)"
 - assertVisible:
     text: "^Capitol$"
     label: "secțiunea de alegere a capitolului (bible.chapterSection)"

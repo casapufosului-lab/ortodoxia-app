@@ -33,6 +33,12 @@ appId: ro.ortodoxia.app
 - tapOn:
     text: ".*(Cont|Account).*"
     label: "intrăm în Cont (de unde se deschide ecranul 08)"
+- scrollUntilVisible:
+    element:
+      text: "Contul meu"
+    direction: UP
+    timeout: 20000
+    label: "PORȚI: derulăm în sus până la titlul ecranului Cont (prologul lasă ecranul la secțiunea de limbă)"
 - extendedWaitUntil:
     visible: "Contul meu"
     timeout: 20000

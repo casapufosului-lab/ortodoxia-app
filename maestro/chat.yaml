@@ -122,6 +122,12 @@ appId: ro.ortodoxia.app
 - assertVisible:
     text: ".*(întrebări gratuite rămase azi|întrebare gratuită rămasă azi|mesaje rămase azi|mesaj rămas azi).*"
     label: "PORȚI: contorul e o valoare, nu cardul „mesaje epuizate\" (formele reale: chat.freeLimitLabel / chat.premiumLimitLabel)"
+- scrollUntilVisible:
+    element:
+      text: ".*Scrie întrebarea ta.*"
+    direction: DOWN
+    timeout: 20000
+    label: "PORȚI: derulăm până la compozitor (răspunsul lung îl împinge sub zona vizibilă)"
 - assertVisible:
     text: ".*Scrie întrebarea ta.*"
     label: "PORȚI: compozitorul e din nou activ după răspuns (câmpul de scriere e vizibil)"
