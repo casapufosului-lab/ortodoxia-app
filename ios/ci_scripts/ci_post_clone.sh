@@ -98,20 +98,31 @@ IOS_DIR="$REPO_ROOT/ios"
 # Protecție: se salvează ci_scripts înainte de prebuild și se pune la loc după.
 CI_SCRIPTS_DIR="$IOS_DIR/ci_scripts"
 CI_SCRIPTS_BACKUP=""
+
+# Punerea la loc se face și explicit după prebuild, și automat la ieșire (trap pe EXIT):
+# dacă prebuild cade (sau cade orice pas de mai jos), fișierele tot revin. Fără trap,
+# un `npx expo prebuild` eșuat lăsa ios/ fără ci_scripts — adică exact starea pe care
+# am măsurat-o pe 12.10.2026 (testul cu prebuild real: „PICAT ci_post_clone.sh a fost șters").
+restore_ci_scripts() {
+  if [ -z "$CI_SCRIPTS_BACKUP" ] || [ -e "$CI_SCRIPTS_DIR/ci_post_clone.sh" ]; then
+    return 0
+  fi
+  mkdir -p "$CI_SCRIPTS_DIR" || return 0
+  cp -R "$CI_SCRIPTS_BACKUP/." "$CI_SCRIPTS_DIR/" || return 0
+  printf 'ci_scripts pus la loc (%s fișiere)\n' "$(find "$CI_SCRIPTS_DIR" -type f | wc -l | tr -d ' ')"
+  return 0
+}
+trap restore_ci_scripts EXIT
+
 if [ -d "$CI_SCRIPTS_DIR" ]; then
   CI_SCRIPTS_BACKUP="$(mktemp -d)/ci_scripts"
   cp -R "$CI_SCRIPTS_DIR" "$CI_SCRIPTS_BACKUP"
-  echo "ci_scripts salvat înainte de prebuild ($(find "$CI_SCRIPTS_BACKUP" -type f | wc -l | tr -d ' ') fișiere)"
+  printf 'ci_scripts salvat înainte de prebuild (%s fișiere)\n' "$(find "$CI_SCRIPTS_BACKUP" -type f | wc -l | tr -d ' ')"
 fi
 
 npx expo prebuild -p ios
 [ -d "$IOS_DIR" ] || fail "expo prebuild s-a terminat, dar $IOS_DIR nu există."
-
-if [ -n "$CI_SCRIPTS_BACKUP" ]; then
-  mkdir -p "$CI_SCRIPTS_DIR"
-  cp -R "$CI_SCRIPTS_BACKUP/." "$CI_SCRIPTS_DIR/"
-  echo "ci_scripts pus la loc ($(find "$CI_SCRIPTS_DIR" -type f | wc -l | tr -d ' ') fișiere)"
-fi
+restore_ci_scripts
 
 # Descoperirea proiectului: Xcode Cloud are nevoie de un .xcodeproj/.xcworkspace
 # stabil. La Expo, numele fișierului dă și numele schemei.
