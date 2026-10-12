@@ -217,6 +217,33 @@ jobs:
           fi
           echo "TOATE FLOW-URILE AU TRECUT."
 
+      - name: Colecteaza logul aplicatiei (cauza esecurilor)
+        # DE CE: JUnit-ul spune UNDE a picat o asertiune, nu DE CE. Aplicatia isi scrie singura starea
+        # cererii de chat intr-o linie stabila (`[chat-latency]`, src/lib/chat-latency.ts):
+        #   `[chat-latency] exceptie <ms> ms`                     -> exceptie in traseul de trimitere
+        #   `[chat-latency] stream intrerupt <ms> ms (network)`   -> reteaua (limita de mediu CI)
+        # Fara acest fisier, fiecare rulare pe macOS e oarba la cauza (patit 12.10.2026, flow-ul `chat`
+        # a picat pentru ca aplicatia si-a afisat eroarea de serviciu, fara sa se poata spune de ce).
+        if: always()
+        run: |
+          set +e
+          UDID="${DEVICE_UDID:-booted}"
+          # 1. Liniile care decid cauza, direct in logul rularii.
+          xcrun simctl spawn "$UDID" log show --last 20m --style compact \
+            --predicate 'eventMessage CONTAINS "chat-latency"' > chat-latency.txt 2>&1
+          echo "======== [chat-latency] (starea cererii de chat) ========"
+          grep -F '[chat-latency]' chat-latency.txt || echo "  (nicio linie [chat-latency])"
+          # 2. Logul aplicatiei, pentru context (in Release nu exista logcat; console.log ajunge in os_log).
+          xcrun simctl spawn "$UDID" log show --last 20m --style compact \
+            --predicate 'processImagePath CONTAINS "Ortodoxia" OR senderImagePath CONTAINS "Ortodoxia"' \
+            > app-log.txt 2>&1
+          ls -l chat-latency.txt app-log.txt
+          # 3. Proba de retea a runnerului: DNS + TLS + HTTP pana la Supabase, FARA sa consume cota
+          #    (endpoint de sanatate: niciun mesaj AI). Arata daca egress-ul functiona in acel minut.
+          SUPABASE_URL=$(grep -E '^[[:space:]]*EXPO_PUBLIC_SUPABASE_URL=' .env | head -1 | cut -d= -f2- | tr -d '\r' | xargs)
+          echo "======== proba de retea a runnerului ========"
+          curl -sS -o /dev/null -w 'auth health: %{http_code} (%{time_total}s)\n' "$SUPABASE_URL/auth/v1/health" || true
+
       - name: Publica dovezile
         if: always()
         uses: actions/upload-artifact@v4
@@ -230,3 +257,5 @@ jobs:
             flow-results.txt
             ci-screenshots/*.png
             hierarchy-*.txt
+            chat-latency.txt
+            app-log.txt
