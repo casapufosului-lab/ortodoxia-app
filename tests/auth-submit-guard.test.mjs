@@ -89,3 +89,61 @@ test('a failed sign-in stays on the visible alert path', () => {
   const mapper = sliceUpToNextDeclaration(auth, 'function friendlyAuthError(', 'function hasRecoveryRedirect');
   assert.match(mapper, /msg\.includes\('network'\)[\s\S]*?auth\.errorNetwork/);
 });
+
+/**
+ * The hole the tests above left open (found on a device, 12.10.2026).
+ *
+ * `sendResetEmail` set the guard, then validated the email and returned early when the
+ * field was empty or malformed - and that `return` sat BEFORE the `try`. `finally` was
+ * therefore never reached, the guard stayed `true` for the rest of the screen's life,
+ * and because `submit()` checks the same ref first, ONE tap on "Am uitat parola" with an
+ * empty field silently killed "Autentificare" as well: no alert, no spinner, no request.
+ * The device proof is the `auth` flow, whose step 2 (the "Email invalid" alert after a tap
+ * on "Autentificare") failed on every run of the old build, with the screenshot showing the
+ * untouched form.
+ *
+ * The invariant is therefore: no exit path may leave the guard engaged, which means the
+ * validation has to live INSIDE the `try` - the `finally` is the only release site.
+ */
+test('no early exit in sendResetEmail can bypass the guard release', () => {
+  const body = sliceUpToNextDeclaration(auth, 'const sendResetEmail = async () => {', 'const styles = StyleSheet.create(');
+
+  assert.equal(
+    (body.match(/submitInFlightRef\.current = false;/g) ?? []).length,
+    1,
+    'the guard must keep exactly one release site, so no new exit path can forget it',
+  );
+
+  const guardOnAt = body.indexOf('submitInFlightRef.current = true;');
+  assert.notEqual(guardOnAt, -1, 'sendResetEmail must keep setting the guard');
+
+  const tryAt = body.indexOf('try {');
+  assert.notEqual(tryAt, -1, 'sendResetEmail must keep its try block');
+  assert.ok(
+    tryAt > guardOnAt,
+    'the try must open after the guard is set, otherwise the guard would be held while idle',
+  );
+
+  // The bail-out above the guard (`if (submitInFlightRef.current || loading) return;`) is fine -
+  // it runs before the guard exists. The one that matters is the FIRST exit after the guard is
+  // engaged: it has to sit inside the try, because only the finally releases the guard.
+  const firstExitAfterGuard = body.indexOf('return;', guardOnAt);
+  assert.notEqual(firstExitAfterGuard, -1, 'sendResetEmail must keep its validation exit');
+  assert.ok(
+    firstExitAfterGuard > tryAt,
+    'no exit may sit between the guard and the try: such a return skips the finally, '
+      + 'which leaves submitInFlightRef true and turns the whole form (sign-in included) into a silent no-op',
+  );
+});
+
+test('submit() sets the guard only once the local validation can no longer bail out', () => {
+  const body = sliceUpToNextDeclaration(auth, 'const submit = async () => {', 'const backToSignIn');
+
+  const bailOutAt = body.indexOf('if (submitInFlightRef.current || !validate() || loading) return;');
+  assert.notEqual(bailOutAt, -1, 'submit must keep its synchronous duplicate-tap guard');
+  const guardOnAt = body.indexOf('submitInFlightRef.current = true;');
+  assert.ok(
+    guardOnAt > bailOutAt,
+    'the guard must be set after the validation gates, otherwise a rejected form would hold the guard',
+  );
+});

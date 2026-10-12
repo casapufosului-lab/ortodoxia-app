@@ -503,14 +503,19 @@ export default function AuthScreen() {
     setResetMessage(null);
     // Omul cere un link nou: vechea eroare de link nu mai are ce căuta pe ecran.
     clearRecoveryLinkError();
-    if (!email.trim() || !email.includes('@')) {
-      setResetMessage({ type: 'error', text: t('auth.emailRequiredMessage') });
-      showAuthAlert(t('auth.emailRequiredTitle'), t('auth.emailRequiredAlertMessage'));
-      return;
-    }
-
     setLoading(true);
     try {
+      // Fix (dovedit pe device, 12.10.2026): validarea sta inaintea lui `try`, deci iesirea
+      // timpurie de mai jos ocolea `finally`: `submitInFlightRef` rămânea `true` pentru tot
+      // restul vietii ecranului, iar `submit()` - care verifica acelasi ref - nu mai raspundea
+      // la nicio apasare pe "Autentificare" (fara alerta, fara spinner, fara cerere).
+      // Dovada: flow-ul `auth`, poarta "Email invalid" dupa "Am uitat parola" cu campul gol.
+      if (!email.trim() || !email.includes('@')) {
+        setResetMessage({ type: 'error', text: t('auth.emailRequiredMessage') });
+        showAuthAlert(t('auth.emailRequiredTitle'), t('auth.emailRequiredAlertMessage'));
+        return;
+      }
+
       const redirectTo = Platform.OS === 'web' && typeof window !== 'undefined'
         ? `${window.location.origin}/auth`
         : NATIVE_PASSWORD_RECOVERY_REDIRECT_URL;
