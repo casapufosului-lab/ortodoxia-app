@@ -143,9 +143,13 @@ workflows:
   # Supabase (fara sa consume cota AI). Ei decid cauza cand un flow cade fara sa spuna de ce.
   ios-verify:
     name: Ortodoxia iOS - verificare pe simulator (Maestro, fara publicare)
-    # 180 min: cu 12 flow-uri x 3 treceri, la 90 de minute Codemagic omora rularea la mijlocul
-    # trecerii a 2-a (cerinta owner, 12.10.2026). ios-testflight NU se atinge.
-    max_build_duration: 180
+    # 120 min = MAXIMUL pe care il accepta platforma. Ownerul a cerut 180, dar Codemagic respinge
+    # build-ul cu "Configuration error": "Invalid value for workflows -> ios-verify ->
+    # max_build_duration, value 180 is out of expected bounds (1, 120)" (dovedit 12.10.2026, build
+    # 6accd76433ef135cd9f1025c, respins inainte de a porni). Deci 120, cat se poate.
+    # Marja: ultimul ios-verify reusit (6acc8e1c, 4 flow-uri) a tinut 34 min, din care 23 min build-ul
+    # .app-ului si ~1,7 min per rulare de flow; 36 de rulari + build ~= 95-100 min, sub plafon.
+    max_build_duration: 120
     instance_type: mac_mini_m2
     environment:
       node: 22
