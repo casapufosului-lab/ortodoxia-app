@@ -79,15 +79,18 @@ trail — so they need a **scheduled** cleanup. Without it, a guest's transcript
 `auth.users.id` forever, which is exactly the audit finding B2.
 
 - **Function:** `public.purge_guest_chat_history(p_days integer default 30, p_claim_days integer default 180, p_usage_days integer default 31)`
-- **Migration:** `supabase/migrations/20261008000300_retention_guest_chat.sql` (not applied live yet)
-- **Schedule:** `supabase/cron/schedule-retention-purge.sql` — daily 03:30 UTC, run once by the owner
-  from the SQL Editor after enabling `pg_cron`
+- **Migration:** `supabase/migrations/20261008000300_retention_guest_chat.sql`, extended by
+  `supabase/migrations/20261012000300_retention_ai_usage.sql` (A3-06, applied live on 12.10.2026)
+- **Schedule:** `supabase/cron/schedule-retention-purge.sql` — daily 03:30 UTC; applied live on
+  12.10.2026 as the `retention-purge` job, next to `send-daily-notifications`
 
 | Window | What it removes | Why this number |
 |--------|-----------------|-----------------|
 | **30 days** | `chat_threads` of anonymous users idle for 30 days (messages follow via `on delete cascade`) | A guest who has not opened the app in a month has no live conversation; the transcript is the sensitive part |
 | **180 days** | `notification_device_claims` older than 180 days | Append-only audit trail of device hand-overs (B3); long enough to investigate a dispute, short enough not to be a permanent device-id log |
 | **31 days** | `guest_usage_daily` rows (installation counters, no user_id) | The daily AI limit is a same-day guard; one day of slack prevents an off-by-one at midnight |
+| **31 days** | `ai_client_usage_daily` rows (A3-06; per-client counters, hashes only) | Same kind of guard as `guest_usage_daily`, and the same 31 days: the quota is read for today only |
+| **12 months** | `ai_usage_monthly` rows whose `period_start` is older than 12 months (A3-06) | The provider-spend brake is read for the **current** month only, so older rows are pure history; a year is kept for any comparison |
 | **30 days** | abandoned anonymous `auth.users` rows (no threads left, no `favorites`, no `subscriptions`) | Retires the empty identity itself. The `favorites`/`subscriptions` guards are deliberate: a guest who saved a prayer or paid for Premium keeps the account |
 
 The numbers above are repeated in the migration (as defaults, validated so a bad call cannot wipe
