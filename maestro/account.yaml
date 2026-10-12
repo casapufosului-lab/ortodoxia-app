@@ -85,6 +85,16 @@ appId: ro.ortodoxia.app
     text: "Română"
     label: "PORȚI: limba curentă e chiar cea pe care a fixat-o prologul"
 # ── 3. CALENDAR BISERICESC (descrierea de calendar e dinamică pentru RO, deci nu se asertează textul ei)
+#     REPARAȚIE RUNDA 2 (12.10.2026): secțiunea stă SUB listele din „Țară și limbă", deci elementul era în
+#     afara ecranului. Dovada: JUnit runda1fix-account — „Assertion is false: \"Calendar bisericesc\" is
+#     visible", comanda #31, ierarhia pas-032 arăta doar secțiunea Țară și limbă + bara de tab-uri.
+#     Se derulează LA element, iar aserțiunea rămâne EXACT aceeași (nu se slăbește nimic).
+- scrollUntilVisible:
+    element:
+      text: "Calendar bisericesc"
+    direction: DOWN
+    timeout: 20000
+    label: "PORȚI: secțiunea de calendar bisericesc e adusă pe ecran (elementul stătea sub listele de limbi)"
 - assertVisible: "Calendar bisericesc"
 # ── 4. NOTIFICĂRI (starea reală la prima pornire: oprite) și limita onestă a simulatoarelor:
 #     un push real (APNs/FCM) NU poate fi dovedit aici; se asertează starea și butoanele, nu livrarea.

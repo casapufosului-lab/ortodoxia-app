@@ -86,6 +86,17 @@ appId: ro.ortodoxia.app
 - assertVisible:
     text: "^Capitol$"
     label: "secțiunea de alegere a capitolului (bible.chapterSection)"
+#     REPARAȚIE RUNDA 2 (12.10.2026): bara „Capitolul anterior / Capitolul următor" stă SUB grila de
+#     capitole (src/app/(tabs)/bible.tsx:225-240), iar derularea precedentă se oprește la titlul „Capitol".
+#     Dovada: JUnit runda1fix-bible — „Assertion is false: \"^(Capitolul anterior|Capitolul următor)$\" is
+#     visible", comanda #24, ierarhia pas-025 arăta doar Carte + Capitol + grila 1..24.
+#     Se derulează LA bară, iar aserțiunea rămâne EXACT aceeași.
+- scrollUntilVisible:
+    element:
+      text: "Capitolul următor"
+    direction: DOWN
+    timeout: 20000
+    label: "PORȚI: bara de navigare între capitole e adusă pe ecran (stă sub grila de capitole)"
 - assertVisible:
     text: "^(Capitolul anterior|Capitolul următor)$"
     label: "navigarea între capitole există (bible.previousChapter/nextChapter)"
