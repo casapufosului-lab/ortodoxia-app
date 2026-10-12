@@ -82,7 +82,11 @@ appId: ro.ortodoxia.app
 - tapOn:
     text: "Întreabă ghidul AI"
     label: "butonul de pe Acasă trebuie să ducă în chat"
+# REPARAȚIE iOS (12.10.2026, rularea Codemagic 6acd10ae, commit 43de52c): pe iOS React Native
+# contopește eticheta compozitorului cu ea însăși ("Scrie întrebarea ta Scrie întrebarea ta"),
+# deci textul exact ancorat nu se potrivește (dovadă: hierarchy-pass1-home.txt, elementul 41).
+# Se folosește aceeași formă ca în chat.yaml (linia 40), care cere același text, cu același înțeles.
 - extendedWaitUntil:
-    visible: "Scrie întrebarea ta"
+    visible: ".*Scrie întrebarea ta.*"
     timeout: 30000
     label: "POARTĂ: butonul chiar duce în chat (apare câmpul de scriere al chatului)"
