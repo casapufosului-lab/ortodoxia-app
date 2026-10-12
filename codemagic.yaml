@@ -478,7 +478,16 @@ workflows:
           FAILED=$(cat flow-failed.txt 2>/dev/null || echo "")
           NF=$(sed -n 's/^flows=//p' ci-expected.txt 2>/dev/null | head -1); NF=${NF:-12}
           NP=$(sed -n 's/^passes=//p' ci-expected.txt 2>/dev/null | head -1); NP=${NP:-3}
+          # O LISTA GOALA NU E NICIODATA "VERDE": daca nu exista rezultate asteptate (lista de flow-uri
+          # goala sau ci-expected.txt corupt), poarta refuza explicit rularea, chiar daca nu s-a
+          # inregistrat nicio piedica. Valorile ne-numerice sunt tratate ca zero, nu ignorate.
+          case "$NF" in ''|*[!0-9]*) NF=0 ;; esac
+          case "$NP" in ''|*[!0-9]*) NP=0 ;; esac
           NEXP=$((NF * NP))
+          if [ "$NEXP" -le 0 ]; then
+            echo "Poarta: lista de flow-uri este goala sau invalida (flows=$NF, passes=$NP) - nu declar verde o rulare fara rezultate."
+            exit 1
+          fi
           echo "======== CE S-A RULAT: $NF flow-uri x $NP treceri = $NEXP rezultate asteptate ========"
           echo "======== REZULTAT PER FLOW x TRECERE ========"
           cat flow-results.txt
