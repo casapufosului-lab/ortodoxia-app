@@ -57,7 +57,9 @@ appId: ro.ortodoxia.app
 - tapOn:
     text: ".*(Acasă|Home).*"
     label: "PROLOG: ne întoarcem pe Acasă (eticheta e acum românească)"
+# POARTA este deliberat STRICTA pe limba romana: dupa tap-ul pe "Română" aplicatia trebuie sa vorbeasca
+# româneste. Daca aici pica, este un defect REAL de limba (nu se slãbeste poarta la loc, se raporteaza).
 - extendedWaitUntil:
-    visible: ".*(Acasă|Home).*"
+    visible: ".*Acasă.*"
     timeout: 20000
     label: "PORȚI: prologul a reușit — aplicația vorbește românește"
