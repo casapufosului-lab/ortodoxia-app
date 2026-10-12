@@ -134,7 +134,8 @@ appId: ro.ortodoxia.app
       text: "12. Legea aplicabilă"
     direction: DOWN
     timeout: 30000
-    centerElement: true
+# centerElement: true  <-- SCOS (dovada: elementul e ultimul din document, nu poate fi centrat;
+#   maestro.log r151/r153: Bounds(x=52, y=1648) + Visibility Percent 1.0 la fiecare incercare).
     label: "ultimul capitol al termenilor"
 - assertVisible:
     text: "12. Legea aplicabilă"
@@ -144,7 +145,8 @@ appId: ro.ortodoxia.app
       text: ".*guvernate de legile România.*"
     direction: DOWN
     timeout: 20000
-    centerElement: true
+# centerElement: true  <-- SCOS (dovada: elementul e ultimul din document, nu poate fi centrat;
+#   maestro.log r151/r153: Bounds(x=52, y=1648) + Visibility Percent 1.0 la fiecare incercare).
     label: "textul legii aplicabile, cu valoarea reală a jurisdicției"
 - assertVisible:
     text: ".*guvernate de legile România.*"
