@@ -301,7 +301,18 @@ workflows:
           mkdir -p ci-screenshots
           : > flow-results.txt
           FAILED=""
-          for f in maestro/live.yaml maestro/chat.yaml maestro/premium.yaml maestro/notifications.yaml; do
+          # Lista de rulare = TOATE flow-urile din maestro/, mai putin prologul `set-language-ro.yaml`
+          # (prologul e chemat de fiecare flow prin `runFlow`, deci nu se ruleaza separat; daca ar fi
+          # rulat si singur ar produce o poarta fara asertiuni de continut). Inainte lista era fixa
+          # (live/chat/premium/notifications) si flow-urile noi NU rulau pe iOS.
+          FLOWS=$(ls -1 maestro/*.yaml 2>/dev/null | grep -v -E '/set-language-ro\.yaml$' | sort)
+          if [ -z "$FLOWS" ]; then
+            echo "EROARE: niciun flow de rulat in maestro/ (in afara de prolog)."
+            FAILED="LISTA-GOALA"
+          fi
+          echo "======== FLOW-URI DE RULAT ($(printf '%s\n' $FLOWS | grep -c . )) ========"
+          printf '%s\n' $FLOWS
+          for f in $FLOWS; do
             name=$(basename "$f" .yaml)
             echo "======== Maestro: $name ========"
             # ATENTIE: flagurile corecte sunt --format JUNIT si --output. Cu "-o" Maestro raspunde
