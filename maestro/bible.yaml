@@ -108,12 +108,19 @@ appId: ro.ortodoxia.app
     label: "câmpul de căutare în capitol (bible.search)"
 # CAPCANĂ din docs/harta-ecrane-maestro.md §4.5: în listă există „Ioan", dar și „1 Ioan", „2 Ioan",
 # „3 Ioan" — de aceea selectorul e ANCORAT ('^Ioan$'), nu conține-text.
+#     REPARAȚIE RUNDA 3 (12.10.2026): grila de CĂRȚI stă DEASUPRA grilei de capitole (ordinea reală din
+#     src/app/(tabs)/bible.tsx: secțiunea Carte la L197, Capitol la L211, bara de capitole la L225-240,
+#     câmpul de căutare la L243), iar „Ioan" e al patrulea în Noul Testament, deci în primul rând al
+#     grilei. Fluxul derula în JOS după ce ajunsese la câmpul de căutare — adică se îndepărta de carte.
+#     Dovada: JUnit runda2fix-bible — „No visible element found: \"^Ioan$\"", comanda #27 (scrollUntilVisible,
+#     direction DOWN, timeout 20000, visibilityPercentage 100), ierarhia pas-028 (20 texte) era în zona de
+#     jos a ecranului. Se schimbă DOAR direcția (SUS, spre grila reală); ce se verifică rămâne neschimbat.
 - scrollUntilVisible:
     element:
       text: "^Ioan$"
-    direction: DOWN
+    direction: UP
     timeout: 20000
-    label: "cartea Ioan din grila de cărți (se derulează până la ea)"
+    label: "cartea Ioan din grila de cărți (se derulează ÎN SUS, către grila care stă sub titlu)"
 - tapOn:
     text: "^Ioan$"
     label: "aleg cartea Ioan — cititorul trebuie să încarce capitolul 1 al ei"

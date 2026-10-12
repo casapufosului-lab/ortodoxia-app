@@ -95,6 +95,17 @@ appId: ro.ortodoxia.app
           start: "1%, 50%"
           end: "90%, 50%"
           duration: 400
+# REPARAȚIE RUNDA 2 (12.10.2026): la întoarcerea din document, ecranul Cont rămâne derulat JOS (lângă
+# linkurile legale), deci titlul e în afara ecranului. Dovada: JUnit runda1fix-legal — „Assertion is
+# false: \".*Contul meu.*\" is visible", comanda #31, ierarhia pas-032 arăta „Abonament · Despre aplicație ·
+# Politica de confidențialitate · Termeni și condiții · …" + bara de tab-uri, fără titlu. Derulăm în SUS,
+# iar poarta rămâne EXACT aceeași.
+- scrollUntilVisible:
+    element:
+      text: ".*Contul meu.*"
+    direction: UP
+    timeout: 30000
+    label: "PORȚI: readucem titlul ecranului Cont pe ecran (ecranul rămâne derulat după document)"
 - extendedWaitUntil:
     visible: ".*Contul meu.*"
     timeout: 30000
@@ -158,6 +169,14 @@ appId: ro.ortodoxia.app
           start: "1%, 50%"
           end: "90%, 50%"
           duration: 400
+# REPARAȚIE RUNDA 2 (12.10.2026): același motiv ca mai sus (ecranul rămâne derulat după document);
+# poarta de mai jos rămâne neschimbată.
+- scrollUntilVisible:
+    element:
+      text: ".*Contul meu.*"
+    direction: UP
+    timeout: 30000
+    label: "PORȚI: readucem titlul ecranului Cont pe ecran (după termeni)"
 - extendedWaitUntil:
     visible: ".*Contul meu.*"
     timeout: 30000
