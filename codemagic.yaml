@@ -161,6 +161,12 @@ workflows:
         XCODE_SCHEME: "Ortodoxia"
         APP_BUILD_NUMBER: "21"
         MAESTRO_CLI_NO_ANALYTICS: "1"
+        # (a) SUBSET DE FLOW-URI: gol = TOATE flow-urile din maestro/ (mai putin prologul).
+        # Se poate suprascrie la pornirea build-ului (API: environment.variables, sau
+        # "Start new build" din Codemagic), fara sa se editeze fisierul, ex. "chat,live".
+        IOS_FLOWS: ""
+        # Numar de treceri: 3 = verificarea finala (cerinta owner). Pentru sondaje: 1 sau 2.
+        IOS_PASSES: "3"
     scripts:
       - name: Verifica toolchain-ul (Xcode, Java, Node)
         script: |
@@ -297,31 +303,81 @@ workflows:
           xcrun simctl boot "$DEVICE_UDID" || true
           xcrun simctl bootstatus "$DEVICE_UDID" -b
           xcrun simctl install "$DEVICE_UDID" "$APP"
-      - name: Ruleaza flow-urile Maestro pe simulator (3 treceri complete)
+      - name: Ruleaza flow-urile Maestro pe simulator (implicit 3 treceri, subset prin IOS_FLOWS)
         script: |
           # NU iese cu eroare aici, chiar daca un flow cade: altfel Codemagic opreste build-ul
           # INAINTE de pasul de diagnoza si de publicarea artefactelor, adica exact cand ai nevoie
           # de ele (patit: un singur flow picat = zero dovezi). Poarta de iesire e ultimul pas.
-          # 3 TRECERI COMPLETE (cerinta owner, 12.10.2026): aceleasi flow-uri, de TREI ori la rand,
-          # fiecare trecere cu JUnit per flow in ci-junit/passN/ si captura per flow in
-          # ci-screenshots/passN/ - altfel un flake izolat trece drept verde.
+          #
+          # (a) LISTA DE FLOW-URI: implicit TOATE flow-urile din maestro/ (mai putin prologul, care e
+          # chemat prin `runFlow`), dar se poate cere un SUBSET din afara, fara sa se editeze fisierul:
+          # se transmite variabila de mediu IOS_FLOWS (acceptate si FLOWS / MAESTRO_FLOWS) la pornirea
+          # build-ului, fie prin API - {"environment":{"variables":{"IOS_FLOWS":"chat,live"}}} - fie
+          # din butonul "Start new build" al Codemagic. Numele se dau fara ".yaml", separate prin
+          # virgula, spatiu sau punct-virgula; "all" = toate. Un nume inexistent e EROARE, nu se
+          # ignora in tacere (altfel un typo da o rulare "verde" cu flow-uri lipsa).
+          #
+          # (b) RELUIRE O SINGURA DATA: daca un flow cade la prima incercare (INCONCLUCENT: device
+          # server mort, "element not found" dupa un timeout FARA octeti primiti etc.), acelasi flow
+          # se ruleaza a DOUA oara in aceeasi trecere, cu JUnit si captura separate, iar in
+          # flow-results.txt ramane scris negru pe alb ca a fost nevoie de reluare (nu se ascunde).
+          # Reluarea NU se face la exit 2 (eroare de CLI: comanda Maestro e gresita, deci inca ~2
+          # minute ar fi pierdute degeaba) si NU slabeaza nimic: doar repeta flow-ul neschimbat.
           set -uo pipefail
           export PATH="$PATH:$HOME/.maestro/bin"
           : > flow-results.txt
+          : > flow-retries.txt
           FAILED=""
-          # Lista de rulare = TOATE flow-urile din maestro/, mai putin prologul `set-language-ro.yaml`
-          # (prologul e chemat de fiecare flow prin `runFlow`, deci nu se ruleaza separat; daca ar fi
-          # rulat si singur ar produce o poarta fara asertiuni de continut). Inainte lista era fixa
-          # (live/chat/premium/notifications) si flow-urile noi NU rulau pe iOS.
-          FLOWS=$(ls -1 maestro/*.yaml 2>/dev/null | grep -v -E '/set-language-ro\.yaml$' | sort)
-          if [ -z "$FLOWS" ]; then
+          RETRY_LIST=""
+
+          ALL_FLOWS=$(ls -1 maestro/*.yaml 2>/dev/null | grep -v -E '/set-language-ro\.yaml$' | sort)
+          if [ -z "$ALL_FLOWS" ]; then
             echo "EROARE: niciun flow de rulat in maestro/ (in afara de prolog)."
             FAILED="LISTA-GOALA"
           fi
-          echo "======== FLOW-URI DE RULAT ($(printf '%s\n' $FLOWS | grep -c . )) x 3 TRECERI ========"
+
+          CERUTE="${IOS_FLOWS:-${FLOWS:-${MAESTRO_FLOWS:-}}}"
+          FLOWS=""
+          if [ -n "$CERUTE" ]; then
+            echo "======== SUBSET CERUT PRIN VARIABILA DE MEDIU: $CERUTE ========"
+            for n in $(printf '%s' "$CERUTE" | tr ',' ' ' | tr ';' ' '); do
+              if [ "$n" = "all" ] || [ "$n" = "toate" ]; then
+                FLOWS="$ALL_FLOWS"
+                break
+              fi
+              if [ ! -f "maestro/$n.yaml" ]; then
+                echo "EROARE: flow cerut inexistent: $n (nu exista maestro/$n.yaml)"
+                FAILED="$FAILED LISTA:$n"
+                continue
+              fi
+              FLOWS="$FLOWS maestro/$n.yaml"
+            done
+            if [ -z "$FLOWS" ]; then
+              echo "EROARE: subsetul cerut nu a dat niciun flow valid."
+              FAILED="$FAILED LISTA-SUBSET"
+            fi
+          else
+            echo "======== LISTA IMPLICITA: TOATE flow-urile din maestro/ ========"
+            FLOWS="$ALL_FLOWS"
+          fi
+
+          # Numarul de treceri: implicit 3 (cerinta owner: 3 treceri complete = verificarea finala).
+          # Pentru sondaje se poate cere 1 sau 2 din variabila de mediu IOS_PASSES (ex. IOS_FLOWS=chat
+          # cu IOS_PASSES=1), ca sa nu ardem 3 treceri pe fiecare verificare intermediara.
+          PASSES="${IOS_PASSES:-3}"
+          case "$PASSES" in
+            1|2|3) ;;
+            *) echo "EROARE: IOS_PASSES trebuie sa fie 1, 2 sau 3 (primit: $PASSES)."
+               FAILED="$FAILED IOS_PASSES-INVALID"; PASSES=3 ;;
+          esac
+
+          NF=$(printf '%s\n' $FLOWS | grep -c .)
+          printf 'flows=%s\npasses=%s\n' "$NF" "$PASSES" > ci-expected.txt
+          echo "======== FLOW-URI DE RULAT ($NF) x $PASSES TRECERI ========"
           printf '%s\n' $FLOWS
-          for pass in 1 2 3; do
-            echo "======== TRECEREA $pass/3 ========"
+
+          for pass in $(seq 1 "$PASSES"); do
+            echo "======== TRECEREA $pass/$PASSES ========"
             mkdir -p "ci-junit/pass$pass" "ci-screenshots/pass$pass"
             for f in $FLOWS; do
               name=$(basename "$f" .yaml)
@@ -333,29 +389,56 @@ workflows:
                 --format JUNIT --output "ci-junit/pass$pass/$name.xml" \
                 --debug-output "maestro-pass$pass-$name-debug"
               code=$?
-              if [ "$code" -ne 0 ]; then
-                # Dovada pentru diagnostic: arborele de accesibilitate exact in momentul picarii.
+              if [ "$code" -ne 0 ] && [ "$code" -ne 2 ]; then
+                # Dovada primei incercari, INAINTE de reluare (altfel se pierd exact dovezile flake-ului).
+                maestro --device "$DEVICE_UDID" hierarchy --compact > "hierarchy-pass$pass-$name-incercare1.txt" 2>&1 || true
+                xcrun simctl io "$DEVICE_UDID" screenshot "ci-screenshots/pass$pass/$name-incercare1.png" || true
+                printf 'trecerea %s\t%s\tINCONCLUCENT la incercarea 1 (exit %s) -> RELUIRE O SINGURA DATA\n' "$pass" "$name" "$code" >> flow-results.txt
+                RETRY_LIST="$RETRY_LIST $name/pass$pass"
+                echo "======== RELUIRE (a doua incercare): flow $name, trecerea $pass ========"
+                maestro --device "$DEVICE_UDID" test "$f" \
+                  --format JUNIT --output "ci-junit/pass$pass/$name-reluare.xml" \
+                  --debug-output "maestro-pass$pass-$name-reluare-debug"
+                code=$?
+              fi
+              if [ "$code" -eq 0 ]; then
+                printf 'trecerea %s\t%s\tPASS\n' "$pass" "$name" >> flow-results.txt
+              else
+                case "$code" in
+                  2) printf 'trecerea %s\t%s\tEROARE CLI (exit 2): comanda Maestro e gresita, flow-ul NU a rulat\n' "$pass" "$name" >> flow-results.txt ;;
+                  *) printf 'trecerea %s\t%s\tFAIL (flow, exit %s)\n' "$pass" "$name" "$code" >> flow-results.txt ;;
+                esac
+                FAILED="$FAILED $name/pass$pass"
+                # Dovada starii finale: dupa reluare (sau dupa singura incercare, daca nu s-a reluat).
                 maestro --device "$DEVICE_UDID" hierarchy --compact > "hierarchy-pass$pass-$name.txt" 2>&1 || true
               fi
-              case "$code" in
-                0) printf 'trecerea %s\t%s\tPASS\n' "$pass" "$name" >> flow-results.txt ;;
-                1) printf 'trecerea %s\t%s\tFAIL (flow, exit 1)\n' "$pass" "$name" >> flow-results.txt; FAILED="$FAILED $name/pass$pass" ;;
-                2) printf 'trecerea %s\t%s\tEROARE CLI (exit 2): comanda Maestro e gresita, flow-ul NU a rulat\n' "$pass" "$name" >> flow-results.txt; FAILED="$FAILED $name/pass$pass" ;;
-                *) printf 'trecerea %s\t%s\tFAIL (exit %s)\n' "$pass" "$name" "$code" >> flow-results.txt; FAILED="$FAILED $name/pass$pass" ;;
-              esac
               ls -l "ci-junit/pass$pass/$name.xml" 2>/dev/null || echo "  (nu s-a produs ci-junit/pass$pass/$name.xml)"
               xcrun simctl io "$DEVICE_UDID" screenshot "ci-screenshots/pass$pass/$name.png" || true
             done
-            echo "======== SFARSITUL TRECERII $pass/3 ========"
+            echo "======== SFARSITUL TRECERII $pass/$PASSES ========"
           done
+
           echo "======== REZULTAT PER FLOW ========"
           cat flow-results.txt
           printf '%s\n' "$FAILED" > flow-failed.txt
+          if [ -n "$RETRY_LIST" ]; then
+            printf '%s\n' $RETRY_LIST > flow-retries.txt
+          else
+            : > flow-retries.txt
+          fi
+          if [ -s flow-retries.txt ]; then
+            echo "======== RELUARI (INCONCLUCENT la prima incercare) ========"
+            cat flow-retries.txt
+            echo "  total reluari: $(grep -c . flow-retries.txt || true)"
+          else
+            echo "======== NICIO RELUARE: toate flow-urile au trecut din prima ========"
+          fi
           if [ -n "$FAILED" ]; then
             echo "FLOW-URI PICATE:$FAILED"
           else
             echo "TOATE FLOW-URILE AU TRECUT."
           fi
+
       - name: Colecteaza logul aplicatiei + proba de retea (cauza esecurilor)
         script: |
           # DE CE: JUnit-ul spune UNDE a picat o asertiune, nu DE CE. Aplicatia isi scrie singura
@@ -393,22 +476,74 @@ workflows:
         script: |
           set -uo pipefail
           FAILED=$(cat flow-failed.txt 2>/dev/null || echo "")
+          NF=$(sed -n 's/^flows=//p' ci-expected.txt 2>/dev/null | head -1); NF=${NF:-12}
+          NP=$(sed -n 's/^passes=//p' ci-expected.txt 2>/dev/null | head -1); NP=${NP:-3}
+          NEXP=$((NF * NP))
+          echo "======== CE S-A RULAT: $NF flow-uri x $NP treceri = $NEXP rezultate asteptate ========"
           echo "======== REZULTAT PER FLOW x TRECERE ========"
           cat flow-results.txt
+          echo "======== RELUARI (INCONCLUCENT la prima incercare, trecute la a doua) ========"
+          if [ -s flow-retries.txt ]; then
+            cat flow-retries.txt
+            echo "  total: $(grep -c . flow-retries.txt || true)"
+          else
+            echo "  (niciuna)"
+          fi
           echo "======== TOTALURI ========"
-          echo "  linii de rezultat: $(grep -c . flow-results.txt || true) (asteptat: 12 flow-uri x 3 treceri = 36)"
-          echo "  PASS: $(grep -c 'PASS' flow-results.txt || true)"
+          echo "  linii de rezultat: $(grep -c . flow-results.txt || true) (poate depasi $NEXP: fiecare reluare adauga o linie, dar PASSUL ramane unul per flow per trecere)"
+          echo "  PASS: $(grep -c 'PASS' flow-results.txt || true)  (asteptat: $NEXP)"
           echo "  JUnit produse: $(ls -1 ci-junit/pass*/*.xml 2>/dev/null | grep -c . || true)"
           echo "  capturi produse: $(ls -1 ci-screenshots/pass*/*.png 2>/dev/null | grep -c . || true)"
+
+          # POARTA STRICTA, PE FISIERE (nu doar pe numaratoare de linii): pentru FIECARE flow si FIECARE
+          # trecere, ULTIMA incercare trebuie sa aiba failures="0" in JUnit. Daca exista un JUnit de
+          # reluare, acela e autoritar (e ultima incercare). Fara verificarea asta, o reluare ar putea
+          # masca un flow care nu a trecut niciodata verde - exact ce nu are voie sa se intample.
+          PROBLEME=""
+          for pass in $(seq 1 "$NP"); do
+            for xml in ci-junit/pass$pass/*.xml; do
+              [ -f "$xml" ] || continue
+              baza=$(basename "$xml" .xml)
+              case "$baza" in *-reluare) continue ;; esac
+              if [ -f "ci-junit/pass$pass/$baza-reluare.xml" ]; then
+                xml="ci-junit/pass$pass/$baza-reluare.xml"
+              fi
+              head3=$(head -3 "$xml")
+              fails=$(printf '%s\n' "$head3" | sed -n 's/.*failures="\([0-9]*\)".*/\1/p' | head -1)
+              tests=$(printf '%s\n' "$head3" | sed -n 's/.*tests="\([0-9]*\)".*/\1/p' | head -1)
+              if [ "${fails:-x}" != "0" ]; then
+                PROBLEME="$PROBLEME $baza/pass$pass(JUnit failures=${fails:-lipsa})"
+              fi
+              if [ "${tests:-x}" != "1" ]; then
+                PROBLEME="$PROBLEME $baza/pass$pass(JUnit tests=${tests:-lipsa})"
+              fi
+            done
+          done
+          if [ -n "$PROBLEME" ]; then
+            echo "Poarta: JUnit cu failures!=0 sau tests!=1, ori lipsa:$PROBLEME"
+          fi
+
           if [ -n "$FAILED" ]; then
             echo "FLOW-URI PICATE:$FAILED"
             exit 1
           fi
-          if [ "$(grep -c 'PASS' flow-results.txt || true)" -ne 36 ]; then
-            echo "Poarta: NU sunt 36 de rezultate PASS (12 flow-uri x 3 treceri)."
+          if [ "$(grep -c 'PASS' flow-results.txt || true)" -ne "$NEXP" ]; then
+            echo "Poarta: NU sunt $NEXP rezultate PASS ($NF flow-uri x $NP treceri)."
             exit 1
           fi
-          echo "TOATE CELE 36 DE RULARI (12 flow-uri x 3 treceri) AU TRECUT."
+          if [ -n "$PROBLEME" ]; then
+            echo "Poarta: cel putin un JUnit nu are failures=\"0\"."
+            exit 1
+          fi
+          if [ "$(ls -1 ci-screenshots/pass*/*.png 2>/dev/null | grep -c . || true)" -lt "$NEXP" ]; then
+            echo "Poarta: mai putine capturi decat rezultate asteptate ($NEXP)."
+            exit 1
+          fi
+          echo "TOATE CELE $NEXP DE RULARI ($NF flow-uri x $NP treceri) AU TRECUT, cu JUnit failures=\"0\" si captura."
+          if [ -s flow-retries.txt ]; then
+            echo "ATENTIE (de raportat obligatoriu): $(grep -c . flow-retries.txt || true) flow-uri au avut nevoie de reluare - vezi flow-retries.txt."
+          fi
+
     artifacts:
       - build/ios-sim/Build/Products/Release-iphonesimulator/*.app
       - build/xcodebuild.log
@@ -416,9 +551,12 @@ workflows:
       - maestro-pass*-*-debug/**
       - flow-results.txt
       - flow-failed.txt
+      - flow-retries.txt
+      - ci-expected.txt
       - ci-screenshots/**/*.png
       - hierarchy-pass*.txt
       - chat-latency.txt
       - app-log.txt
       - securityd-log.txt
       - entitlements.txt
+
