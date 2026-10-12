@@ -46,7 +46,6 @@ yarn-error.*
 example
 
 # generated native folders
-/ios
 /android
 
 # local scratch (session notes, temporary outputs, local verification scripts)
@@ -77,3 +76,13 @@ artifacts-*/
 # docs/ANDROID-HARDENING.md - punerea lui la radacina si comiterea ar insemna sa treaca drept
 # credential scapat in sursa la poarta de securitate (scripts/release-readiness.mjs).
 /google-services.json
+
+# Proiectul nativ iOS (regula 86): Xcode Cloud are nevoie de proiectul Xcode STABIL, prezent în
+# depozit la clonare, ca să poată crea workflow-ul și schema. Se comit proiectul, Podfile, sursele
+# aplicației și scripturile de CI; ce se regenerează local (Pods, build, workspace) NU se comite.
+# (Linia `/ios` care ignora tot folderul a fost scoasă.)
+ios/Pods/
+ios/build/
+ios/*.xcworkspace
+ios/.xcode.env.local
+DerivedData/
