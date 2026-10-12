@@ -90,11 +90,11 @@ jobs:
           EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY=sb_publishable_jUBqWb3gn6ZDOcUuNJbVKg_CwswrjQr
           EXPO_PUBLIC_REVENUECAT_APPLE_API_KEY=appl_voOlpavdeOGYDVBEdGegdUTFUbh
           EXPO_PUBLIC_REVENUECAT_GOOGLE_API_KEY=goog_EIZcHpAwRfOaqQRPjfMGlXOvvGo
-          EXPO_PUBLIC_LEGAL_ENTITY=Ștefan Ștefan
-          EXPO_PUBLIC_SUPPORT_EMAIL=contact@ortodoxiaapp.anonaddy.com
-          EXPO_PUBLIC_LEGAL_POSTAL_ADDRESS=Rm. Vâlcea, județul Vâlcea, România
+          EXPO_PUBLIC_LEGAL_ENTITY=YAC PLANET S.R.L., CUI 50636986, Reg. Com. J2024027573006
+          EXPO_PUBLIC_SUPPORT_EMAIL=yacplanet@ortodoxiaapp.anonaddy.com
+          EXPO_PUBLIC_LEGAL_POSTAL_ADDRESS=Sat Dăești, Comuna Dăești, Strada Calea lui Traian, Nr. 75, Județul Vâlcea
           EXPO_PUBLIC_LEGAL_JURISDICTION=România
-          EXPO_PUBLIC_LEGAL_LOCALITY=Rm. Vâlcea
+          EXPO_PUBLIC_LEGAL_LOCALITY=Dăești, Județul Vâlcea
           EXPO_PUBLIC_LEGAL_EFFECTIVE_DATE=23 septembrie 2026
           EXPO_PUBLIC_PRIVACY_POLICY_URL=https://ortodoxia.web.app/privacy
           EXPO_PUBLIC_TERMS_URL=https://ortodoxia.web.app/terms
