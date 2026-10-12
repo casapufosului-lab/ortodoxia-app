@@ -64,3 +64,16 @@ example
 
 # Jurnalul build-ului Android local (npm run android / gradlew): se scrie la fiecare rulare
 gradle-build.log
+
+# Artefacte de verificare locale (Maestro, sesiuni de debug, pachete de dovezi):
+# se regenereaza la fiecare rulare si nu au ce cauta in istoric.
+maestro-out/
+maestro-*.xml
+debug-*/
+artifacts-*/
+
+# Configuratia Firebase pentru Android: se aduce la build din EAS (variabila de tip fisier
+# GOOGLE_SERVICES_JSON) sau dintr-o copie trecatoare, niciodata din depozit. Vezi
+# docs/ANDROID-HARDENING.md - punerea lui la radacina si comiterea ar insemna sa treaca drept
+# credential scapat in sursa la poarta de securitate (scripts/release-readiness.mjs).
+/google-services.json
