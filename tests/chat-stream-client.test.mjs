@@ -404,3 +404,68 @@ test('un corp JSON fără text nu se raportează ca răspuns reuşit', async () 
   assert.equal(result.kind, 'stream-error');
   assert.equal(result.failure, 'incomplete');
 });
+
+/**
+ * Pe React Native `fetch` NU are `response.body`: acolo rulează polyfill-ul `whatwg-fetch` peste
+ * XMLHttpRequest (react-native/Libraries/Network/fetch.js), iar `Response`-ul lui are `text()`, dar nu are
+ * nici `body`, nici `getReader`. Măsurat pe 12.10.2026 pe whatwg-fetch 3.6.20 + react-native 0.86.3,
+ * chiar din node_modules-ul acestui depozit. Testele de mai jos fixează calea care funcţionează acolo:
+ * corpul întreg, trecut prin ACELAŞI parser de cadre, în aceeaşi ordine.
+ */
+function polyfillResponse(full, { status = 200, contentType = 'text/event-stream' } = {}) {
+  return {
+    ok: status >= 200 && status < 300,
+    status,
+    body: undefined,
+    headers: { get: (name) => (name.toLowerCase() === 'content-type' ? contentType : null) },
+    text: async () => full,
+    json: async () => {
+      throw new Error('corpul nu e JSON');
+    },
+  };
+}
+
+test('pe React Native (fără `response.body`) răspunsul SSE ajunge totuşi întreg pe ecran', async () => {
+  const { outcome, seen, calls } = startChat({ response: () => polyfillResponse(SSE_FULL) });
+  const result = await outcome;
+  // Înainte de reparaţie acest caz ieşea cu `failure: 'network'`, deci ecranul arăta
+  // „Serviciul nu este disponibil momentan" deşi serverul răspunsese 200 (rularea 38185558877, 12.10.2026).
+  assert.equal(calls[0].init.headers.accept, 'text/event-stream');
+  assert.equal(result.kind, 'ok');
+  assert.equal(result.text, 'Bună, acesta este răspunsul.');
+  assert.deepEqual(seen, SSE_EXPECTED);
+});
+
+test('corpul SSE citit dintr-o bucată, dar fără `done`, e raportat ca incomplet', async () => {
+  const { outcome } = startChat({ response: () => polyfillResponse(SSE_FRAMES.slice(0, 4).join('')) });
+  const result = await outcome;
+  assert.equal(result.kind, 'stream-error');
+  assert.equal(result.failure, 'incomplete');
+  assert.equal(result.partialText, 'Bună, acesta este răspunsul.');
+});
+
+test('eroarea din corpul SSE citit dintr-o bucată păstrează textul deja sosit', async () => {
+  const frames = [
+    'data: {"delta":"Bună, "}\n\n',
+    'event: error\ndata: {"message":"Modelul nu a răspuns."}\n\n',
+  ].join('');
+  const { outcome, seen } = startChat({ response: () => polyfillResponse(frames) });
+  const result = await outcome;
+  assert.equal(result.kind, 'stream-error');
+  assert.equal(result.failure, 'server');
+  assert.equal(result.message, 'Modelul nu a răspuns.');
+  assert.equal(result.partialText, 'Bună, ');
+  assert.deepEqual(seen, [
+    { type: 'delta', text: 'Bună, ' },
+    { type: 'error', message: 'Modelul nu a răspuns.' },
+  ]);
+});
+
+test('o cădere de reţea la citirea corpului întreg se raportează ca atare, nu ca răspuns gol', async () => {
+  const failing = polyfillResponse('');
+  failing.text = async () => { throw new Error('reţea căzută'); };
+  const { outcome } = startChat({ response: () => failing });
+  const result = await outcome;
+  assert.equal(result.kind, 'stream-error');
+  assert.equal(result.failure, 'network');
+});

@@ -266,8 +266,43 @@ export async function streamChatReply(args: StreamChatReplyArgs): Promise<ChatSt
 
   const body = response.body;
   if (!body || typeof body.getReader !== 'function') {
+    /* Pe React Native `fetch` NU are `response.body`: acolo e polyfill-ul `whatwg-fetch` peste
+       XMLHttpRequest (react-native/Libraries/Network/fetch.js), iar `Response`-ul lui nu are nici `body`,
+       nici `getReader` — masurat pe 12.10.2026 (whatwg-fetch 3.6.20, react-native 0.86.3). Pana acum
+       acest caz iesea cu `failure: 'network'`, deci FIECARE raspuns SSE ajungea pe ecran ca „Serviciul
+       nu este disponibil momentan", desi serverul raspundea 200 — si, fiindca nimeni nu citea corpul pana
+       la capat, functia nu apuca sa salveze mesajul asistentului (niciun rand in `chat_messages`).
+
+       Solutia pastreaza contractul: citim corpul INTREG cu `response.text()` (singura cale pe care o are
+       polyfill-ul; se rezolva la inchiderea streamului, deci asteptam exact cat tine raspunsul) si il
+       trecem prin ACELASI parser de cadre, in aceeasi ordine. Textul nu mai curge bucata cu bucata — se
+       vede tot deodata — dar raspunsul ajunge intreg, iar serverul vede un client care citeste pana la
+       capat si isi salveaza mesajul. */
+    guard.bump();
+    let rawBody: string;
+    try {
+      rawBody = await response.text();
+    } catch {
+      cleanup();
+      return timedOut
+        ? { kind: 'stream-error', failure: 'timeout', message: '', partialText: '' }
+        : { kind: 'stream-error', failure: 'network', message: '', partialText: '' };
+    }
     cleanup();
-    return { kind: 'stream-error', failure: 'network', message: '', partialText: '' };
+
+    let textFromBody = '';
+    let sawDoneInBody = false;
+    for (const event of parseSseChunk('', rawBody).events) {
+      if (event.type === 'delta') textFromBody += event.text;
+      if (event.type === 'error') {
+        args.onEvent(event);
+        return { kind: 'stream-error', failure: 'server', message: event.message, partialText: textFromBody };
+      }
+      if (event.type === 'done') sawDoneInBody = true;
+      args.onEvent(event);
+    }
+    if (!sawDoneInBody) return { kind: 'stream-error', failure: 'incomplete', message: '', partialText: textFromBody };
+    return { kind: 'ok', text: textFromBody, firstTextMs: null, totalMs: now() - startedAt };
   }
 
   const reader = body.getReader();
