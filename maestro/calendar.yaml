@@ -44,8 +44,11 @@ appId: ro.ortodoxia.app
     timeout: 45000
     label: "POARTĂ: aplicația a pornit (bara de tab-uri s-a desenat)"
 # Navigăm pe calea din interfață (tab-ul din bara de jos), nu prin deep link.
+# REPARAȚIE iOS (12.10.2026, rularea Codemagic 6acce139): pe iOS eticheta tab-ului vine cu rolul și
+# poziția („Calendar, tab, 3 of 6”), deci „^Calendar$” nu nimerea nimic și flow-ul murea pe ecranul
+# Acasă (dovadă: hierarchy-pass1-calendar.txt). Se tolerează DOAR sufixul de rol/poziție al aceluiași tab.
 - tapOn:
-    text: "^Calendar$"
+    text: "^Calendar(, tab.*)?$"
     label: "tab-ul Calendar din bara de jos"
 - extendedWaitUntil:
     visible: "Calendar ortodox"

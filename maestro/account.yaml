@@ -69,12 +69,17 @@ appId: ro.ortodoxia.app
     text: "Țara stabilește calendarul, sursele locale și moneda. Limba poate fi schimbată separat când adăugăm traduceri noi."
     label: "PORȚI: ecranul spune ce anume schimbă țara (account.regionDescription)"
 - assertVisible: "Țara"
+# REPARAȚIE iOS (12.10.2026, rularea Codemagic 6acce139): rândul de țară are DOUĂ <Text>-uri
+# (numele + codul de localizare, src/app/(tabs)/account.tsx:456-457), iar iOS le contopește într-o
+# singură etichetă de accesibilitate: „România, ro-RO”. De aceea potrivirea exactă „România”
+# pica pe iOS deși textul e pe ecran (dovadă: hierarchy-pass1-account.txt). Se tolerează DOAR sufixul
+# de localizare al aceleiași etichete — textul cerut rămâne neschimbat, ca pe Android.
 - assertVisible:
-    text: "România"
+    text: "^România(, ro-RO)?$"
     label: "PORȚI: țara implicită e o regiune reală din listă (DEFAULT_COUNTRY = 'RO')"
 - assertVisible:
-    text: "ro-RO"
-    label: "PORȚI: sub țară e codul de localizare al regiunii (sursa fusului orar: Europe/Bucharest)"
+    text: "^.*ro-RO$"
+    label: "PORȚI: sub țară e codul de localizare al regiunii (sursa fusului orar: Europe/Bucharest; pe iOS e lipit de numele țării)"
 - scrollUntilVisible:
     element:
       text: "English"

@@ -62,7 +62,10 @@ appId: ro.ortodoxia.app
 - assertVisible:
     text: "nume@email.ro"
     label: "PORȚI: câmpul de email e gol și își arată exemplul (auth.emailPlaceholder)"
-- assertVisible: "Continuă cu Google"
+# REPARAȚIE iOS (12.10.2026, rularea Codemagic 6acce139): butonul Google nu are accessibilityLabel
+# propriu (src/app/auth.tsx:621-624), iar iOS contopește iconița „G” cu textul → „G, Continuă cu
+# Google”. Se tolerează exact acel prefix (dovadă: hierarchy-pass1-auth.txt); textul cerut e același.
+- assertVisible: "^(G, )?Continuă cu Google$"
 - assertVisible: "sau"
 # ── 1. RESETARE PAROLĂ — poarta „Am uitat parola" cu email gol: validare locală, NIMIC nu se trimite.
 - tapOn: "Am uitat parola"

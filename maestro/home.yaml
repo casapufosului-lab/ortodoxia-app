@@ -59,8 +59,11 @@ appId: ro.ortodoxia.app
 - assertVisible:
     text: "Slujbe LIVE — Urmărește Sfânta Liturghie în direct"
     label: "eticheta de accesibilitate a cardului LIVE (home.liveAccessibilityLabel)"
+# REPARAȚIE iOS (12.10.2026, rularea Codemagic 6acce139): pe iOS cardul LIVE are O SINGURĂ etichetă
+# („Slujbe LIVE — Urmărește Sfânta Liturghie în direct”), deci subtitlul nu mai e un nod separat
+# (dovadă: hierarchy-pass1-home.txt). Se tolerează prefixul titlului, care e tot al aceluiași card.
 - assertVisible:
-    text: "Urmărește Sfânta Liturghie în direct"
+    text: "^(Slujbe LIVE — )?Urmărește Sfânta Liturghie în direct$"
     label: "subtitlul cardului LIVE"
 - scrollUntilVisible:
     element:
