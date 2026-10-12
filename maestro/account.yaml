@@ -98,12 +98,20 @@ appId: ro.ortodoxia.app
 - assertVisible: "Calendar bisericesc"
 # ── 4. NOTIFICĂRI (starea reală la prima pornire: oprite) și limita onestă a simulatoarelor:
 #     un push real (APNs/FCM) NU poate fi dovedit aici; se asertează starea și butoanele, nu livrarea.
+#     REPARAȚIE RUNDA 3 (12.10.2026): derularea se oprea la TITLUL secțiunii, care ajungea pe muchia de
+#     jos a ecranului, iar rândurile de sub el (starea + îndemnul) rămâneau decupate — deci lipseau din
+#     ierarhie, nu din aplicație. Dovada: JUnit runda2fix-account — „Assertion is false: \"Notificările sunt
+#     oprite.\" is visible", comanda #35, ierarhia pas-036 avea „Notificări zilnice" + descrierea, dar NU
+#     starea (și nici „Conectează-te pentru notificări"); în același build, pe ecranul derulat mai jos
+#     (flow-ul legal, 15:16) ambele rânduri APĂREAU. Centrăm titlul, ca tot cardul să fie pe ecran;
+#     aserțiunile rămân EXACT aceleași.
 - scrollUntilVisible:
     element:
       text: "Notificări zilnice"
     direction: DOWN
     timeout: 20000
-    label: "PORȚI: secțiunea de notificări (account.notificationsSectionTitle)"
+    centerElement: true
+    label: "PORȚI: secțiunea de notificări, cu tot cardul pe ecran (account.notificationsSectionTitle)"
 - assertVisible:
     text: "Primești la ora 10:00 versetul, mesajul zilei și sărbătoarea din calendarul ales."
     label: "PORȚI: ecranul promite exact ora la care trimite (account.notificationsDescription)"
@@ -120,12 +128,18 @@ appId: ro.ortodoxia.app
     text: "Activează notificările"
     label: "REGRESIA: butonul de activare nu se oferă unui oaspete (ar cere cont, ar promite în gol)"
 # ── 5. ABONAMENT (planul afișat iese din planSummary; se acoperă TOATE valorile pe care le poate lua)
+# REPARAȚIE RUNDA 4: derularea se oprea când titlul „Abonament" devenea vizibil, iar acesta se oprește
+# la marginea de jos a ecranului ⇒ eticheta planului, care stă chiar sub titlu, rămânea în afara
+# ecranului și #40 pica în JUnit: `Assertion is false: "Se verifică planul…|Plan Gratuit|Premium.*" is
+# visible`, cu ierarhia care conținea „Abonament" dar NU eticheta planului. Acum se derulează până când
+# ETICHETA planului e pe ecran, centrată; aserțiunea de mai jos rămâne neschimbată, literă cu literă.
 - scrollUntilVisible:
     element:
-      text: "Abonament"
+      text: "Se verifică planul…|Plan Gratuit|Premium.*"
     direction: DOWN
     timeout: 20000
-    label: "PORȚI: secțiunea de abonament (account.subscriptionSectionTitle)"
+    centerElement: true
+    label: "PORȚI: eticheta planului e adusă pe ecran (nu doar titlul secțiunii)"
 - assertVisible:
     text: "Se verifică planul…|Plan Gratuit|Premium.*"
     label: "PORȚI: planul afișat e unul real (account.planChecking sau o etichetă de abonament din planSummary)"
@@ -135,6 +149,14 @@ appId: ro.ortodoxia.app
 - assertVisible:
     text: "Vezi Premium|Vezi abonamentul"
     label: "PORȚI: cardul de abonament duce într-un loc real, potrivit stării planului"
+# REPARAȚIE RUNDA 3: butonul „Deschide Chatul AI" stă sub cardul de abonament (care e înalt), deci se
+# aduce pe ecran înainte de aserțiune; verificarea rămâne aceeași.
+- scrollUntilVisible:
+    element:
+      text: "Deschide Chatul AI"
+    direction: DOWN
+    timeout: 20000
+    label: "PORȚI: butonul spre conversația AI e adus pe ecran (stă sub cardul de abonament)"
 - assertVisible:
     text: "Deschide Chatul AI"
     label: "PORȚI: din Cont se poate ajunge direct în conversația AI"
@@ -144,6 +166,7 @@ appId: ro.ortodoxia.app
       text: "Despre aplicație"
     direction: DOWN
     timeout: 20000
+    centerElement: true
     label: "PORȚI: secțiunea Despre aplicație (account.aboutSectionTitle)"
 - assertVisible: "Politica de confidențialitate"
 - assertVisible: "Termeni și condiții"
