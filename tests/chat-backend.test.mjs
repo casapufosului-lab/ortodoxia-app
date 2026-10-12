@@ -219,8 +219,19 @@ function harness(options = {}) {
     fetch: async (url, init) => {
       const request = JSON.parse(init.body);
       mark({ kind: 'fetch', url, body: request, signal: init.signal });
-      if (options.networkError) throw new Error('private upstream details');
-      if ((options.upstreamStatus ?? 200) >= 400) return new Response('refuzat', { status: options.upstreamStatus });
+      if (typeof options.networkError === 'function' ? options.networkError(request) : options.networkError)
+        throw new Error('private upstream details');
+      /**
+       * Refuzul se poate da PE PAS, nu doar global: `upstreamStatusFor` primește cererea trimisă
+       * furnizorului și întoarce fie un cod, fie `{ status, body }`. Așa se poate dovedi rotirea —
+       * primul pas refuză, al doilea răspunde — fără să se atingă producția.
+       */
+      const refusal = typeof options.upstreamStatusFor === 'function'
+        ? (options.upstreamStatusFor(request, url) ?? 200)
+        : (options.upstreamStatus ?? 200);
+      const refusalStatus = typeof refusal === 'object' ? (refusal.status ?? 200) : refusal;
+      if (refusalStatus >= 400)
+        return new Response(typeof refusal === 'object' ? (refusal.body ?? 'refuzat') : 'refuzat', { status: refusalStatus });
       // Dialectul cererii spune cum răspunde furnizorul: pasul OpenAI vorbeşte Responses API (`input`),
       // pasul gratuit vorbeşte chat/completions (`messages`).
       const chatDialect = request.input === undefined;
@@ -654,4 +665,96 @@ test('un pas sărit de prag nu cheamă furnizorul: răspunde următorul din casc
   assert.equal(calls.length, 1);
   assert.match(String(calls[0].body.model), /qwen3\.8-27b/, 'al doilea pas al cascadei');
   assert.equal((await readSse(response)).text, 'răspuns');
+});
+
+// ─── rotirea pe EȘEC (12.10.2026) ─────────────────────────────────────────────
+
+test('un pas care REFUZĂ roteste cascada în aceeași cerere: răspunde al doilea furnizor', async () => {
+  const h = harness({
+    upstreamStatusFor: request => (String(request.model).includes('gpt-oss-120b')
+      ? { status: 429, body: JSON.stringify({ error: { message: 'rate limit exceeded' } }) }
+      : 200),
+  });
+  const response = await h.run({ guestId, message: 'question' });
+  assert.equal(response.status, 200, 'cererea reușește, deși primul furnizor a refuzat');
+  const calls = h.events.filter(event => event.kind === 'fetch');
+  assert.equal(calls.length, 2, 'primul pas e încercat o dată, apoi se trece la al doilea');
+  assert.match(String(calls[0].body.model), /gpt-oss-120b/);
+  assert.match(String(calls[1].body.model), /qwen3\.8-27b/);
+  assert.ok(calls[0].seq < calls[1].seq, 'ordinea e cea a cascadei');
+  assert.equal((await readSse(response)).text, 'răspuns');
+
+  // Poarta din bază e întrebată pentru ambele trepte: rotirea nu ocolește contorul zilei.
+  const gates = h.events
+    .filter(event => event.kind === 'rpc' && event.name === 'reserve_ai_provider_step')
+    .map(event => event.args.p_step);
+  assert.deepEqual(gates, ['groq-120b', 'groq-qwen']);
+  // Și niciun pas nu se încearcă de două ori în aceeași cerere.
+  assert.equal(calls.length, gates.length);
+
+  // Motivul nu se mai înghite: pas + furnizor + cod + motiv, în log.
+  const refusal = h.events.find(event => event.kind === 'warn' && event.line.startsWith('chat-cascada esec'));
+  assert.ok(refusal, 'refuzul apare în log');
+  assert.deepEqual(
+    JSON.parse(refusal.line.slice('chat-cascada esec '.length)),
+    { step: 'groq-120b', provider: 'groq', status: 429, reason: 'quota' },
+  );
+  // Rotirea e spusă explicit, cu motivul care a provocat-o.
+  const rotation = h.events.find(event => event.kind === 'log' && event.line.startsWith('chat-cascada rotire'));
+  assert.ok(rotation, 'rotirea apare în log');
+  assert.deepEqual(
+    JSON.parse(rotation.line.slice('chat-cascada rotire '.length)),
+    { deLa: 'groq-120b', catre: 'groq-qwen', motiv: 'quota' },
+  );
+  assert.equal(JSON.stringify(h.events).includes('test-only'), false, 'cheia folosită nu apare în loguri');
+});
+
+test('un refuz care NU e cotă roteste la fel, dar motivul îl spune (`http`)', async () => {
+  const h = harness({
+    upstreamStatusFor: request => (String(request.model).includes('gpt-oss-120b')
+      ? { status: 400, body: 'bad request' }
+      : 200),
+  });
+  const response = await h.run({ guestId, message: 'question' });
+  assert.equal(response.status, 200);
+  assert.equal(h.events.filter(event => event.kind === 'fetch').length, 2);
+  assert.deepEqual(
+    JSON.parse(h.events.find(event => event.kind === 'warn' && event.line.startsWith('chat-cascada esec')).line.slice('chat-cascada esec '.length)),
+    { step: 'groq-120b', provider: 'groq', status: 400, reason: 'http' },
+  );
+  assert.equal((await readSse(response)).text, 'răspuns');
+});
+
+test('o cădere de rețea pe primul pas roteste cascada (motivul `retea`)', async () => {
+  const h = harness({ networkError: request => String(request.model).includes('gpt-oss-120b') });
+  const response = await h.run({ guestId, message: 'question' });
+  assert.equal(response.status, 200);
+  assert.equal(h.events.filter(event => event.kind === 'fetch').length, 2);
+  assert.deepEqual(
+    JSON.parse(h.events.find(event => event.kind === 'warn' && event.line.startsWith('chat-cascada esec')).line.slice('chat-cascada esec '.length)),
+    { step: 'groq-120b', provider: 'groq', status: null, reason: 'retea' },
+  );
+  assert.equal((await readSse(response)).text, 'răspuns');
+});
+
+test('când TOȚI pașii cad: 502 cu mesajul de indisponibilitate și fiecare motiv scris', async () => {
+  // Pașii activați din cascadă, exact cei pe care încearcerea îi poate chema (OpenAI e stins).
+  const enabled = aiChain.AI_CHAIN.filter(step => step.enabled);
+  assert.equal(enabled.includes(undefined), false);
+  const h = harness({ upstreamStatus: 429 });
+  const response = await h.run({ guestId, message: 'question' });
+  assert.equal(response.status, 502);
+  assert.deepEqual(await response.json(), { error: 'Serviciul AI nu a răspuns. Încearcă din nou mai târziu.' });
+
+  const calls = h.events.filter(event => event.kind === 'fetch');
+  assert.equal(calls.length, enabled.length, 'fiecare pas se încearcă EXACT o dată');
+  assert.deepEqual(calls.map(call => call.body.model), [...enabled.map(step => step.model)], 'în ordinea cascadei');
+  const gates = h.events.filter(event => event.kind === 'rpc' && event.name === 'reserve_ai_provider_step');
+  assert.equal(gates.length, enabled.length, 'niciun pas nu ocolește poarta din bază');
+  // Rezumatul de dinaintea lui 502: toți pașii, cu motivul fiecăruia.
+  const summary = JSON.parse(
+    h.events.filter(event => event.kind === 'error').at(-1).line.slice('chat-cascada indisponibil '.length),
+  );
+  assert.deepEqual(summary.pasi.map(item => item.step), [...enabled.map(step => step.id)]);
+  assert.equal(summary.pasi.every(item => item.status === 429 && item.reason === 'quota'), true);
 });

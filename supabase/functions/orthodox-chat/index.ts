@@ -7,6 +7,7 @@ import {
     extractText,
     frameFailed,
     hasUsableStep,
+    isQuotaError,
     pickStep,
     preferredRemainingHeader,
     requestUrl,
@@ -416,6 +417,16 @@ Deno.serve(async (req: Request) => {
                 counters[id] = step.switchAt;
         };
         /**
+         * Fiecare încercare care NU a răspuns, în ordinea în care s-a întâmplat: se scrie în log
+         * imediat („chat-cascada esec”) și, dacă toți pașii cad, într-un singur rând de rezumat
+         * dinaintea lui 502. Fără secrete: pas, furnizor, cod HTTP, motiv.
+         */
+        const failures: Array<{ step: string; provider: string; status: number | null; reason: string }> = [];
+        const noteFailure = (failure: { step: string; provider: string; status: number | null; reason: string }) => {
+            failures.push(failure);
+            console.warn('chat-cascada esec ' + JSON.stringify(failure));
+        };
+        /**
          * Ultima valoare raportată de furnizor (`x-ratelimit-remaining-requests`) se scrie în tabelă,
          * dar NU are voie să strice răspunsul: o statistică nu merită un 502.
          */
@@ -435,8 +446,11 @@ Deno.serve(async (req: Request) => {
          * Încearcă un pas: rezervă atomic o cerere în bază, cheamă furnizorul, iar pe calea SSE citește
          * până la PRIMA bucată de text. Până acolo nu am trimis nimic aplicației, deci un eșec poate
          * însemna „treci la următorul furnizor" sau, dacă toți cad, exact eroarea de dinainte.
+         *
+         * Întoarce motivul, nu doar „nu": fără el, un furnizor căzut și o rețea căzută arată la fel,
+         * iar operatorul nu are ce citi în log (itemul 7 din task).
          */
-        const attemptStep = async (step: ChainStep, key: string): Promise<boolean> => {
+        const attemptStep = async (step: ChainStep, key: string): Promise<{ ok: boolean; reason: string; status: number | null }> => {
             bumpIdle();
             let upstream: Response;
             try {
@@ -465,24 +479,41 @@ Deno.serve(async (req: Request) => {
                 });
             }
             catch {
-                return false;
+                // Rețeaua a cedat înainte de orice răspuns: pasul următor are dreptul la încercare.
+                return { ok: false, reason: 'retea', status: null };
             }
-            // 429 / 402 / 5xx / răspuns fără corp: pasul e considerat indisponibil ACUM, trecem mai departe.
-            if (!upstream.ok || !upstream.body)
-                return false;
+            // Statistica de cotă a furnizorului se citește și când el REFUZĂ: acolo scrie cel mai des
+            // că nu mai are nimic (0), iar asta trebuie să rămână vizibil, nu doar în log.
             recordProviderRemaining(step.id, upstream.headers);
+            if (!upstream.ok) {
+                // Motivul refuzului, citit din corp (limitat la 400 de caractere) și clasificat de
+                // `isQuotaError`: cotă epuizată (`quota`) sau alt refuz (`http`). Ambele rotesc cascada;
+                // diferența rămâne scrisă în log, ca să se vadă DE CE s-a rotit.
+                let refusal = '';
+                try {
+                    refusal = (await upstream.text()).slice(0, 400);
+                }
+                catch {
+                    refusal = '';
+                }
+                return { ok: false, reason: isQuotaError(upstream.status, refusal) ? 'quota' : 'http', status: upstream.status };
+            }
+            // 2xx fără corp: nu se poate citi nimic din el, deci pasul e indisponibil ACUM.
+            if (!upstream.body)
+                return { ok: false, reason: 'fara-corp', status: upstream.status };
             if (!wantsStream) {
                 try {
                     const payload: unknown = await upstream.json();
                     const text = extractText(payload, step.api).trim();
                     if (!text)
-                        return false;
+                        return { ok: false, reason: 'raspuns-gol', status: upstream.status };
                     reply = text;
                     ttftMs = Date.now() - aiStartedAt;
-                    return true;
+                    return { ok: true, reason: '', status: upstream.status };
                 }
                 catch {
-                    return false;
+                    // Corp care nu e JSON-ul așteptat: pasul nu a putut livra text.
+                    return { ok: false, reason: 'corp-neinteligibil', status: upstream.status };
                 }
             }
             const upstreamReader = upstream.body.getReader();
@@ -530,18 +561,26 @@ Deno.serve(async (req: Request) => {
                 failed = true;
             }
             if (failed || !reply)
-                return false;
+                return { ok: false, reason: failed ? 'stream-rupt' : 'stream-fara-text', status: upstream.status };
             ttftMs = Date.now() - aiStartedAt;
-            return true;
+            return { ok: true, reason: '', status: upstream.status };
         };
         try {
             for (;;) {
                 const step = pickStep(counters, { enableOpenAI });
                 if (!step)
                     break;
+                // Rotirea nu se mai face în tăcere: se scrie de la ce pas la ce pas s-a trecut și de ce.
+                if (failures.length > 0 && failures[failures.length - 1].step !== step.id)
+                    console.log('chat-cascada rotire ' + JSON.stringify({
+                        deLa: failures[failures.length - 1].step,
+                        catre: step.id,
+                        motiv: failures[failures.length - 1].reason,
+                    }));
                 const key = (providerKeys[step.keyEnv] ?? '').trim();
                 if (!key) {
                     // Cheia lipsește din secretele Supabase: pasul nu poate fi folosit, dar nu blocăm restul.
+                    noteFailure({ step: step.id, provider: step.provider, status: null, reason: 'fara-cheie' });
                     exhausted(step.id);
                     continue;
                 }
@@ -558,15 +597,20 @@ Deno.serve(async (req: Request) => {
                     console.warn('chat: poarta pasului nu a răspuns', step.id);
                 }
                 else if (!gate.allowed) {
+                    // Pragul zilei e atins pentru pasul acesta: se vede în log, nu doar în contor.
+                    noteFailure({ step: step.id, provider: step.provider, status: null, reason: 'prag-zi' });
                     exhausted(step.id);
                     continue;
                 }
                 const requests = gate && Number.isInteger(gate.requests) ? gate.requests : step.switchAt;
                 counters[step.id] = Math.min(requests, step.switchAt);
-                if (await attemptStep(step, key)) {
+                const outcome = await attemptStep(step, key);
+                if (outcome.ok) {
                     usedStep = step;
                     break;
                 }
+                // Refuzul se scrie cu pas, furnizor, cod și motiv, apoi se trece mai departe.
+                noteFailure({ step: step.id, provider: step.provider, status: outcome.status, reason: outcome.reason });
                 // Pasul a refuzat acum: pentru cererea aceasta nu-l mai încercăm; următoarea îl poate
                 // testa din nou, iar contorul din bază rămâne singura sursă de adevăr pentru zi.
                 exhausted(step.id);
@@ -575,11 +619,15 @@ Deno.serve(async (req: Request) => {
         catch {
             clearTimers();
             await dropSavedUserMessage();
+            // Motivul rămâne în log; se scrie clasa, nu textul brut al excepției (poate conține date interne).
+            console.error('chat-cascada indisponibil ' + JSON.stringify({ pasi: failures, motiv: 'exceptie' }));
             return json({ error: AI_UNAVAILABLE_MESSAGE }, 502);
         }
         if (!reply || !usedStep) {
             clearTimers();
             await dropSavedUserMessage();
+            // Toți pașii au căzut: fiecare motiv, în ordine, într-un singur rând de log.
+            console.error('chat-cascada indisponibil ' + JSON.stringify({ pasi: failures }));
             return json({ error: AI_UNAVAILABLE_MESSAGE }, 502);
         }
         // Măsurătoarea cerută de OB.1: timpul până la primul text, scris în logurile funcției.
