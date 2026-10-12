@@ -1,0 +1,192 @@
+# 04 — Calendar: luna de azi (etichetă reală `Intl`), grila cu zilele lunii, ziua selectată și
+# navigarea între luni.
+#
+# CE VERIFIC, în ordine:
+#   1. aplicația pornește și vorbește românește (prologul comun `set-language-ro.yaml`);
+#   2. ecranul 04 se desenează cu textele lui reale: titlul „Calendar ortodox", eyebrow-ul
+#      „AN BISERICESC" și SUBTITLUL = numele calendarului încărcat („Patriarhia Română"), nu
+#      textul de rezervă „Alege calendarul bisericesc pe care vrei să îl urmărești.";
+#   3. luna afișată e cea a rulării, citită ca text real `Intl.DateTimeFormat('ro', …)` — șablonul
+#      acoperă toate cele 12 luni în română, deci nu se fixează luna de azi (capcana din
+#      docs/harta-ecrane-maestro.md §4.4);
+#   4. grila are cele 7 zile ale săptămânii (Lu Ma Mi Jo Vi Sâ Du), legenda, iar celulele zilelor
+#      sunt butoane reale („Selectează ziua N");
+#   5. ziua curentă e selectată și cardul ei s-a TERMINAT de încărcat: apare o etichetă de rang
+#      reală (ori „Zi cu cruce neagră" / „Sărbătoare cu cruce roșie" / „Duminică" / … ori
+#      „Nu există încă informații publicate pentru această zi."), niciodată spinner-ul
+#      „Se încarcă informațiile zilei...";
+#   6. selectarea unei alte zile din grilă schimbă titlul zilei selectate („15 <luna> 2026"), deci
+#      legătura celulă -> stare -> text localizat merge;
+#   7. „Luna anterioară"/„Luna următoare" schimbă luna (apare legătura „Revino la luna curentă"),
+#      iar „Revino la luna curentă" readuce luna de azi (legătura dispare);
+#   8. REGRESII: fără mesaj de eroare de încărcare, fără mesajul de „lună nepublicată" (azi suntem
+#      în intervalul semănat 2026-01…2026-12, `SEEDED_CALENDAR_RANGE`).
+#
+# Textele sunt chei i18n reale (ro) din src/i18n/config.ts, extrase cu scriptul `extract-i18n-ro.mjs`
+# (PowerShell distorsionează diacriticele în consolă), nu texte scrise de mână.
+#
+# FĂRĂ escape-uri de regex (backslash-punct) în șabloane: într-un scalar YAML cu ghilimele duble
+# backslash-ul e consumat de parser, iar `\\.` ajunge la Maestro ca „backslash literal" — exact
+# capcana din premium.yaml/chat.yaml. Punctul simplu potrivește punctul, ca în chat.yaml (aici
+# punctul acoperă și spațiul dintre lună și an, care poate fi un spațiu special pe iOS).
+#
+# DE CE `clearState: true` (ca în chat.yaml): rularea pornește de la zero, deci ceasul de „ziua de
+# azi" și județul/regiunea vin din starea curată a aplicației, iar prologul de limbă așază româna.
+appId: ro.ortodoxia.app
+---
+- launchApp:
+    clearState: true
+# Prolog comun: așază aplicația pe limba ROMÂNĂ (emulatorul/simulatorul e implicit pe engleză,
+# iar aplicația urmează limba dispozitivului la prima pornire — altfel aserțiunile de mai jos pică).
+- runFlow: set-language-ro.yaml
+- extendedWaitUntil:
+    visible: ".*(Acasă|Home).*"
+    timeout: 45000
+    label: "POARTĂ: aplicația a pornit (bara de tab-uri s-a desenat)"
+# Navigăm pe calea din interfață (tab-ul din bara de jos), nu prin deep link.
+- tapOn:
+    text: ".*(Calendar).*"
+    label: "tab-ul Calendar din bara de jos"
+- extendedWaitUntil:
+    visible: "Calendar ortodox"
+    timeout: 30000
+    label: "POARTĂ: ecranul 04 s-a desenat (titlul lui real, nu un ecran gol)"
+- assertVisible:
+    text: "^(An bisericesc|AN BISERICESC)$"
+    label: "eyebrow-ul ecranului 04 (calendar.eyebrow; stilul PageHeader îl scrie cu majuscule)"
+# Subtitlul = numele calendarului rezolvat (`calendarDisplayName`), adică județul/regiunea
+# calendarului RO: „Patriarhia Română". Dacă rândul calendarului nu s-ar fi încărcat, pe ecran ar
+# sta textul de rezervă — de aceea îl asertăm și ca ABSENT.
+- extendedWaitUntil:
+    visible: "Patriarhia Română"
+    timeout: 20000
+    label: "POARTĂ: calendarul ro-bor s-a încărcat (subtitlul e numele lui real, nu fallback-ul)"
+- assertNotVisible:
+    text: "Alege calendarul bisericesc pe care vrei să îl urmărești."
+    label: "REGRESIA: nu suntem pe subtitlul de rezervă (calendar.subtitleFallback)"
+- assertNotVisible:
+    text: "Se încarcă calendarul..."
+    label: "grila nu mai e în starea de încărcare (calendar.loading)"
+- assertNotVisible:
+    text: "Calendarul nu a putut fi încărcat. Încearcă din nou."
+    label: "REGRESIA: fără eroarea de încărcare a calendarului (calendar.loadError)"
+- assertNotVisible:
+    text: "Pentru această lună calendarul bisericesc nu este încă publicat."
+    label: "REGRESIA: luna de azi e în intervalul semănat (calendar.monthOutsideCoverage)"
+- assertVisible:
+    text: "Luna anterioară"
+    label: "săgeata de lună anterioară (eticheta de accesibilitate calendar.previousMonth)"
+- assertVisible:
+    text: "Luna următoare"
+    label: "săgeata de lună următoare (eticheta de accesibilitate calendar.nextMonth)"
+- assertVisible:
+    text: ".*sărbătoare cu cruce roșie"
+    label: "legenda crucii roșii (calendar.redCrossLegend; pentru GR/CY textul e „sărbătoare importantă”)"
+- assertVisible:
+    text: ".*zi înscrisă în calendar"
+    label: "legenda zilei documentate (calendar.documentedDayLegend)"
+- assertVisible:
+    text: "^Lu$"
+    label: "capul de coloană de luni (calendar.weekdayLu)"
+- assertVisible:
+    text: "^Ma$"
+    label: "capul de coloană de marți (calendar.weekdayMa)"
+- assertVisible:
+    text: "^Mi$"
+    label: "capul de coloană de miercuri (calendar.weekdayMi)"
+- assertVisible:
+    text: "^Jo$"
+    label: "capul de coloană de joi (calendar.weekdayJo)"
+- assertVisible:
+    text: "^Vi$"
+    label: "capul de coloană de vineri (calendar.weekdayVi)"
+- assertVisible:
+    text: "^Sâ$"
+    label: "capul de coloană de sâmbătă (calendar.weekdaySa)"
+- assertVisible:
+    text: "^Du$"
+    label: "capul de coloană de duminică (calendar.weekdayDu)"
+# Eticheta lunii: text real `Intl` pentru luna de AZI (nu una fixă), plus legătura de întoarcere
+# care nu trebuie să existe cât timp suntem pe luna curentă.
+- assertVisible:
+    text: "^([Jj]anuarie|[Ff]ebruarie|[Mm]artie|[Aa]prilie|[Mm]ai|[Ii]unie|[Ii]ulie|[Aa]ugust|[Ss]eptembrie|[Oo]ctombrie|[Nn]oiembrie|[Dd]ecembrie).20[0-9]{2}$"
+    label: "eticheta lunii de azi (Intl, ro; punctul acoperă spațiul dintre lună și an)"
+- assertNotVisible:
+    text: "^Revino la luna curentă$"
+    label: "REGRESIA: nu suntem pe altă lună, deci legătura de întoarcere nu există"
+# Ziua curentă: titlul secțiunii zilei selectate e „<zi> <luna> 2026" pentru ziua de azi.
+- assertVisible:
+    text: "^[0-9]{1,2} ([Jj]anuarie|[Ff]ebruarie|[Mm]artie|[Aa]prilie|[Mm]ai|[Ii]unie|[Ii]ulie|[Aa]ugust|[Ss]eptembrie|[Oo]ctombrie|[Nn]oiembrie|[Dd]ecembrie).20[0-9]{2}$"
+    label: "titlul zilei selectate = ziua de azi + luna reală (SectionTitle din calendar.tsx:309)"
+- assertNotVisible:
+    text: "Se încarcă informațiile zilei..."
+    label: "cardul zilei nu mai e în starea de încărcare (calendar.loadingDay)"
+# Cardul zilei de azi, în starea lui FINALĂ. Rangul se traduce din `feast_rank_code` prin
+# src/lib/feast-rank.ts, iar stilul îl scrie cu majuscule; dacă ziua n-are rând documentat în bază,
+# ecranul spune explicit asta. Ce NU are voie să apară e spinner-ul (verificat mai sus).
+# (Aserțiunea nu poate fixa „Zi cu cruce neagră" fără să se lege de data rulării — exact capcana
+# semnalată în docs/harta-ecrane-maestro.md §4.4 pentru ziua de azi.)
+- assertVisible:
+    text: "^(ZI CU CRUCE ROȘIE|Zi cu cruce roșie|SĂRBĂTOARE CU CRUCE ROȘIE|Sărbătoare cu cruce roșie|ZI CU CRUCE NEAGRĂ|Zi cu cruce neagră|SĂRBĂTOARE ÎMPĂRĂTEASCĂ|Sărbătoare împărătească|SĂRBĂTOARE A MAICII DOMNULUI|Sărbătoare a Maicii Domnului|DUMINICĂ|Duminică|POMENIRE|Pomenire|Nu există încă informații publicate pentru această zi.)$"
+    label: "cardul zilei de azi e o etichetă de rang reală (sau mesajul explicit de zi nedocumentată)"
+# Grila chiar are celule apăsabile, cu etichete reale de accesibilitate.
+- assertVisible:
+    text: "^Selectează ziua 1$"
+    label: "prima celulă a lunii (calendar.selectDay + numărul zilei)"
+- scrollUntilVisible:
+    element:
+      text: "^Selectează ziua 15$"
+    direction: DOWN
+    timeout: 20000
+    centerElement: true
+    label: "celula zilei 15 (se derulează până la ea, nu se presupune că e vizibilă)"
+- tapOn:
+    text: "^Selectează ziua 15$"
+    label: "selectez ziua 15 — celula trebuie să schimbe ziua selectată"
+- extendedWaitUntil:
+    visible: "^15 ([Jj]anuarie|[Ff]ebruarie|[Mm]artie|[Aa]prilie|[Mm]ai|[Ii]unie|[Ii]ulie|[Aa]ugust|[Ss]eptembrie|[Oo]ctombrie|[Nn]oiembrie|[Dd]ecembrie).20[0-9]{2}$"
+    timeout: 20000
+    label: "POARTĂ: titlul zilei selectate e acum „15 <luna rulării>” (legătura celulă -> stare)"
+- assertNotVisible:
+    text: "Se încarcă informațiile zilei..."
+    label: "cardul zilei 15 nu mai e în încărcare după schimbarea selecției"
+- assertVisible:
+    text: "^(ZI CU CRUCE ROȘIE|Zi cu cruce roșie|SĂRBĂTOARE CU CRUCE ROȘIE|Sărbătoare cu cruce roșie|ZI CU CRUCE NEAGRĂ|Zi cu cruce neagră|SĂRBĂTOARE ÎMPĂRĂTEASCĂ|Sărbătoare împărătească|SĂRBĂTOARE A MAICII DOMNULUI|Sărbătoare a Maicii Domnului|DUMINICĂ|Duminică|POMENIRE|Pomenire|Nu există încă informații publicate pentru această zi.)$"
+    label: "cardul zilei 15 e și el într-o stare reală (rang tradus sau mesajul de zi nedocumentată)"
+- takeScreenshot: calendar
+# Navigare: luna anterioară, apoi înapoi la luna curentă. Legătura „Revino la luna curentă" există
+# doar când `monthOffset !== 0` (calendar.tsx:253), deci apariția/dispariția ei e dovada schimbării.
+- tapOn:
+    text: "Luna anterioară"
+    label: "săgeata din stânga titlului de lună"
+- extendedWaitUntil:
+    visible: "^Revino la luna curentă$"
+    timeout: 20000
+    label: "POARTĂ: am trecut pe luna anterioară (a apărut legătura de întoarcere)"
+- tapOn:
+    text: "^Revino la luna curentă$"
+    label: "întoarcerea la luna de azi"
+- extendedWaitUntil:
+    visible: "^([Jj]anuarie|[Ff]ebruarie|[Mm]artie|[Aa]prilie|[Mm]ai|[Ii]unie|[Ii]ulie|[Aa]ugust|[Ss]eptembrie|[Oo]ctombrie|[Nn]oiembrie|[Dd]ecembrie).20[0-9]{2}$"
+    timeout: 20000
+    label: "POARTĂ: „Revino la luna curentă” a readus luna de azi"
+- assertNotVisible:
+    text: "^Revino la luna curentă$"
+    label: "REGRESIA: legătura de întoarcere a dispărut (suntem iar pe luna curentă)"
+- tapOn:
+    text: "Luna următoare"
+    label: "săgeata din dreapta titlului de lună"
+- extendedWaitUntil:
+    visible: "^Revino la luna curentă$"
+    timeout: 20000
+    label: "POARTĂ: am trecut pe luna următoare (a apărut legătura de întoarcere)"
+- tapOn:
+    text: "^Revino la luna curentă$"
+    label: "întoarcerea la luna de azi (a doua direcție)"
+- extendedWaitUntil:
+    visible: "^([Jj]anuarie|[Ff]ebruarie|[Mm]artie|[Aa]prilie|[Mm]ai|[Ii]unie|[Ii]ulie|[Aa]ugust|[Ss]eptembrie|[Oo]ctombrie|[Nn]oiembrie|[Dd]ecembrie).20[0-9]{2}$"
+    timeout: 20000
+    label: "POARTĂ: luna de azi e din nou afișată (a doua direcție)"
+- assertNotVisible:
+    text: "Se încarcă calendarul..."
+    label: "REGRESIA finală: grila afișată e încărcată, nu pe spinner"

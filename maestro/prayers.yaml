@@ -1,0 +1,167 @@
+# 03 — Rugăciuni: lista reală din bază, textul rugăciunii, căutarea fără diacritice și poarta de
+# autentificare a favoritelor.
+#
+# CE VERIFIC, în ordine:
+#   1. aplicația pornește și vorbește românește (prologul comun `set-language-ro.yaml`);
+#   2. ecranul 03 se desenează cu textele lui reale (eyebrow „BIBLIOTECĂ", subtitlul, nota despre
+#      vocea AI, câmpul de căutare, indiciul de căutare) — nu un ecran gol;
+#   3. lista chiar conține rugăciunile reale din bază: prima în ordinea de afișare (`sort_order`)
+#      este „Tatăl nostru", cu categoria „RUGĂCIUNI DE BAZĂ", iar cardul are butonul
+#      „Citește rugăciunea";
+#   4. deschiderea rugăciunii arată TEXTUL ei, nu doar titlul: „Tatăl nostru, Care ești în ceruri,
+#      sfințească-se numele…" (text real din `public.prayers`), iar cardul trece în starea
+#      „Închide" (deci chiar s-a extins, nu doar se vede previzualizarea de 125 de caractere);
+#   5. lista derulează până la a patra rugăciune reală („Cuvine-se cu adevărat", `sort_order`=40);
+#   6. căutarea ignoră diacriticele: „vamesului" găsește „Rugăciunea vameșului" (categoria
+#      „RUGĂCIUNI SCURTE"), iar un cuvânt inexistent spune exact „Rugăciunea nu este încă în
+#      bibliotecă." și oferă butonul „Întreabă Chatul";
+#   7. favoritele sunt în spatele contului: pentru că flow-ul e anonim prin construcție
+#      (`clearState: true`), apăsarea pe „Adaugă la favorite" duce la ECRANUL DE AUTENTIFICARE
+#      („Bine ai revenit") — regula reală din `prayers.tsx:163` (`router.push('/auth')` când
+#      `!user`). Nu se forțează autentificarea: rândul din `public.favorites` se poate proba doar
+#      autentificat și nu e treaba acestui flow.
+#
+# Textele sunt chei i18n reale (ro) din src/i18n/config.ts, extrase cu scriptul `extract-i18n-ro.mjs`
+# (PowerShell distorsionează diacriticele în consolă), nu texte scrise de mână.
+#
+# FĂRĂ escape-uri de regex (backslash-punct) în șabloane: într-un scalar YAML cu ghilimele duble
+# backslash-ul e consumat de parser, iar `\\.` ajunge la Maestro ca „backslash literal" — exact
+# capcana din premium.yaml/chat.yaml. Punctul simplu potrivește punctul, ca în chat.yaml.
+#
+# DE CE `clearState: true` (ca în chat.yaml): flow-ul trebuie să plece OASPETE NOU (fără sesiune),
+# altfel poarta de autentificare de la pasul 7 nu s-ar putea aserta determinist, iar lista de
+# favorite ar putea veni cu rânduri din rularea precedentă. Prologul de limbă readuce aplicația pe
+# română după fiecare pornire curată (e idempotent).
+appId: ro.ortodoxia.app
+---
+- launchApp:
+    clearState: true
+# Prolog comun: așază aplicația pe limba ROMÂNĂ (emulatorul/simulatorul e implicit pe engleză,
+# iar aplicația urmează limba dispozitivului la prima pornire — altfel aserțiunile de mai jos pică).
+- runFlow: set-language-ro.yaml
+- extendedWaitUntil:
+    visible: ".*(Acasă|Home).*"
+    timeout: 45000
+    label: "POARTĂ: aplicația a pornit (bara de tab-uri s-a desenat)"
+# Navigăm pe calea din interfață (tab-ul din bara de jos), nu prin deep link. Pe iOS eticheta unui
+# tab poate purta și iconița/sufixul, de aceea `.*(...).*` (ca în set-language-ro.yaml/chat.yaml).
+- tapOn:
+    text: ".*(Rugăciuni|Prayers).*"
+    label: "tab-ul Rugăciuni din bara de jos"
+- extendedWaitUntil:
+    visible: "Caută după titlu și păstrează rugăciunile apropiate inimii tale."
+    timeout: 30000
+    label: "POARTĂ: ecranul 03 s-a desenat (subtitlul lui real, nu un ecran gol)"
+- assertVisible:
+    text: "^(Bibliotecă|BIBLIOTECĂ)$"
+    label: "eyebrow-ul ecranului 03 (prayers.eyebrow; stilul PageHeader îl scrie cu majuscule)"
+- assertVisible:
+    text: "Înregistrările naturale sunt voci generate cu inteligență artificială."
+    label: "nota despre vocea AI (prayers.aiVoiceNotice) — se randează necondiționat pe ecran"
+- assertVisible:
+    text: "Caută o rugăciune"
+    label: "câmpul de căutare (placeholder-ul real prayers.search)"
+- assertVisible:
+    text: "Poți căuta cu sau fără diacritice, de exemplu: „tatal nostru”."
+    label: "indiciul de căutare (prayers.searchHint) — promite căutarea fără diacritice"
+- assertNotVisible:
+    text: "Se încarcă rugăciunile..."
+    label: "lista nu mai e în starea de încărcare (prayers.loading)"
+- assertNotVisible:
+    text: "Nu am putut încărca rugăciunile. Încearcă din nou."
+    label: "REGRESIA: ecranul nu e pe mesajul de eroare de încărcare (prayers.loadError)"
+- assertNotVisible:
+    text: "Rugăciunile s-au încărcat, dar favoritele nu au putut fi citite."
+    label: "REGRESIA: favoritele s-au citit curat pentru oaspete (prayers.favoritesError)"
+# POARTA de conținut: lista chiar vine din bază. „Tatăl nostru" e prima rugăciune publicată în
+# ordinea de afișare (`sort_order`=10) și categoria ei e „Rugăciuni de bază".
+- scrollUntilVisible:
+    element:
+      text: ".*Tatăl nostru.*"
+    direction: DOWN
+    timeout: 30000
+    centerElement: true
+    label: "POARTĂ: lista s-a încărcat din bază (prima rugăciune reală, „Tatăl nostru”)"
+- assertVisible:
+    text: "^(Rugăciuni de bază|RUGĂCIUNI DE BAZĂ)$"
+    label: "categoria rugăciunii reale (coloana `category` din `public.prayers`, stil cu majuscule)"
+- assertVisible:
+    text: "Citește rugăciunea"
+    label: "butonul care deschide textul (prayers.read)"
+# Deschiderea rugăciunii: textul ei, nu doar titlul. `index: 0` = cardul din capul listei, chiar
+# rugăciunea la care ne-am derulat mai sus.
+- tapOn:
+    text: "Citește rugăciunea"
+    index: 0
+    label: "deschid rugăciunea reală din capul listei („Tatăl nostru”)"
+- extendedWaitUntil:
+    visible: ".*Tatăl nostru, Care ești în ceruri, sfințească-se numele.*"
+    timeout: 20000
+    label: "POARTĂ: textul rugăciunii e pe ecran (text real din `public.prayers`)"
+- assertVisible:
+    text: "Închide"
+    label: "cardul e în starea EXTINSĂ (prayers.close) — deci nu e doar previzualizarea scurtă"
+- takeScreenshot: prayers
+# Derularea listei: a patra rugăciune reală (`sort_order`=40) trebuie să fie accesibilă.
+- scrollUntilVisible:
+    element:
+      text: ".*Cuvine-se cu adevărat.*"
+    direction: DOWN
+    timeout: 30000
+    centerElement: true
+    label: "a patra rugăciune reală din listă (se derulează până la ea)"
+# Căutarea fără diacritice (exact ce promite indiciul): „vamesului" -> „Rugăciunea vameșului".
+- scrollUntilVisible:
+    element:
+      text: "Caută o rugăciune"
+    direction: UP
+    timeout: 30000
+    label: "câmpul de căutare e în capul ecranului (după derulare)"
+- tapOn: "Caută o rugăciune"
+- inputText: "vamesului"
+- hideKeyboard
+- extendedWaitUntil:
+    visible: ".*Rugăciunea vameșului.*"
+    timeout: 20000
+    label: "POARTĂ: căutarea fără diacritice găsește rugăciunea reală (filtru pe titlu + text)"
+- assertVisible:
+    text: "^(Rugăciuni scurte|RUGĂCIUNI SCURTE)$"
+    label: "categoria rugăciunii găsite („Rugăciuni scurte”)"
+- assertNotVisible:
+    text: "Rugăciunea nu este încă în bibliotecă."
+    label: "REGRESIA: căutarea a găsit ceva (nu e starea „niciun rezultat”)"
+# Un cuvânt care nu există în nicio rugăciune: mesajul lui real, plus ieșirea spre chat.
+- tapOn: "Caută o rugăciune"
+- eraseText: 30
+- inputText: "zzzqqq"
+- hideKeyboard
+- extendedWaitUntil:
+    visible: "Rugăciunea nu este încă în bibliotecă."
+    timeout: 20000
+    label: "POARTĂ: cuvânt inexistent -> mesajul real (prayers.notFound)"
+- assertVisible:
+    text: "Întreabă Chatul"
+    label: "din starea fără rezultate se poate continua în chat (prayers.askChat)"
+# Poarta de autentificare a favoritelor: curățăm căutarea (altfel lista e goală și nu există niciun
+# buton de favorit), ne întoarcem la primul card și apăsăm.
+- tapOn: "Caută o rugăciune"
+- eraseText: 30
+- hideKeyboard
+- scrollUntilVisible:
+    element:
+      text: ".*Tatăl nostru.*"
+    direction: UP
+    timeout: 20000
+    centerElement: true
+    label: "primul card e din nou pe ecran (primul buton de favorit din ierarhie e al lui)"
+- tapOn:
+    text: "Adaugă la favorite"
+    index: 0
+    label: "favorit anonim -> poarta de autentificare (prayers.tsx:163 -> router.push('/auth'))"
+- extendedWaitUntil:
+    visible: "Bine ai revenit"
+    timeout: 20000
+    label: "POARTĂ: ecranul de autentificare s-a deschis (auth.titleSignIn)"
+- assertVisible:
+    text: "Contul păstrează favoritele și conversațiile tale."
+    label: "identitatea ecranului de autentificare (auth.subtitle)"

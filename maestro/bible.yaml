@@ -1,0 +1,186 @@
+# 05 — Biblia: alegerea cărții, capitolul real din bază, derularea în capitol și căutarea în capitol.
+#
+# CE VERIFIC, în ordine:
+#   1. aplicația pornește și vorbește românește (prologul comun `set-language-ro.yaml`);
+#   2. ecranul 05 se desenează cu identitatea lui reală: titlul „Biblia, aproape de tine", eyebrow-ul
+#      „BIBLIA LIBERĂ · NOUL TESTAMENT" (numele + scopul sursei, nu text scris de mână în flow),
+#      subtitlul, cardul sursei („SURSA BIBLICĂ", „Biblia Liberă", legătura către sursă);
+#   3. alegerea cărții „Ioan" chiar schimbă capitolul citit: cardul cititorului arată referința
+#      „IOAN 1" (cartea vine din i18n, capitolul din stare);
+#   4. TEXTUL capitolului e cel real din bază, verbatim: Ioan 1:1 „La început era Cuvântul, și
+#      Cuvântul era cu Dumnezeu, și Cuvântul era Dumnezeu." — cea mai puternică aserțiune a
+#      ecranului (nu doar titluri de secțiuni);
+#   5. derularea ajunge într-un verset din A DOUA JUMĂTATE a capitolului: Ioan 1:29 (capitolul are
+#      51 de versete, deci 29 e în a doua jumătate) — deci nu se citește doar primul ecran;
+#   6. căutarea în capitol: un cuvânt inexistent spune exact „Nu am găsit acest cuvânt în capitolul
+#      curent.", iar un cuvânt real scris FĂRĂ diacritice („Cuvantul") găsește versetul real
+#      (`normalizeSearchText` normalizează NFD și scoate semnele diacritice, bible.tsx:46-47);
+#   7. pe versetul real există controlul de favorit („Adaugă la favorite", eticheta din
+#      `prayers.favoriteAdd`);
+#   8. REGRESII: fără eroarea de încărcare a textului, fără „Acest capitol nu are încă versete
+#      publicate." și fără spinner-ul „Se încarcă textul...".
+#
+# Despre favoritul de verset: are ACEEAȘI poartă de autentificare ca rugăciunile
+# (`bible.tsx:88` -> `router.push('/auth')` când `!user`). Poarta se asertează o singură dată, în
+# `03-prayers.yaml`, unde butonul apăsat e primul din ierarhie și sigur vizibil; aici se asertează
+# că controlul există pe un verset real, ca să nu se repete aceeași navigare (și ca flow-ul să nu
+# rămână pe ecranul de autentificare, cu tab-urile pierdute).
+#
+# Textele sunt chei i18n reale (ro) din src/i18n/config.ts, extrase cu scriptul `extract-i18n-ro.mjs`
+# (PowerShell distorsionează diacriticele în consolă); versetele sunt verbatim din
+# docs/harta-ecrane-maestro.md §4.5 (translation_id `ronbl`), nu texte scrise de mână.
+#
+# FĂRĂ escape-uri de regex (backslash-punct) în șabloane: într-un scalar YAML cu ghilimele duble
+# backslash-ul e consumat de parser, iar `\\.` ajunge la Maestro ca „backslash literal" — exact
+# capcana din premium.yaml/chat.yaml. Punctul simplu potrivește punctul, ca în chat.yaml.
+#
+# DE CE `clearState: true` (ca în chat.yaml): rularea pornește oaspete nou, deci lista de favorite
+# de versete e goală și eticheta butonului e sigur „Adaugă la favorite" (nu „Elimină din favorite").
+appId: ro.ortodoxia.app
+---
+- launchApp:
+    clearState: true
+# Prolog comun: așază aplicația pe limba ROMÂNĂ (emulatorul/simulatorul e implicit pe engleză,
+# iar aplicația urmează limba dispozitivului la prima pornire — altfel aserțiunile de mai jos pică).
+- runFlow: set-language-ro.yaml
+- extendedWaitUntil:
+    visible: ".*(Acasă|Home).*"
+    timeout: 45000
+    label: "POARTĂ: aplicația a pornit (bara de tab-uri s-a desenat)"
+# Navigăm pe calea din interfață (tab-ul din bara de jos), nu prin deep link.
+- tapOn:
+    text: ".*(Biblia|Bible).*"
+    label: "tab-ul Biblia din bara de jos"
+- extendedWaitUntil:
+    visible: "Biblia, aproape de tine"
+    timeout: 30000
+    label: "POARTĂ: ecranul 05 s-a desenat (titlul lui real, nu un ecran gol)"
+- assertVisible:
+    text: "Alege cartea și capitolul pentru a citi în ritmul tău."
+    label: "subtitlul ecranului 05 (bible.subtitle)"
+- assertVisible:
+    text: "^(BIBLIA LIBERĂ · NOUL TESTAMENT|Biblia Liberă · Noul Testament)$"
+    label: "eyebrow-ul = numele + scopul sursei reale (BIBLE_SOURCE.name · scope; stil cu majuscule)"
+- assertVisible:
+    text: "^(SURSA BIBLICĂ|Sursa biblică)$"
+    label: "eticheta cardului de sursă (bible.sourceLabel; stil cu majuscule)"
+- assertVisible:
+    text: "Biblia Liberă"
+    label: "numele sursei reale (src/data/bible-source.ts, nu o traducere a aplicației)"
+- assertVisible:
+    text: "Vezi sursa și condițiile de folosire"
+    label: "legătura către sursă și condițiile de folosire (bible.sourceLink)"
+- scrollUntilVisible:
+    element:
+      text: "^Carte$"
+    direction: DOWN
+    timeout: 20000
+    centerElement: true
+    label: "secțiunea de alegere a cărții (bible.bookSection)"
+- assertVisible:
+    text: "^Capitol$"
+    label: "secțiunea de alegere a capitolului (bible.chapterSection)"
+- assertVisible:
+    text: "^(Capitolul anterior|Capitolul următor)$"
+    label: "navigarea între capitole există (bible.previousChapter/nextChapter)"
+- scrollUntilVisible:
+    element:
+      text: "Caută în capitolul curent"
+    direction: DOWN
+    timeout: 20000
+    label: "câmpul de căutare în capitol (bible.search)"
+# CAPCANĂ din docs/harta-ecrane-maestro.md §4.5: în listă există „Ioan", dar și „1 Ioan", „2 Ioan",
+# „3 Ioan" — de aceea selectorul e ANCORAT ('^Ioan$'), nu conține-text.
+- scrollUntilVisible:
+    element:
+      text: "^Ioan$"
+    direction: DOWN
+    timeout: 20000
+    label: "cartea Ioan din grila de cărți (se derulează până la ea)"
+- tapOn:
+    text: "^Ioan$"
+    label: "aleg cartea Ioan — cititorul trebuie să încarce capitolul 1 al ei"
+- scrollUntilVisible:
+    element:
+      text: "^(IOAN 1|Ioan 1)$"
+    direction: DOWN
+    timeout: 30000
+    centerElement: true
+    label: "POARTĂ: referința cititorului e acum „Ioan 1” (cartea din i18n + capitolul din stare)"
+- assertVisible:
+    text: "^(IOAN 1|Ioan 1)$"
+    label: "referința capitolului deschis (stilul o scrie cu majuscule)"
+# POARTA de conținut cea mai puternică: primul verset al capitolului, verbatim din bază.
+- scrollUntilVisible:
+    element:
+      text: ".*La început era Cuvântul, și Cuvântul era cu Dumnezeu, și Cuvântul era Dumnezeu.*"
+    direction: DOWN
+    timeout: 45000
+    centerElement: true
+    label: "POARTĂ: textul capitolului s-a încărcat (Ioan 1:1 verbatim)"
+- assertVisible:
+    text: ".*La început era Cuvântul, și Cuvântul era cu Dumnezeu, și Cuvântul era Dumnezeu.*"
+    label: "versetul real e pe ecran, nu un indicator de încărcare"
+- takeScreenshot: bible
+- assertNotVisible:
+    text: "Textul nu s-a putut încărca. Verifică internetul și încearcă din nou."
+    label: "REGRESIA: fără eroarea de încărcare a textului (bible.loadError)"
+- assertNotVisible:
+    text: "Acest capitol nu are încă versete publicate."
+    label: "REGRESIA: capitolul chiar are versete (bible.emptyChapter)"
+- assertNotVisible:
+    text: "Se încarcă textul..."
+    label: "REGRESIA: cititorul nu mai e pe spinner (bible.loading)"
+# Derulare până în a doua jumătate a capitolului: Ioan 1 are 51 de versete, iar Ioan 1:29 e în a
+# doua jumătate (docs/harta-ecrane-maestro.md §4.5).
+- scrollUntilVisible:
+    element:
+      text: ".*A doua zi, a văzut pe Isus venind la el.*"
+    direction: DOWN
+    timeout: 45000
+    centerElement: true
+    label: "POARTĂ: derularea ajunge la Ioan 1:29 (a doua jumătate a capitolului de 51 de versete)"
+- assertVisible:
+    text: ".*A doua zi, a văzut pe Isus venind la el.*"
+    label: "versetul din a doua jumătate e pe ecran (nu s-a terminat capitolul la primul ecran)"
+- assertVisible:
+    text: "^Adaugă la favorite$"
+    label: "pe versetul real există controlul de favorit (prayers.favoriteAdd)"
+# Căutarea în capitol, întâi cu un cuvânt inexistent: mesajul lui real.
+- scrollUntilVisible:
+    element:
+      text: "Caută în capitolul curent"
+    direction: UP
+    timeout: 30000
+    label: "câmpul de căutare e deasupra cititorului (după derulare)"
+- tapOn: "Caută în capitolul curent"
+- inputText: "zzzqqq"
+- hideKeyboard
+- scrollUntilVisible:
+    element:
+      text: "Nu am găsit acest cuvânt în capitolul curent."
+    direction: DOWN
+    timeout: 30000
+    centerElement: true
+    label: "POARTĂ: cuvânt inexistent -> mesajul real (bible.noSearchResults)"
+- assertVisible:
+    text: "Nu am găsit acest cuvânt în capitolul curent."
+    label: "mesajul de „niciun rezultat” e pe ecran"
+# Și acum un cuvânt REAL, scris FĂRĂ diacritice: căutarea normalizează și găsește versetul real.
+- tapOn: "Caută în capitolul curent"
+- eraseText: 30
+- inputText: "Cuvantul"
+- hideKeyboard
+- scrollUntilVisible:
+    element:
+      text: ".*La început era Cuvântul, și Cuvântul era cu Dumnezeu, și Cuvântul era Dumnezeu.*"
+    direction: DOWN
+    timeout: 30000
+    centerElement: true
+    label: "POARTĂ: căutarea fără diacritice găsește versetul real (normalizeSearchText)"
+- assertVisible:
+    text: ".*La început era Cuvântul, și Cuvântul era cu Dumnezeu, și Cuvântul era Dumnezeu.*"
+    label: "versetul filtrat e chiar textul real din capitol, nu un mesaj de stare"
+- assertNotVisible:
+    text: "Nu am găsit acest cuvânt în capitolul curent."
+    label: "REGRESIA: cu „Cuvantul” chiar s-a găsit ceva"

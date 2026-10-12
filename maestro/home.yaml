@@ -1,0 +1,85 @@
+# 02 — Acasă: ecranul zilei se desenează cu textele lui reale, nu gol.
+#
+# CE VERIFICĂ, în ordine:
+#   1. aplicația pornește și vorbește românește (prologul comun `set-language-ro.yaml`);
+#   2. titlul zilei și subtitlul ecranului sunt pe ecran (nu un ecran gol);
+#   3. conținutul zilei S-A TERMINAT de încărcat: secțiunea „Pilda zilei" se randează doar după
+#      răspunsul serverului (cât se încarcă, ecranul arată spinner + „Se încarcă ziua de astăzi...");
+#   4. cele trei secțiuni ale ecranului sunt acolo: Pilda zilei, Astăzi în calendar, Slujbe LIVE;
+#   5. cardul LIVE are eticheta lui de accesibilitate (unică pe ecran) și subtitlul lui;
+#   6. butonul „Întreabă ghidul AI" există ȘI chiar duce în chat (apare câmpul de scriere al chatului).
+#
+# Textele sunt chei i18n reale (ro) din src/i18n/config.ts, extrase cu scriptul `extract-i18n-ro.mjs`
+# (PowerShell distorsionează diacriticele în consolă), nu texte scrise de mână.
+#
+# FĂRĂ escape-uri de regex (backslash-punct) în șabloane: într-un scalar YAML cu ghilimele duble
+# backslash-ul e consumat de parser, iar `\\.` ajunge la Maestro ca „backslash literal" — exact
+# capcana din premium.yaml/chat.yaml. Punctul simplu potrivește punctul, ca în chat.yaml.
+# DE CE `clearState: true` (ca în chat.yaml): rularea pornește de la zero, deci conținutul zilei
+# se cere din nou serverului (nu se citește o stare veche din memorie), iar prologul de limbă readuce
+# aplicația pe română (e idempotent).
+appId: ro.ortodoxia.app
+---
+- launchApp:
+    clearState: true
+# Prolog comun: așază aplicația pe limba ROMÂNĂ (emulatorul/simulatorul e implicit pe engleză,
+# iar aplicația urmează limba dispozitivului la prima pornire — altfel aserțiunile de mai jos pică).
+- runFlow: set-language-ro.yaml
+- extendedWaitUntil:
+    visible: ".*(Acasă|Home).*"
+    timeout: 45000
+    label: "POARTĂ: aplicația a pornit (bara de tab-uri s-a desenat)"
+- extendedWaitUntil:
+    visible: "Doamne, luminează-mi calea"
+    timeout: 30000
+    label: "POARTĂ: ecranul Acasă s-a desenat (titlul zilei e textul real, nu ecran gol)"
+# Subtitlul eroului e UN SINGUR nod, care începe cu eticheta țării („România · …"): partea din
+# stânga depinde de regiune (src/i18n/config.ts: COUNTRY_LABELS + getCountryLabel), deci `.*`
+# se pune doar pe prefix, iar textul i18n se cere exact, până la punct.
+- assertVisible:
+    text: ".* · Un loc simplu pentru rugăciune, calendar și întrebări."
+    label: "subtitlul ecranului Acasă („<țara> · Un loc simplu pentru rugăciune, calendar și întrebări.”)"
+- extendedWaitUntil:
+    visible: "Pilda zilei"
+    timeout: 30000
+    label: "POARTĂ: conținutul zilei s-a încărcat (secțiunea apare doar după ce isLoading devine false)"
+- assertNotVisible:
+    text: "Se încarcă ziua de astăzi..."
+    label: "indicatorul de încărcare a dispărut de pe ecran"
+- assertVisible:
+    text: "Astăzi în calendar"
+    label: "secțiunea de calendar a zilei"
+- scrollUntilVisible:
+    element:
+      text: "Slujbe LIVE — Urmărește Sfânta Liturghie în direct"
+    direction: DOWN
+    timeout: 20000
+    centerElement: true
+    label: "cardul LIVE (se derulează până la el; titlul „Slujbe LIVE” apare de două ori, eticheta de accesibilitate e unică)"
+- assertVisible:
+    text: "Slujbe LIVE — Urmărește Sfânta Liturghie în direct"
+    label: "eticheta de accesibilitate a cardului LIVE (home.liveAccessibilityLabel)"
+- assertVisible:
+    text: "Urmărește Sfânta Liturghie în direct"
+    label: "subtitlul cardului LIVE"
+- scrollUntilVisible:
+    element:
+      text: "Întreabă ghidul AI"
+    direction: DOWN
+    timeout: 20000
+    centerElement: true
+    label: "butonul principal de pe Acasă (se derulează până la el, nu se presupune că e vizibil)"
+- assertVisible:
+    text: "Întreabă ghidul AI"
+    label: "butonul către chat există, cu textul lui real"
+- takeScreenshot: home
+- assertNotVisible:
+    text: "Conținutul zilei nu a putut fi încărcat. Încearcă din nou."
+    label: "REGRESIA: ecranul nu e pe mesajul de eroare (adică are conținut real, nu doar texte de rezervă)"
+- tapOn:
+    text: "Întreabă ghidul AI"
+    label: "butonul de pe Acasă trebuie să ducă în chat"
+- extendedWaitUntil:
+    visible: "Scrie întrebarea ta"
+    timeout: 30000
+    label: "POARTĂ: butonul chiar duce în chat (apare câmpul de scriere al chatului)"
