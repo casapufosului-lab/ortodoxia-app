@@ -9,6 +9,8 @@
 #   B. vizitator neautentificat    -> cardul arată „Conectează-te pentru notificări" (account.tsx:526),
 #      iar apăsarea duce pe ecranul de autentificare. Aceasta e schimbarea de stare verificabilă fără cont.
 # Ramura care nu se aplică este sărită; dacă niciuna nu se aplică, flow-ul pică la aserțiunea de stare.
+# EXTINS 12.10.2026 (nimic nu s-a slăbit): în ramura A s-a adăugat mesajul de confirmare cu ora, iar
+# la final a apărut ramura A2 — OPRIREA notificărilor. Vezi notele de lîngă fiecare.
 appId: ro.ortodoxia.app
 ---
 - launchApp:
@@ -21,7 +23,6 @@ appId: ro.ortodoxia.app
     timeout: 45000
     label: "PORȚI: aplicația a pornit"
 - tapOn: ".*(Cont|Account).*"
-# Prologul lasă ecranul Cont derulat la secțiunea de limbă (acolo schimbă limba), iar poziția de
 # Prologul lasă ecranul Cont derulat la secțiunea de limbă (acolo schimbă limba), iar poziția de
 # derulare se păstrează când revii pe tab — deci titlul se caută derulând în SUS, nu se așteaptă.
 - scrollUntilVisible:
@@ -71,6 +72,16 @@ appId: ro.ortodoxia.app
           timeout: 30000
           label: "PORȚI: starea s-a schimbat în active după apăsare"
       - assertVisible: "Oprește notificările zilnice"
+      # Extindere 12.10.2026: mesajul de confirmare (singurul loc unde se vede ORA, „ora 10:00”) stă
+      # SUB buton, deci se derulează pînă la el — altfel aserțiunea ar pica pe un element sub pliu.
+      - scrollUntilVisible:
+          element:
+            text: "Notificările zilnice sunt active pentru ora 10:00."
+          direction: DOWN
+          timeout: 20000
+          centerElement: true
+          label: "PORȚI: mesajul de confirmare al activării (account.notificationsActiveMessage)"
+      - assertVisible: "Notificările zilnice sunt active pentru ora 10:00."
       - takeScreenshot: notifications-active
 
 # ── Ramura B: vizitator neautentificat — butonul duce pe autentificare ────────────────────────────
@@ -85,3 +96,37 @@ appId: ro.ortodoxia.app
           label: "PORȚI: butonul chiar duce undeva (ecranul de autentificare)"
       - assertVisible: "Autentificare"
       - takeScreenshot: notifications-auth-gate
+
+# ── Ramura A2 (extindere 12.10.2026): OPRIREA notificărilor ─────────────────────────────────────
+# Se intră doar dacă butonul de oprire e pe ecran (adică starea e „active” — fie de la ramura A, fie
+# de dinainte). De ce contează: account.tsx:354-361 spune negru pe alb că aplicația NU avea niciun
+# drum de oprire (singura scriere în `notification_preferences` punea enabled:true), deci un om care
+# voia să scape de notificări continua să le primească. Butonul de acum trebuie să scrie enabled:false
+# și să dezactiveze rîndurile din `notification_devices`; aici se dovedește că starea AFIȘATĂ se
+# schimbă în ambele sensuri, nu doar că butonul se apasă.
+- runFlow:
+    when:
+      visible: "Oprește notificările zilnice"
+    commands:
+      - tapOn: "Oprește notificările zilnice"
+      - extendedWaitUntil:
+          visible: "Notificările sunt oprite."
+          timeout: 30000
+          label: "POARTĂ: starea s-a schimbat în oprite după apăsare"
+      - scrollUntilVisible:
+          element:
+            text: "Notificările zilnice au fost oprite."
+          direction: DOWN
+          timeout: 20000
+          centerElement: true
+          label: "PORȚI: mesajul de confirmare al opririi (account.notificationsDisabledMessage)"
+      - assertVisible: "Notificările zilnice au fost oprite."
+      - assertVisible: "Activează notificările"
+      - assertNotVisible: "Notificările sunt active."
+      - takeScreenshot: notifications-disabled
+# Stare la ieșire: notificările rămîn OPRITE dacă erau pornite (comutatorul a fost dovedit în ambele
+# sensuri). La rularea următoare, ramura A le pornește iar — fluxul e repetabil.
+# NU se aserționează „Notificări indisponibile” ca titlu de card: în cod (account.tsx:509) titlul
+# secțiunii e mereu „Notificări zilnice”, iar account.notificationsUnavailableTitle (linia 149) apare
+# doar ca ALERTĂ cînd preferința nu poate fi citită din bază. Rămîne spusă limita: pe simulator nu se
+# pot verifica notificările push reale (APNs/FCM).

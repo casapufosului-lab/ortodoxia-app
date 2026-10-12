@@ -95,3 +95,42 @@ appId: ro.ortodoxia.app
     label: "subsolul cu informația despre plată"
 - assertVisible: "Plățile se procesează securizat prin App Store sau Google Play."
 - takeScreenshot: premium
+
+# ── EXTINDERE 12.10.2026 — linia de PREȚ a planurilor și linkurile legale ───────────────────────
+# PREȚUL nu se scrie niciodată în flow. Pe ecran ajunge `priceFor(...) ?? t('premium.priceInStore')`
+# (premium.tsx:368 și :374): ori `priceString`-ul din magazin (scurt, cu zecimale), ori textul explicit
+# „Preț în magazin” când magazinul nu răspunde. Ambele sunt stări reale, deci aserțiunea cere UNA
+# dintre ele, iar nicio sumă nu e hardcodată.
+# Șablonul e mai strict decât „conține cifre”: `[^=]{0,8}` scoate din joc rândurile cardului de
+# DIAGNOSTIC de la subsol (au forma „priceFor('monthly') = 29,99 lei”), iar `.{0,14}` mărginește nodul
+# la lungimea unei linii de preț (altfel s-ar potrivi și un text lung care doar conține o dată).
+# Fluxul de bază se termină derulat LA SUBSOL, iar linia de preț stă pe cardul planului (sus): de
+# aceea se derulează ÎN SUS (capcana descrisă în docs/harta-ecrane-maestro.md §4.10). Fără escape-uri
+# de regex în șabloane: backslash-ul e consumat de parserul YAML, iar punctul simplu potrivește punctul.
+- scrollUntilVisible:
+    element:
+      text: "[^=]{0,8}(Preț în magazin|[0-9]+.[0-9][0-9]).{0,14}"
+    direction: UP
+    timeout: 20000
+    centerElement: true
+    label: "linia de preț a unui plan (derulare ÎN SUS: fluxul de bază se termină la subsol)"
+- assertVisible:
+    text: "[^=]{0,8}(Preț în magazin|[0-9]+.[0-9][0-9]).{0,14}"
+    label: "PORȚI: prețul de pe ecran e o valoare REALĂ din magazin sau textul explicit „Preț în magazin” — nu o sumă scrisă de noi"
+- takeScreenshot: premium-price
+# Linkurile legale stau sub subsolul de plată (premium.tsx:406-414). Că linkurile chiar DESCHID
+# documentele se dovedește în `legal.yaml`; aici se dovedește că sunt pe ecran.
+- scrollUntilVisible:
+    element:
+      text: "Politica de confidențialitate"
+    direction: DOWN
+    timeout: 20000
+    centerElement: true
+    label: "linkul spre politica de confidențialitate (stă sub nota de plată)"
+- assertVisible:
+    text: "Politica de confidențialitate"
+    label: "linkul legal „Politica de confidențialitate” e pe ecranul Premium"
+- assertVisible:
+    text: "Termeni și condiții"
+    label: "linkul legal „Termeni și condiții” e pe ecranul Premium"
+- takeScreenshot: premium-legal-links

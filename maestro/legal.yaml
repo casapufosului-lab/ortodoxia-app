@@ -1,0 +1,164 @@
+# 11 — Legal: politica de confidențialitate și termenii, deschise DIN APLICAȚIE (din Cont).
+#
+# CE VERIFICĂ, în ordine:
+#   1. ambele documente se deschid din linkul lor din Cont (nu doar că linkul există);
+#   2. pe ecran apar VALORILE REALE de configurare: operatorul juridic, data versiunii
+#      („23 septembrie 2026"), adresa de suport și, la Termeni, legea aplicabilă („România");
+#   3. niciun placeholder brut ({legalEntity}, {supportAddress}, ...) nu a rămas pe ecran
+#      (dacă apare, e o problemă reală de build — vezi docs/harta-ecrane-maestro.md §4.11);
+#   4. documentul chiar se derulează până la ultimul capitol;
+#   5. întoarcerea (back) readuce ecranul Cont, după ambele documente.
+#
+# Textele sunt chei i18n reale (ro) din src/i18n/config.ts, iar fragmentele substituite sînt cele
+# fixate pentru TOATE profilele de build (eas.json / codemagic.yaml), deci nu depind de mașina locală.
+appId: ro.ortodoxia.app
+---
+- launchApp:
+    stopApp: true
+# Prolog comun: așază aplicația pe limba ROMÂNĂ (emulatorul/simulatorul e implicit pe engleză,
+# iar aplicația urmează limba dispozitivului la prima pornire — altfel aserțiunile de mai jos pică).
+- runFlow: set-language-ro.yaml
+- extendedWaitUntil:
+    visible: ".*(Acasă|Home).*"
+    timeout: 45000
+    label: "PORȚI: aplicația a pornit (bara de tab-uri s-a desenat)"
+- tapOn: ".*(Cont|Account).*"
+# Prologul lasă ecranul Cont derulat la secțiunea de limbă, iar poziția de derulare se păstrează când
+# revii pe tab — deci titlul se caută derulând în SUS, nu se așteaptă.
+- scrollUntilVisible:
+    element:
+      text: ".*Contul meu.*"
+    direction: UP
+    timeout: 30000
+    label: "PORȚI: ecranul Cont s-a deschis (titlul există, chiar dacă ecranul era derulat)"
+
+# ── 1. POLITICA DE CONFIDENȚIALITATE ────────────────────────────────────────────────────────────
+- scrollUntilVisible:
+    element:
+      text: "Politica de confidențialitate"
+    direction: DOWN
+    timeout: 30000
+    centerElement: true
+    label: "linkul spre politică (secțiunea Despre, sub cardurile de abonament și de notificări)"
+- tapOn:
+    text: "Politica de confidențialitate"
+    label: "linkul chiar deschide documentul ÎN aplicație"
+# Poarta de deschidere NU poate fi titlul: linkul din Cont are exact același text ca titlul
+# documentului, deci s-ar potrivi și înainte de navigare. Linia de versiune există DOAR pe ecranele
+# legale, deci ea dovedește că s-a schimbat ecranul.
+- extendedWaitUntil:
+    visible: "Versiune: 1.0 — 23 septembrie 2026"
+    timeout: 30000
+    label: "PORȚI: documentul s-a deschis (linia de versiune există doar pe ecranele legale)"
+- assertVisible:
+    text: "Politica de confidențialitate"
+    label: "titlul documentului (privacy.title)"
+- assertVisible:
+    text: "1. Operator"
+    label: "primul capitol (privacy.s1Title)"
+- assertVisible:
+    text: "YAC PLANET S.R.L., CUI 50636986, Reg. Com. J2024027573006"
+    label: "operatorul juridic REAL (valoarea din EXPO_PUBLIC_LEGAL_ENTITY, nu placeholderul)"
+- assertVisible:
+    text: "yacplanet@ortodoxiaapp.anonaddy.com"
+    label: "adresa de suport REALĂ (valoarea din EXPO_PUBLIC_SUPPORT_EMAIL, nu placeholderul)"
+- assertNotVisible:
+    text: ".*(supportAddress|legalEntity|postalAddress|jurisdiction|locality|effectiveDate|privacyPolicyUrl|termsUrl).*"
+    label: "REGRESIA: niciun placeholder brut nu a rămas pe ecran (ar însemna lipsă reală de configurare în build)"
+- assertNotVisible:
+    text: '.*\[de completat\].*'
+    label: "REGRESIA: marcajul „[de completat]” (legal.toBeCompleted) nu apare — apariția lui = lipsă reală de configurare în build (§4.11)"
+- scrollUntilVisible:
+    element:
+      text: "12. Drepturile dumneavoastră în detaliu și autoritatea de supraveghere"
+    direction: DOWN
+    timeout: 30000
+    centerElement: true
+    label: "ultimul capitol al politicii (documentul chiar se derulează pînă jos)"
+- assertVisible:
+    text: "12. Drepturile dumneavoastră în detaliu și autoritatea de supraveghere"
+    label: "ultimul capitol e pe ecran (privacy.s12Title)"
+- takeScreenshot: legal-privacy
+# Întoarcerea: comanda `back` e suportată DOAR pe Android și Web (docs.maestro.dev →
+# reference/commands-available/back: „currently supported only on Android and Web"), deci
+# pe iOS se face cu gestul de margine al ecranului din stivă — amîndouă readuc ecranul Cont.
+- runFlow:
+    when:
+      platform: Android
+    commands:
+      - back
+- runFlow:
+    when:
+      platform: iOS
+    commands:
+      - swipe:
+          start: "1%, 50%"
+          end: "90%, 50%"
+          duration: 400
+- extendedWaitUntil:
+    visible: ".*Contul meu.*"
+    timeout: 30000
+    label: "PORȚI: întoarcerea din document readuce ecranul Cont"
+
+# ── 2. TERMENI ȘI CONDIȚII ──────────────────────────────────────────────────────────────────────
+- scrollUntilVisible:
+    element:
+      text: "Termeni și condiții"
+    direction: DOWN
+    timeout: 30000
+    centerElement: true
+    label: "linkul spre termeni (rândul de sub cel de politică)"
+- tapOn:
+    text: "Termeni și condiții"
+    label: "linkul chiar deschide documentul ÎN aplicație"
+- extendedWaitUntil:
+    visible: "Versiune: 1.0 — 23 septembrie 2026"
+    timeout: 30000
+    label: "PORȚI: documentul de termeni s-a deschis"
+- assertVisible:
+    text: "1. Operator și acceptare"
+    label: "primul capitol (terms.s1Title)"
+- scrollUntilVisible:
+    element:
+      text: "12. Legea aplicabilă"
+    direction: DOWN
+    timeout: 30000
+    centerElement: true
+    label: "ultimul capitol al termenilor"
+- assertVisible:
+    text: "12. Legea aplicabilă"
+    label: "ultimul capitol e pe ecran (terms.s12Title)"
+- scrollUntilVisible:
+    element:
+      text: ".*guvernate de legile România.*"
+    direction: DOWN
+    timeout: 20000
+    centerElement: true
+    label: "textul legii aplicabile, cu valoarea reală a jurisdicției"
+- assertVisible:
+    text: ".*guvernate de legile România.*"
+    label: "PORȚI: legea aplicabilă e „România” (valoarea din EXPO_PUBLIC_LEGAL_JURISDICTION), nu {jurisdiction}"
+- assertNotVisible:
+    text: ".*(supportAddress|legalEntity|postalAddress|jurisdiction|locality|effectiveDate|privacyPolicyUrl|termsUrl).*"
+    label: "REGRESIA: niciun placeholder brut nici în termeni"
+- assertNotVisible:
+    text: '.*\[de completat\].*'
+    label: "REGRESIA: nici la termeni nu apare marcajul „[de completat]”"
+- takeScreenshot: legal-terms
+- runFlow:
+    when:
+      platform: Android
+    commands:
+      - back
+- runFlow:
+    when:
+      platform: iOS
+    commands:
+      - swipe:
+          start: "1%, 50%"
+          end: "90%, 50%"
+          duration: 400
+- extendedWaitUntil:
+    visible: ".*Contul meu.*"
+    timeout: 30000
+    label: "PORȚI: întoarcerea din termeni readuce ecranul Cont"

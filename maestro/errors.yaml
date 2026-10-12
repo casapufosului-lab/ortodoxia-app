@@ -1,0 +1,201 @@
+# 13 — Stări de eroare: fără rețea, revenirea la normal, back repetat, pornire la rece.
+#
+# CE VERIFICĂ, în ordine:
+#   0. starea NORMALĂ, înainte de a o strica (ecranul Acasă chiar are conținutul zilei);
+#   1. FĂRĂ REȚEA: cardul de rezervă e încă acolo;
+#   2. REVENIREA: cu rețeaua pornită la loc, butonul de reîncercare readuce ecranul la normal;
+#   3. BACK REPETAT: patru apăsări de back nu scot niciun dialog de crăpare/„nu răspunde”;
+#   4. PORNIRE LA RECE: aplicația repornește curat, cu conținutul încărcat.
+#
+# REGULI RESPECTATE (cerute în task):
+#   * totul pornește cu prologul `set-language-ro.yaml`;
+#   * se folosesc DOAR comenzi suportate de Maestro: `setAirplaneMode`, `extendedWaitUntil`,
+#     `scrollUntilVisible`, `assertNotVisible`, `retry`, `back`/`swipe`, `launchApp`, `takeScreenshot`;
+#   * la finalul părții fără rețea, MODOUL AVION SE SCOATE, deci flow-ul NU lasă dispozitivul offline;
+#   * partea de rețea e închisă în `when: platform: Android` — `setAirplaneMode` e suportată DOAR pe
+#     Android (pe iOS simulatoarele nu au mod avion; acolo comanda trece dar nu face nimic — vezi
+#     docs.maestro.dev, pagina setAirplaneMode). Pe iOS se rulează restul (pașii 3 și 4);
+#   * `back` e suportat DOAR pe Android/Web, deci fiecare întoarcere are două ramuri: `back`
+#     pe Android și gestul de margine (`swipe` 1% → 90%) pe iOS (aici la pasul 3, și în legal.yaml).
+#
+# DE CE `retry` LA REVENIRE: după ce modul avion se scoate, rețeaua are nevoie de cîteva clipe ca să
+# revină, deci prima apăsare pe „Reîncearcă” poate prinde încă lipsa de rețea. Blocul se reia de pînă
+# la 3 ori, iar aserțiunile de la sfîrșitul lui trebuie să treacă toate la ultima încercare — nu se
+# ascunde nimic: dacă rețeaua nu revine sau conținutul nu vine, flow-ul pică (roșu).
+#
+# ATENȚIE la eșec în mijlocul părții 1: fluxul se oprește și modul avion rămîne PORNIT. Comanda de
+# scoatere stă imediat după partea 1, dar o oprire a rulării mai devreme nu o mai ajunge; dacă se
+# întîmplă, se scoate manual modul avion înainte de următoarea rulare.
+#
+# Textele sînt chei i18n reale (ro) din src/i18n/config.ts, iar replica lor se află în
+# src/app/(tabs)/index.tsx (cardul de eroare: liniile 229-236; indicatorul de încărcare: 237-241).
+appId: ro.ortodoxia.app
+---
+- launchApp:
+    stopApp: true
+# Prolog comun: așază aplicația pe limba ROMÂNĂ (emulatorul/simulatorul e implicit pe engleză,
+# iar aplicația urmează limba dispozitivului la prima pornire — altfel aserțiunile de mai jos pică).
+- runFlow: set-language-ro.yaml
+- extendedWaitUntil:
+    visible: ".*(Acasă|Home).*"
+    timeout: 45000
+    label: "PORȚI: aplicația a pornit"
+- tapOn: ".*(Acasă|Home).*"
+
+# ── 0. STARE NORMALĂ (linia de bază, înainte de a strica ceva) ──────────────────────────────────
+- extendedWaitUntil:
+    visible: "Doamne, luminează-mi calea"
+    timeout: 45000
+    label: "PORȚI: ecranul Acasă s-a desenat normal"
+- extendedWaitUntil:
+    visible: "Pilda zilei"
+    timeout: 45000
+    label: "PORȚI: starea normală are conținutul zilei încărcat (plecăm de la un ecran sănătos)"
+- assertNotVisible:
+    text: ".*(Conținutul zilei nu a putut fi încărcat|A apărut o eroare neașteptată).*"
+    label: "linia de bază: nicio eroare pe ecran înainte de test"
+
+# ── 1. FĂRĂ REȚEA (doar pe Android: modul avion nu există pe simulatoarele iOS) ─────────────────
+- runFlow:
+    when:
+      platform: Android
+    commands:
+      - setAirplaneMode: enabled
+      - launchApp:
+          stopApp: true
+      - extendedWaitUntil:
+          visible: "Doamne, luminează-mi calea"
+          timeout: 45000
+          label: "PORȚI: aplicația a pornit de la zero fără rețea (ecranul Acasă s-a desenat)"
+      - extendedWaitUntil:
+          visible: ".*Reîncearcă.*"
+          timeout: 60000
+          label: "PORȚI: fără rețea, Acasă NU rămîne pe încărcare — apare cardul de eroare cu butonul de reîncercare (common.retry)"
+      - assertVisible:
+          text: ".*(Conținutul zilei nu a putut fi încărcat|A apărut o eroare neașteptată).*"
+          label: "PORȚI: mesajul e unul dintre cele două texte reale (home.loadError / home.unexpectedError); se acceptă amîndouă fiindcă eroarea de rețea poate cădea pe oricare ramură din index.tsx:173 sau :185"
+      - assertNotVisible:
+          text: "Se încarcă ziua de astăzi..."
+          label: "indicatorul de încărcare s-a oprit: nu a rămas pe spinner la nesfîrșit"
+      - assertVisible:
+          text: "Pilda zilei"
+          label: "titlul secțiunii rămîne pe ecran (același text ca în starea normală) — se aserționează ÎNAINTE de derulare, cît e sigur în ecran"
+      - scrollUntilVisible:
+          element:
+            text: ".*Pilda semănătorului.*"
+          direction: DOWN
+          timeout: 20000
+          centerElement: true
+          label: "cardul de rezervă, sub cardul de eroare"
+      - assertVisible:
+          text: ".*Pilda semănătorului.*"
+          label: "fără rețea se arată conținutul de REZERVĂ (home.parableTitleFallback) — ecranul nu minte că ar avea conținutul zilei"
+      - takeScreenshot: errors-offline
+
+# ── 2. REVENIREA (imediat după partea 1, ca dispozitivul să nu rămînă offline) ──────────────────
+- runFlow:
+    when:
+      platform: Android
+    commands:
+      - setAirplaneMode: disabled
+      - scrollUntilVisible:
+          element:
+            text: "Doamne, luminează-mi calea"
+          direction: UP
+          timeout: 20000
+          label: "înapoi sus, ca butonul de reîncercare să fie sigur pe ecran"
+      - extendedWaitUntil:
+          visible: ".*Reîncearcă.*"
+          timeout: 15000
+          label: "PORȚI: cardul de eroare e încă pe ecran (rețeaua a revenit, dar nimeni nu a reîncercat încă)"
+      - retry:
+          maxRetries: 2
+          commands:
+            - tapOn:
+                text: ".*Reîncearcă.*"
+                optional: true
+                label: "reîncercarea pornește reîncărcarea (dacă butonul mai e pe ecran)"
+            - extendedWaitUntil:
+                notVisible: "Se încarcă ziua de astăzi..."
+                timeout: 45000
+                label: "PORȚI: încărcarea s-a terminat (indicatorul nu mai e pe ecran)"
+            - assertNotVisible:
+                text: ".*(Conținutul zilei nu a putut fi încărcat|A apărut o eroare neașteptată).*"
+                label: "PORȚI: eroarea a dispărut — reîncercarea a reușit (un eșec de rețea scrie mereu unul dintre aceste texte, deci absența lor = răspuns bun de la server)"
+            - assertVisible:
+                text: "Pilda zilei"
+                label: "PORȚI: secțiunea de conținut e desenată (ecranul a ieșit din încărcare)"
+            - assertVisible:
+                text: "Astăzi în calendar"
+                label: "PORȚI: a doua secțiune de conținut s-a întors"
+            # Cerut explicit de §4.13: reîncercarea trebuie să aducă CONȚINUTUL zilei, nu doar
+            # dispariția erorii. Titlul real al pildei se schimbă zilnic, deci NU se scrie în flow:
+            # se cere absența titlului de REZERVĂ, care se vede doar cînd dailyContent e gol (adică
+            # exact în starea fără rețea de mai sus). Dacă pică aici: ori rețeaua nu s-a întors, ori
+            # rîndul de azi din `daily_content` nu are `parable_title` — a doua e problemă de conținut
+            # în bază, nu de flow.
+            - assertNotVisible:
+                text: ".*Pilda semănătorului.*"
+                label: "PORȚI (cerut de §4.13): conținutul de REZERVĂ a dispărut, deci reîncercarea a adus conținutul real al zilei"
+      - takeScreenshot: errors-recovery
+
+# ── 3. BACK REPETAT ─────────────────────────────────────────────────────────────────────────────
+# Patru apăsări de back. Comanda `back` e suportată DOAR pe Android și Web (docs.maestro.dev →
+# reference/commands-available/back: „currently supported only on Android and Web"), deci pe iOS se
+# folosește gestul de margine al ecranului din stivă — pe ecranul-rădăcină nu are efect, iar exact
+# asta se verifică: nimic nu se strică. Pe Android ecranul Acasă e rădăcină, deci aplicația poate
+# ieși în fundal; oricum pasul 4 o repornește cu `stopApp: true`.
+# Nu trebuie să apară niciun dialog de crăpare/„nu răspunde” și aplicația trebuie să rămînă
+# repornibilă (pasul 4). Dacă aici pică din cauza dialogului „System UI isn't responding” al
+# emulatorului, mediul e stricat, nu aplicația — vezi docs/VERIFICARE-AUTOMATA-MAESTRO.md.
+- runFlow:
+    when:
+      platform: Android
+    commands:
+      - back
+      - back
+      - back
+      - back
+- runFlow:
+    when:
+      platform: iOS
+    commands:
+      - swipe:
+          start: "1%, 50%"
+          end: "90%, 50%"
+          duration: 400
+      - swipe:
+          start: "1%, 50%"
+          end: "90%, 50%"
+          duration: 400
+      - swipe:
+          start: "1%, 50%"
+          end: "90%, 50%"
+          duration: 400
+      - swipe:
+          start: "1%, 50%"
+          end: "90%, 50%"
+          duration: 400
+- assertNotVisible:
+    text: ".*(s-a oprit|nu răspunde|has stopped|isn't responding|keeps stopping).*"
+    label: "REGRESIA: back-ul repetat nu a scos niciun dialog de crăpare/„nu răspunde”"
+- takeScreenshot: errors-after-back
+
+# ── 4. PORNIRE LA RECE ──────────────────────────────────────────────────────────────────────────
+- launchApp:
+    stopApp: true
+- extendedWaitUntil:
+    visible: "Doamne, luminează-mi calea"
+    timeout: 45000
+    label: "PORȚI: pornirea la rece ajunge pe Acasă (nu pe ecran de eroare sau gol)"
+- extendedWaitUntil:
+    visible: "Pilda zilei"
+    timeout: 45000
+    label: "PORȚI: conținutul zilei s-a încărcat la pornirea la rece"
+- assertNotVisible:
+    text: "Se încarcă ziua de astăzi..."
+    label: "indicatorul de încărcare a dispărut la pornirea la rece"
+- assertNotVisible:
+    text: ".*(Conținutul zilei nu a putut fi încărcat|A apărut o eroare neașteptată).*"
+    label: "PORȚI: după pornirea la rece nu rămîne nicio urmă de eroare de la partea fără rețea"
+- takeScreenshot: errors-cold-start
