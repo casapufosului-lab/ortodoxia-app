@@ -7,15 +7,15 @@ name: iOS verify (simulator + Maestro, fara publicare)
 # SIMULATOR, fara semnare (CODE_SIGNING_ALLOWED=NO).
 #
 # CAND PORNETE:
-#   - DOAR manual (workflow_dispatch). `on: push` a fost scos pe 11.10.2026: fiecare push pe
-#     `maestro-verify` pornea o rulare macOS, iar macOS pe repo privat consuma minutele de ~10x.
-#     Din CLI: gh workflow run ios-verify.yml --ref maestro-verify
-#   Codemagic NU mai face verificarea pe simulator (workflow-ul `ios-verify` a fost scos din
-#   codemagic.yaml). Acolo a ramas doar `ios-testflight`, pornit manual, dimineata, unul per lansare.
+#   - DOAR manual (workflow_dispatch). `on: push` a fost scos pe 11.10.2026: fiecare push pornea o
+#     rulare macOS. Din CLI: gh workflow run ios-verify.yml --ref master
+#   - Acesta e CANALUL PRINCIPAL de verificare iOS de pe 12.10.2026: repo-ul e PUBLIC, iar GitHub da
+#     minute macOS GRATIS si NELIMITATE la repo public (la privat: 2000 min/luna, consumate de ~10x
+#     pe macOS, epuizate pana 1 noiembrie). Codemagic rămâne doar pentru build-ul semnat de TestFlight.
+#   - Suta completa: 12 flow-uri x 3 treceri = 36 de rezultate (JUnit + captura per flow si trecere),
+#     cu poarta care refuza o lista incompleta.
 #
-# REGULA PROIECTULUI: un singur macOS care consuma minute, o data. Nu porni acest workflow in timp ce
-# ruleaza `ios-testflight` (Codemagic) — `concurrency` de mai jos serializeaza doar rulările acestui
-# workflow, nu știe nimic de Codemagic.
+# REGULA PROIECTULUI: codul se comite inainte de rulare (workflow-ul verifica exact commitul pornit).
 
 on:
   # DOAR manual. `on: push` a fost scos pe 11.10.2026: fiecare push pe `maestro-verify` pornea o
@@ -34,7 +34,9 @@ jobs:
     # Codemagic a compilat .app-ul cu succes. macos-15 are implicit 16.4 (Swift 6.1), iar
     # "cel mai nou" de pe macos-15 e 26.3 = bug upstream expo/expo#50061.
     runs-on: macos-26
-    timeout-minutes: 60
+    # 12 flow-uri x 3 treceri + build-ul .app-ului ≈ 75-80 min. Repo public = minute macOS nelimitate
+    # (la repo privat GitHub dadea doar 2000 min/luna, de ~10x pe macOS).
+    timeout-minutes: 120
     env:
       BUNDLE_ID: ro.ortodoxia.app
       XCODE_WORKSPACE: ios/Ortodoxia.xcworkspace
@@ -175,7 +177,7 @@ jobs:
           xcrun simctl bootstatus "$DEVICE_UDID" -b
           xcrun simctl install "$DEVICE_UDID" "$APP"
 
-      - name: Ruleaza flow-urile Maestro pe simulator
+      - name: Ruleaza flow-urile Maestro pe simulator (12 flow-uri x 3 treceri)
         run: |
           # GitHub Actions ruleaza scriptul cu `bash -e`, deci fara `set +e` primul flow picat
           # omoara scriptul INAINTE de `case "$code" in` si restul flow-urilor nu mai ruleaza
@@ -186,36 +188,52 @@ jobs:
           mkdir -p ci-screenshots
           : > flow-results.txt
           FAILED=""
-          for f in maestro/live.yaml maestro/chat.yaml maestro/premium.yaml maestro/notifications.yaml; do
-            name=$(basename "$f" .yaml)
-            echo "======== Maestro: $name ========"
-            # ATENTIE: flagurile corecte sunt --format JUNIT si --output. Cu "-o" Maestro raspunde
-            # "Unknown option: '-o'", iese cu cod 2 si NU ruleaza niciun flow (patit 11.10.2026).
-            maestro --device "$DEVICE_UDID" test "$f" \
-              --format JUNIT --output "maestro-$name.xml" \
-              --debug-output "maestro-$name-debug"
-            code=$?
-            if [ "$code" -ne 0 ]; then
-              # DOVADA pentru diagnostic: arborele de accesibilitate exact in momentul picarii.
-              # Fara el, fiecare incercare pe macOS e oarba (11.10.2026).
-              maestro --device "$DEVICE_UDID" hierarchy --compact > "hierarchy-$name.txt" 2>&1 || true
-            fi
-            case "$code" in
-              0) printf '%s\tPASS\n' "$name" >> flow-results.txt ;;
-              1) printf '%s\tFAIL (flow, exit 1)\n' "$name" >> flow-results.txt; FAILED="$FAILED $name" ;;
-              2) printf '%s\tEROARE CLI (exit 2): comanda Maestro e gresita, flow-ul NU a rulat\n' "$name" >> flow-results.txt; FAILED="$FAILED $name" ;;
-              *) printf '%s\tFAIL (exit %s)\n' "$name" "$code" >> flow-results.txt; FAILED="$FAILED $name" ;;
-            esac
-            ls -l "maestro-$name.xml" 2>/dev/null || echo "  (nu s-a produs maestro-$name.xml)"
-            xcrun simctl io "$DEVICE_UDID" screenshot "ci-screenshots/$name.png" || true
+          PASSES="${IOS_PASSES:-3}"
+          for pass in $(seq 1 "$PASSES"); do
+            echo "######## TRECEREA $pass din $PASSES ########"
+            mkdir -p "ci-screenshots/pass$pass"
+            # set-language-ro.yaml e PROLOGUL (ruleaza in interiorul fiecarui flow), nu se ruleaza separat.
+            for f in $(ls -1 maestro/*.yaml | grep -v 'set-language-ro'); do
+              name=$(basename "$f" .yaml)
+              echo "======== pass$pass Maestro: $name ========"
+              # ATENTIE: flagurile corecte sunt --format JUNIT si --output. Cu "-o" Maestro raspunde
+              # "Unknown option: '-o'", iese cu cod 2 si NU ruleaza niciun flow (patit 11.10.2026).
+              maestro --device "$DEVICE_UDID" test "$f" \
+                --format JUNIT --output "maestro-pass$pass-$name.xml" \
+                --debug-output "maestro-pass$pass-$name-debug"
+              code=$?
+              if [ "$code" -ne 0 ]; then
+                # DOVADA pentru diagnostic: arborele de accesibilitate exact in momentul picarii.
+                # Fara el, fiecare incercare pe macOS e oarba (11.10.2026).
+                maestro --device "$DEVICE_UDID" hierarchy --compact > "hierarchy-pass$pass-$name.txt" 2>&1 || true
+              fi
+              case "$code" in
+                0) printf 'pass%s\t%s\tPASS\n' "$pass" "$name" >> flow-results.txt ;;
+                1) printf 'pass%s\t%s\tFAIL (flow, exit 1)\n' "$pass" "$name" >> flow-results.txt; FAILED="$FAILED pass$pass:$name" ;;
+                2) printf 'pass%s\t%s\tEROARE CLI (exit 2): comanda Maestro e gresita, flow-ul NU a rulat\n' "$pass" "$name" >> flow-results.txt; FAILED="$FAILED pass$pass:$name" ;;
+                *) printf 'pass%s\t%s\tFAIL (exit %s)\n' "$pass" "$name" "$code" >> flow-results.txt; FAILED="$FAILED pass$pass:$name" ;;
+              esac
+              ls -l "maestro-pass$pass-$name.xml" 2>/dev/null || echo "  (nu s-a produs maestro-pass$pass-$name.xml)"
+              xcrun simctl io "$DEVICE_UDID" screenshot "ci-screenshots/pass$pass/$name.png" || true
+            done
           done
-          echo "======== REZULTAT PER FLOW ========"
+          echo "======== REZULTAT PER FLOW (toate trecerile) ========"
           cat flow-results.txt
+          TOTAL=$(wc -l < flow-results.txt | tr -d ' ')
+          PASSED=$(grep -c 'PASS$' flow-results.txt)
+          EXPECTED=$(( 12 * PASSES ))
+          echo "TOTAL=$TOTAL  PASS=$PASSED  FAIL=$(( TOTAL - PASSED ))  ASTEPTAT=$EXPECTED"
+          # POARTA 1: numarul de rezultate. O lista incompleta NU e niciodata verde.
+          if [ "$TOTAL" -ne "$EXPECTED" ]; then
+            echo "POARTA: ma asteptam la $EXPECTED rezultate (12 flow-uri x $PASSES treceri), am $TOTAL."
+            exit 1
+          fi
+          # POARTA 2: nicio picare.
           if [ -n "$FAILED" ]; then
             echo "FLOW-URI PICATE:$FAILED"
             exit 1
           fi
-          echo "TOATE FLOW-URILE AU TRECUT."
+          echo "TOATE CELE $EXPECTED REZULTATE AU TRECUT."
 
       - name: Colecteaza logul aplicatiei (cauza esecurilor)
         # DE CE: JUnit-ul spune UNDE a picat o asertiune, nu DE CE. Aplicatia isi scrie singura starea
@@ -255,7 +273,7 @@ jobs:
             maestro-*.xml
             maestro-*-debug/**
             flow-results.txt
-            ci-screenshots/*.png
+            ci-screenshots/**/*.png
             hierarchy-*.txt
             chat-latency.txt
             app-log.txt
