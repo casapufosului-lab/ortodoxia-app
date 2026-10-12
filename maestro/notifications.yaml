@@ -36,6 +36,17 @@ appId: ro.ortodoxia.app
     direction: DOWN
     timeout: 30000
     label: "secțiunea de notificări"
+# Descrierea stă imediat sub titlul secțiunii, dar scroll-ul de mai sus se oprește când TITLUL intră pe
+# ecran: dacă se oprește chiar la marginea de jos, descrierea rămâne sub pliu și aserțiunea de mai jos pică
+# (dovadă: rularea p3-notifications din 12.10.2026 — pe ecran era „Notificări zilnice", fără card).
+# De aceea derulăm până la descriere, o centrăm, și abia apoi o aserționăm. Nu se slăbește nimic.
+- scrollUntilVisible:
+    element:
+      text: "Primești la ora 10:00 versetul, mesajul zilei și sărbătoarea din calendarul ales."
+    direction: DOWN
+    timeout: 30000
+    centerElement: true
+    label: "PORȚI: descrierea cardului de notificări e în ecran"
 - assertVisible: "Primești la ora 10:00 versetul, mesajul zilei și sărbătoarea din calendarul ales."
 - assertVisible:
     text: "Notificările sunt oprite.|Notificările sunt active."

@@ -22,6 +22,31 @@ appId: ro.ortodoxia.app
 - tapOn:
     text: ".*(Cont|Account).*"
     label: "PROLOG: tab-ul de cont (eticheta depinde de limba curenta si, pe iOS, de iconita)"
+# Pe INSTALARE NOUA (chat.yaml foloseste `clearState: true`) prima apasare pe tab poate cadea cat timp
+# aplicatia isi termina initializarea (dovada 2026-10-12, rularea p1-chat: apasare la 11:57:17, la 13 s
+# dupa pornirea JS, iar ecranul a ramas Acasa). De aceea CONFIRMAM ca ecranul Cont s-a deschis si, daca
+# nu, mai apasam O DATA acelasi tab (apasarea pe tab-ul deja activ nu schimba nimic, deci e sigura).
+# Poarta NU se leaga de textul „Română": acela sta sub pliu si se aduce in ecran cu scroll-ul de mai jos
+# (asa a functionat in 5 rulari din 8; a se vedea si raportul, secțiunea de diagnostic).
+- extendedWaitUntil:
+    visible: ".*(Contul meu|My account|Țară și limbă|Country and language|PROFIL|PROFILE).*"
+    timeout: 15000
+    optional: true
+    label: "PROLOG: ecranul Cont s-a deschis"
+- runFlow:
+    when:
+      notVisible: ".*(Contul meu|My account|Țară și limbă|Country and language|PROFIL|PROFILE).*"
+    commands:
+      - tapOn:
+          text: ".*(Cont|Account).*"
+          label: "PROLOG: a doua apăsare pe tab-ul de cont (prima s-a pierdut la inițializare)"
+      # `optional: true` este deliberat: dacă numele din engleză al ecranului Cont diferă de presupunerea
+      # de aici, flow-ul NU pică pe poartă — merge mai departe si deruleaza ca inainte.
+      - extendedWaitUntil:
+          visible: ".*(Contul meu|My account|Țară și limbă|Country and language|PROFIL|PROFILE).*"
+          timeout: 20000
+          optional: true
+          label: "PROLOG: ecranul Cont s-a deschis la a doua apăsare"
 - scrollUntilVisible:
     element:
       text: "Română"
