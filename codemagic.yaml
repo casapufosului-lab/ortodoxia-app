@@ -109,8 +109,11 @@ workflows:
   # ACELEAȘI flow-uri Maestro ca pe Android local (`maestro/*.yaml`), direct pe simulatorul din CI.
   #
   # NU PUBLICĂ NIMIC: nu are secțiune `publishing`, nu atinge TestFlight și nu are nevoie de grupul
-  # de secrete `appstore_credentials` — construiește pentru simulator (`-sdk iphonesimulator`), iar
-  # pentru simulator semnarea nu e necesară (`CODE_SIGNING_ALLOWED=NO`).
+  # de secrete `appstore_credentials` — construieste pentru simulator (`-sdk iphonesimulator`).
+  # CORECTIE 12.10.2026: afirmatia „pentru simulator semnarea nu e necesara" era GRESITA.
+  # Aplicatia porneste si nesemnata, dar securityd refuza atunci seiful (Code=-34018), iar
+  # sesiunea de chat traieste in seif. De aceea .app-ul se semneaza ad-hoc, cu entitlementurile
+  # de seif, inainte de instalare (pasul „Semneaza .app-ul de simulator").
   #
   # SE PORNEȘTE MANUAL din interfața Codemagic (nu are secțiune `triggering`) și NU în același timp
   # cu `ios-testflight`: regula noastră e să nu consumăm două instanțe de macOS în paralel.
@@ -223,6 +226,52 @@ workflows:
             exit "$CODE"
           fi
           ls -d build/ios-sim/Build/Products/Release-iphonesimulator/*.app
+      # DOVEDIT 12.10.2026 (rularea 6acc66cd6ee1b7ed0789c5fa): build-ul de simulator se face cu
+      # CODE_SIGNING_ALLOWED=NO, deci .app-ul NU are niciun entitlement, iar securityd refuza orice
+      # acces la seif:
+      #   Code=-34018 "Client has neither application-identifier nor keychain-access-groups entitlements"
+      # Aplicatia isi tine sesiunea Supabase in seif (src/lib/secure-session-storage.ts, deliberat:
+      # niciun credential in clar), deci sesiunea de oaspete NU se putea scrie. signInAnonymously()
+      # arunca eroarea mai departe, ecranul arata "Serviciul nu este disponibil momentan", iar
+      # flow-ul `chat` cadea INAINTE sa trimita vreo cerere (in logul simulatorului exista o singura
+      # cerere in toata fereastra, si aceea era crearea sesiunii).
+      # Semnarea de mai jos NU schimba build-ul, doar adauga semnatura ad-hoc (- = Sign to Run
+      # Locally) cu entitlementurile pe care le cere seiful. Fara ea, nicio verificare pe simulator
+      # nu poate exercita traseele care ating seiful.
+      - name: Semneaza .app-ul de simulator (entitlementuri de seif)
+        script: |
+          set -uo pipefail
+          APP=$(ls -d build/ios-sim/Build/Products/Release-iphonesimulator/*.app | head -1)
+          ENT=build/entitlements-sim.plist
+          cat > "$ENT" <<'EOF'
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>application-identifier</key>
+            <string>ro.ortodoxia.app</string>
+            <key>keychain-access-groups</key>
+            <array>
+              <string>ro.ortodoxia.app</string>
+            </array>
+          </dict>
+          </plist>
+          EOF
+          codesign --force --sign - --entitlements "$ENT" "$APP" \
+            || codesign --force --deep --sign - --entitlements "$ENT" "$APP"
+          RC=$?
+          {
+            echo "== aplicatia: $APP"
+            echo "== codesign exit: $RC (0 = semnata)"
+            echo "== entitlementurile din semnatura:"
+            codesign -d --entitlements - "$APP" 2>&1 || true
+            echo "== verificare semnatura:"
+            codesign --verify --strict "$APP" 2>&1 && echo "semnatura verificata" || true
+          } > entitlements.txt 2>&1
+          cat entitlements.txt
+          if [ "$RC" -ne 0 ]; then
+            echo "ATENTIE: semnarea a esuat (exit $RC). Flow-ul chat va pica din nou pe seif (Code=-34018)."
+          fi
       - name: Download Maestro
         script: |
           set -e
@@ -311,6 +360,13 @@ workflows:
             --predicate 'processImagePath CONTAINS "Ortodoxia" OR senderImagePath CONTAINS "Ortodoxia"' \
             > app-log.txt 2>&1
           ls -l chat-latency.txt app-log.txt
+          echo "======== securityd (refuzurile de seif ale aplicatiei) ========"
+          # securityd NU apare in app-log.txt (parintele procesului e securityd, nu aplicatia),
+          # iar refuzul seifului este exact cauza care a tinut flow-ul `chat` rosu pe simulator.
+          xcrun simctl spawn "$UDID" log show --last 20m --style compact \
+            --predicate 'process == "securityd" AND eventMessage CONTAINS "Ortodoxia"' > securityd-log.txt 2>&1
+          N=$(grep -c 'Code=-34018' securityd-log.txt || true)
+          echo "  linii Code=-34018 (seif refuzat): ${N:-0}"
           echo "======== proba de retea a masinii de build ========"
           # Endpoint de sanatate Supabase: DNS + TLS + HTTP, FARA sa consume cota AI. Arata daca
           # egress-ul functiona in acel minut.
@@ -339,3 +395,5 @@ workflows:
       - hierarchy-*.txt
       - chat-latency.txt
       - app-log.txt
+      - securityd-log.txt
+      - entitlements.txt
