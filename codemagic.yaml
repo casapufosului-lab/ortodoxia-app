@@ -201,7 +201,7 @@ workflows:
           ls -d ios/Ortodoxia.xcworkspace
       - name: Set build number
         script: cd ios && agvtool new-version -all "$APP_BUILD_NUMBER"
-      - name: Build .app pentru simulator (Release, fara semnare)
+      - name: Build .app pentru simulator (Release, semnat de Xcode pentru simulator)
         script: |
           set -uo pipefail
           mkdir -p build
@@ -214,7 +214,7 @@ workflows:
             -sdk iphonesimulator \
             -destination "generic/platform=iOS Simulator" \
             -derivedDataPath build/ios-sim \
-            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
+            CODE_SIGNING_ALLOWED=YES CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="-" CODE_SIGN_STYLE=Manual \
             build > "$LOG" 2>&1
           CODE=$?
           set -e
@@ -226,52 +226,43 @@ workflows:
             exit "$CODE"
           fi
           ls -d build/ios-sim/Build/Products/Release-iphonesimulator/*.app
-      # DOVEDIT 12.10.2026 (rularea 6acc66cd6ee1b7ed0789c5fa): build-ul de simulator se face cu
-      # CODE_SIGNING_ALLOWED=NO, deci .app-ul NU are niciun entitlement, iar securityd refuza orice
-      # acces la seif:
-      #   Code=-34018 "Client has neither application-identifier nor keychain-access-groups entitlements"
-      # Aplicatia isi tine sesiunea Supabase in seif (src/lib/secure-session-storage.ts, deliberat:
-      # niciun credential in clar), deci sesiunea de oaspete NU se putea scrie. signInAnonymously()
-      # arunca eroarea mai departe, ecranul arata "Serviciul nu este disponibil momentan", iar
-      # flow-ul `chat` cadea INAINTE sa trimita vreo cerere (in logul simulatorului exista o singura
-      # cerere in toata fereastra, si aceea era crearea sesiunii).
-      # Semnarea de mai jos NU schimba build-ul, doar adauga semnatura ad-hoc (- = Sign to Run
-      # Locally) cu entitlementurile pe care le cere seiful. Fara ea, nicio verificare pe simulator
-      # nu poate exercita traseele care ating seiful.
-      - name: Semneaza .app-ul de simulator (entitlementuri de seif)
+      # DOVEDIT 12.10.2026 (doua rulari, aceeasi zi):
+      #   (1) rularea 6acc66cd6ee1b7ed0789c5fa - build NEsemnat (CODE_SIGNING_ALLOWED=NO):
+      #       .app-ul nu are niciun entitlement, deci securityd refuza orice acces la seif
+      #       (Code=-34018, textul integral in raportul PARTII 1), sesiunea de oaspete nu se
+      #       putea scrie, iar flow-ul `chat` cadea inainte sa trimita vreo cerere.
+      #   (2) rularea 6acc7ebd9fd7afd6154394cc - .app semnat DE MANA peste build-ul nesemnat
+      #       (codesign --force --sign - --entitlements ...): toate cele 4 flow-uri au picat la
+      #       `launchApp` cu "Simulator device failed to launch ro.ortodoxia.app. The request
+      #       was denied by service delegate (SBMainWorkspace)", crashFile=none. Semnarea manuala
+      #       a pachetului a stricat lansarea, deci NU se mai foloseste.
+      # SOLUTIA (o singura schimbare): build-ul de simulator se face asa cum il face Xcode in mod
+      # normal pentru simulator - semnare pornita, identitate ad-hoc ("-" = Sign to Run Locally),
+      # fara echipa si fara profil - si pachetul NU se mai modifica dupa build. In configuratia
+      # asta (cea standard, sub care ruleaza orice proiect React Native pe simulator) Xcode
+      # semneaza aplicatia si codul imbricat (cadrele din Frameworks) consecvent, iar
+      # entitlementurile derivate (`application-identifier`, `get-task-allow`) fac seiful de chei
+      # accesibil. Pasul de mai jos doar VERIFICA si publica dovada; nu modifica nimic.
+      - name: Verifica semnatura .app-ului de simulator (conditia pentru seif)
         script: |
           set -uo pipefail
           APP=$(ls -d build/ios-sim/Build/Products/Release-iphonesimulator/*.app | head -1)
-          ENT=build/entitlements-sim.plist
-          cat > "$ENT" <<'EOF'
-          <?xml version="1.0" encoding="UTF-8"?>
-          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-          <plist version="1.0">
-          <dict>
-            <key>application-identifier</key>
-            <string>ro.ortodoxia.app</string>
-            <key>keychain-access-groups</key>
-            <array>
-              <string>ro.ortodoxia.app</string>
-            </array>
-          </dict>
-          </plist>
-          EOF
-          codesign --force --sign - --entitlements "$ENT" "$APP" \
-            || codesign --force --deep --sign - --entitlements "$ENT" "$APP"
-          RC=$?
           {
             echo "== aplicatia: $APP"
-            echo "== codesign exit: $RC (0 = semnata)"
+            echo "== identitatea semnaturii (codesign -dv):"
+            codesign -dv --verbose=2 "$APP" 2>&1 || true
             echo "== entitlementurile din semnatura:"
             codesign -d --entitlements - "$APP" 2>&1 || true
             echo "== verificare semnatura:"
             codesign --verify --strict "$APP" 2>&1 && echo "semnatura verificata" || true
+            echo "== conditia pentru seif (application-identifier):"
+            if codesign -d --entitlements - "$APP" 2>/dev/null | grep -q "application-identifier"; then
+              echo "PREZENT: aplicatia poate folosi seiful de chei."
+            else
+              echo "LIPSA: fara application-identifier, securityd refuza seiful (Code=-34018)."
+            fi
           } > entitlements.txt 2>&1
           cat entitlements.txt
-          if [ "$RC" -ne 0 ]; then
-            echo "ATENTIE: semnarea a esuat (exit $RC). Flow-ul chat va pica din nou pe seif (Code=-34018)."
-          fi
       - name: Download Maestro
         script: |
           set -e
