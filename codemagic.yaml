@@ -121,3 +121,221 @@ workflows:
   # Native code and images" a proiectului Xcode), deci aplicația e completă singură — exact cum
   # ajunge la utilizator. Valorile EXPO_PUBLIC_* se lipesc în bundle la momentul construirii, din
   # .env-ul scris mai jos.
+  #
+  # ADAUGAT 12.10.2026 (la cererea ownerului, dupa epuizarea minutelor GitHub Actions):
+  # verificarea iOS revine in Codemagic, pe ACEEASI configuratie pe care a rulat build-ul
+  # 6acbc32ff7b30c6968529f8f (mac_mini_m2, Xcode 26.6 implicit, max 90 min).
+  #
+  # DOUA CORECTII fata de varianta aceea, amandoua dovedite, nu presupuse:
+  #  1. `maestro ... --format junit -o fisier` NU exista: Maestro raspunde "Unknown option: '-o'",
+  #     iese cu cod 2 si NU ruleaza niciun flow. In build-ul 6acbc32f toate cele 4 flow-uri au
+  #     iesit asa (dovada: flow-results.txt + step-9-0.log din artefacte), desi build-ul .app si
+  #     pornirea simulatorului trecusera. Forma corecta este `--format JUNIT --output fisier`.
+  #  2. Pasul de build nu mai filtreaza cu `| tail -n 60`: pe 11.10.2026 exact filtrul acesta a
+  #     ascuns eroarea reala (exit 65 fara nicio explicatie in log). Acum scrie tot in
+  #     build/xcodebuild.log si publica fisierul ca artefact.
+  #
+  # PASII DE DIAGNOZA veniti din workflow-ul GitHub (mutati aici, nu copiati in doua locuri):
+  # logul aplicatiei din simulator + `chat-latency.txt` + proba `curl` pe endpointul de sanatate
+  # Supabase (fara sa consume cota AI). Ei decid cauza cand un flow cade fara sa spuna de ce.
+  ios-verify:
+    name: Ortodoxia iOS - verificare pe simulator (Maestro, fara publicare)
+    max_build_duration: 90
+    instance_type: mac_mini_m2
+    environment:
+      node: 22
+      # Maestro 2.x are nevoie de un JVM modern (17+); imaginea implicita poate aduce altceva.
+      java: 21
+      vars:
+        BUNDLE_ID: "ro.ortodoxia.app"
+        XCODE_WORKSPACE: "ios/Ortodoxia.xcworkspace"
+        XCODE_SCHEME: "Ortodoxia"
+        APP_BUILD_NUMBER: "21"
+        MAESTRO_CLI_NO_ANALYTICS: "1"
+    scripts:
+      - name: Verifica toolchain-ul (Xcode, Java, Node)
+        script: |
+          set -e
+          # Garda, nu presupunere: fara ea fiecare rulare e oarba la toolchain. Pe 11.10.2026 s-au
+          # pierdut 5 rulari pe Xcode/Swift prea vechi (cele doua manifeste SwiftPM cer 6.2) si pe
+          # bugul upstream expo/expo#50061. Build-ul .app a trecut pe toate cu Xcode 26.6.
+          xcodebuild -version
+          java -version
+          node --version
+      - name: Install npm dependencies
+        script: npm ci
+      - name: Write .env for Expo
+        script: |
+          set -e
+          cat > .env <<'EOF'
+          EXPO_PUBLIC_SUPABASE_URL=https://pgjabfgibdpcomegkojg.supabase.co
+          EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY=sb_publishable_jUBqWb3gn6ZDOcUuNJbVKg_CwswrjQr
+          EXPO_PUBLIC_REVENUECAT_APPLE_API_KEY=appl_voOlpavdeOGYDVBEdGegdUTFUbh
+          EXPO_PUBLIC_REVENUECAT_GOOGLE_API_KEY=goog_EIZcHpAwRfOaqQRPjfMGlXOvvGo
+          EXPO_PUBLIC_LEGAL_ENTITY=Ștefan Ștefan
+          EXPO_PUBLIC_SUPPORT_EMAIL=contact@ortodoxiaapp.anonaddy.com
+          EXPO_PUBLIC_LEGAL_POSTAL_ADDRESS=Rm. Vâlcea, județul Vâlcea, România
+          EXPO_PUBLIC_LEGAL_JURISDICTION=România
+          EXPO_PUBLIC_LEGAL_LOCALITY=Rm. Vâlcea
+          EXPO_PUBLIC_LEGAL_EFFECTIVE_DATE=23 septembrie 2026
+          EXPO_PUBLIC_PRIVACY_POLICY_URL=https://ortodoxia.web.app/privacy
+          EXPO_PUBLIC_TERMS_URL=https://ortodoxia.web.app/terms
+          ENVIRONMENT=production
+          EOF
+          echo "--- chei scrise in .env:"
+          sed 's/=.*//' .env
+      - name: Expo prebuild (generate ios/)
+        script: |
+          set -euo pipefail
+          npx expo prebuild --platform ios --clean
+          # ATENTIE (dovedit 11.10.2026): `expo prebuild` iese cu cod 0 chiar daca `pod install` a
+          # esuat, deci pasul pare verde si urmatorul cade pe un workspace inexistent. Verificam
+          # explicit ca pod install a produs workspace-ul.
+          test -d ios/Ortodoxia.xcworkspace || {
+            echo "pod install nu a produs ios/Ortodoxia.xcworkspace (vezi liniile de mai sus)."
+            exit 1
+          }
+          ls -d ios/Ortodoxia.xcworkspace
+      - name: Set build number
+        script: cd ios && agvtool new-version -all "$APP_BUILD_NUMBER"
+      - name: Build .app pentru simulator (Release, fara semnare)
+        script: |
+          set -uo pipefail
+          mkdir -p build
+          LOG=build/xcodebuild.log
+          set +e
+          xcodebuild \
+            -workspace "$XCODE_WORKSPACE" \
+            -scheme "$XCODE_SCHEME" \
+            -configuration Release \
+            -sdk iphonesimulator \
+            -destination "generic/platform=iOS Simulator" \
+            -derivedDataPath build/ios-sim \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
+            build > "$LOG" 2>&1
+          CODE=$?
+          set -e
+          echo "xcodebuild exit code: $CODE"
+          grep -n -E "error:|fatal error|Undefined symbol|ld: |\*\* BUILD FAILED \*\*|Command .* failed" "$LOG" | head -60 || true
+          if [ "$CODE" -ne 0 ]; then
+            echo "xcodebuild a picat (exit $CODE). Ultimele 80 de linii din $LOG:"
+            tail -n 80 "$LOG"
+            exit "$CODE"
+          fi
+          ls -d build/ios-sim/Build/Products/Release-iphonesimulator/*.app
+      - name: Download Maestro
+        script: |
+          set -e
+          curl -Ls "https://get.maestro.mobile.dev" | bash
+          export PATH="$PATH:$HOME/.maestro/bin"
+          maestro --version
+      - name: Pornire simulator iOS si instalare aplicatie
+        script: |
+          set -e
+          # Alegem primul iPhone disponibil din lista de simulatoare, fara sa ghicim numele
+          # (numele depinde de versiunea de Xcode de pe imaginea de build).
+          DEVICE_UDID=$(xcrun simctl list devices available \
+            | grep -E "iPhone .*\(([0-9A-F-]{36})\)" \
+            | head -1 \
+            | sed -E 's/.*\(([0-9A-F-]{36})\).*/\1/')
+          if [ -z "$DEVICE_UDID" ]; then
+            echo "NU am gasit niciun simulator iPhone disponibil. Lista completa:"
+            xcrun simctl list devices available
+            exit 1
+          fi
+          APP=$(ls -d build/ios-sim/Build/Products/Release-iphonesimulator/*.app | head -1)
+          echo "DEVICE_UDID=$DEVICE_UDID" >> $CM_ENV
+          echo "APP=$APP" >> $CM_ENV
+          echo "Simulator: $DEVICE_UDID"
+          echo "Aplicatie: $APP"
+          xcrun simctl boot "$DEVICE_UDID" || true
+          xcrun simctl bootstatus "$DEVICE_UDID" -b
+          xcrun simctl install "$DEVICE_UDID" "$APP"
+      - name: Ruleaza flow-urile Maestro pe simulator
+        script: |
+          # NU iese cu eroare aici, chiar daca un flow cade: altfel Codemagic opreste build-ul
+          # INAINTE de pasul de diagnoza si de publicarea artefactelor, adica exact cand ai nevoie
+          # de ele (patit: un singur flow picat = zero dovezi). Poarta de iesire e ultimul pas.
+          set -uo pipefail
+          export PATH="$PATH:$HOME/.maestro/bin"
+          mkdir -p ci-screenshots
+          : > flow-results.txt
+          FAILED=""
+          for f in maestro/live.yaml maestro/chat.yaml maestro/premium.yaml maestro/notifications.yaml; do
+            name=$(basename "$f" .yaml)
+            echo "======== Maestro: $name ========"
+            # ATENTIE: flagurile corecte sunt --format JUNIT si --output. Cu "-o" Maestro raspunde
+            # "Unknown option: '-o'", iese cu cod 2 si NU ruleaza niciun flow (dovedit 11.10.2026,
+            # build 6acbc32f: toate cele 4 flow-uri au iesit asa).
+            maestro --device "$DEVICE_UDID" test "$f" \
+              --format JUNIT --output "maestro-$name.xml" \
+              --debug-output "maestro-$name-debug"
+            code=$?
+            if [ "$code" -ne 0 ]; then
+              # Dovada pentru diagnostic: arborele de accesibilitate exact in momentul picarii.
+              maestro --device "$DEVICE_UDID" hierarchy --compact > "hierarchy-$name.txt" 2>&1 || true
+            fi
+            case "$code" in
+              0) printf '%s\tPASS\n' "$name" >> flow-results.txt ;;
+              1) printf '%s\tFAIL (flow, exit 1)\n' "$name" >> flow-results.txt; FAILED="$FAILED $name" ;;
+              2) printf '%s\tEROARE CLI (exit 2): comanda Maestro e gresita, flow-ul NU a rulat\n' "$name" >> flow-results.txt; FAILED="$FAILED $name" ;;
+              *) printf '%s\tFAIL (exit %s)\n' "$name" "$code" >> flow-results.txt; FAILED="$FAILED $name" ;;
+            esac
+            ls -l "maestro-$name.xml" 2>/dev/null || echo "  (nu s-a produs maestro-$name.xml)"
+            xcrun simctl io "$DEVICE_UDID" screenshot "ci-screenshots/$name.png" || true
+          done
+          echo "======== REZULTAT PER FLOW ========"
+          cat flow-results.txt
+          printf '%s\n' "$FAILED" > flow-failed.txt
+          if [ -n "$FAILED" ]; then
+            echo "FLOW-URI PICATE:$FAILED"
+          else
+            echo "TOATE FLOW-URILE AU TRECUT."
+          fi
+      - name: Colecteaza logul aplicatiei + proba de retea (cauza esecurilor)
+        script: |
+          # DE CE: JUnit-ul spune UNDE a picat o asertiune, nu DE CE. Aplicatia isi scrie singura
+          # starea cererii de chat intr-o linie stabila (`[chat-latency]`, src/lib/chat-latency.ts):
+          #   `[chat-latency] exceptie <ms> ms`                   -> exceptie in traseul de trimitere
+          #   `[chat-latency] stream intrerupt <ms> ms (network)`  -> reteaua (limita de mediu CI)
+          # Fara acest fisier, fiecare rulare pe macOS e oarba la cauza (12.10.2026: flow-ul `chat`
+          # a picat pentru ca aplicatia isi afisase eroarea de serviciu, fara sa se poata spune de ce).
+          set +e
+          UDID="${DEVICE_UDID:-booted}"
+          echo "======== [chat-latency] (starea cererii de chat) ========"
+          xcrun simctl spawn "$UDID" log show --last 20m --style compact \
+            --predicate 'eventMessage CONTAINS "chat-latency"' > chat-latency.txt 2>&1
+          grep -F '[chat-latency]' chat-latency.txt || echo "  (nicio linie [chat-latency])"
+          echo "======== logul aplicatiei (context) ========"
+          xcrun simctl spawn "$UDID" log show --last 20m --style compact \
+            --predicate 'processImagePath CONTAINS "Ortodoxia" OR senderImagePath CONTAINS "Ortodoxia"' \
+            > app-log.txt 2>&1
+          ls -l chat-latency.txt app-log.txt
+          echo "======== proba de retea a masinii de build ========"
+          # Endpoint de sanatate Supabase: DNS + TLS + HTTP, FARA sa consume cota AI. Arata daca
+          # egress-ul functiona in acel minut.
+          SUPABASE_URL=$(grep -E '^[[:space:]]*EXPO_PUBLIC_SUPABASE_URL=' .env | head -1 | cut -d= -f2- | tr -d '\r' | xargs)
+          SUPABASE_URL="${SUPABASE_URL:-https://pgjabfgibdpcomegkojg.supabase.co}"
+          curl -sS -o /dev/null -w 'auth health: %{http_code} (%{time_total}s)\n' "$SUPABASE_URL/auth/v1/health" || true
+          exit 0
+      - name: Poarta - iesire cu eroare daca un flow a picat
+        script: |
+          set -uo pipefail
+          FAILED=$(cat flow-failed.txt 2>/dev/null || echo "")
+          echo "======== REZULTAT PER FLOW ========"
+          cat flow-results.txt
+          if [ -n "$FAILED" ]; then
+            echo "FLOW-URI PICATE:$FAILED"
+            exit 1
+          fi
+          echo "TOATE FLOW-URILE AU TRECUT."
+    artifacts:
+      - build/ios-sim/Build/Products/Release-iphonesimulator/*.app
+      - build/xcodebuild.log
+      - maestro-*.xml
+      - maestro-*-debug/**
+      - flow-results.txt
+      - ci-screenshots/*.png
+      - hierarchy-*.txt
+      - chat-latency.txt
+      - app-log.txt
