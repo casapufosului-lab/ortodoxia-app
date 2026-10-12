@@ -35,7 +35,14 @@ appId: ro.ortodoxia.app
     visible: ".*(Acasă|Home).*"
     timeout: 45000
     label: "PORȚI: aplicația a pornit"
-- tapOn: ".*(Întreabă|Ask).*"
+# REPARAT 13.10.2026 (rularea Codemagic 6acd43eb, commit 149ea1a, chat PICAT 3/3): selectorul de mai jos
+# era ".*(Întreabă|Ask).*" si se potrivea cu butonul "Întreabă ghidul AI" de pe Acasa (bounds=[20,795][382,845]),
+# nu cu tabul de chat. Maestro apasa centrul lui (201,820) = tabul "Biblia" ([201,780][268,832]); ierarhia din
+# momentul picarii arata "Biblia, tab, 4 of 6 ... selected=true". Se cere EXACT tabul de chat, ca in calendar.yaml.
+# Pe Android acelasi selector nimerise butonul de pe Acasa (bounds=[373,2095][708,2152], deasupra taburilor).
+- tapOn:
+    text: "^Întreabă(, tab.*)?$"
+    label: "PORȚI: intru in chat prin tabul de chat (nu prin butonul de pe Acasa, care sta sub bara de taburi pe iOS)"
 - extendedWaitUntil:
     visible: ".*Scrie întrebarea ta.*"
     timeout: 30000
