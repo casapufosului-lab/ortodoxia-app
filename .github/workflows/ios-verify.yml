@@ -1,7 +1,7 @@
 name: iOS verify (simulator + Maestro, fara publicare)
 
-# DE CE EXISTA: acelasi lucru pe care il face workflow-ul `ios-verify` din codemagic.yaml, dar pe
-# un runner macOS de la GitHub, care porneste in SECUNDE (fara coada de 1-2 ore a Codemagic).
+# DE CE EXISTA: acelasi lucru pe care il facea workflow-ul `ios-verify` din codemagic.yaml, dar pe
+# runneri macOS de la GitHub, care pornesc in SECUNDE (fara coada de 1-2 ore a Codemagic).
 #
 # NU publica nimic: nu are pas de TestFlight / App Store Connect, iar build-ul e Release pentru
 # SIMULATOR, fara semnare (CODE_SIGNING_ALLOWED=NO).
@@ -11,38 +11,42 @@ name: iOS verify (simulator + Maestro, fara publicare)
 #     rulare macOS. Din CLI: gh workflow run ios-verify.yml --ref master
 #   - Acesta e CANALUL PRINCIPAL de verificare iOS de pe 12.10.2026: repo-ul e PUBLIC, iar GitHub da
 #     minute macOS GRATIS si NELIMITATE la repo public (la privat: 2000 min/luna, consumate de ~10x
-#     pe macOS, epuizate pana 1 noiembrie). Codemagic rămâne doar pentru build-ul semnat de TestFlight.
-#   - Suta completa: 12 flow-uri x 3 treceri = 36 de rezultate (JUnit + captura per flow si trecere),
-#     cu poarta care refuza o lista incompleta.
+#     pe macOS, epuizate pana 1 noiembrie). Codemagic ramane doar pentru build-ul semnat de TestFlight.
+#
+# STRUCTURA (paralelizata 12.10.2026):
+#   jobul `build`  = compileaza .app-ul O DATA (~20 min) si il publica ca artefact;
+#   joburile `flows` = 12 joburi IN PARALEL (unul per flow, 3 treceri fiecare) = 36 de rezultate;
+#   jobul `poarta` = refuza suita daca oricare flow a picat sau nu a produs toate rezultatele.
+#   Timpul total scade de la ~75 min (secvential) la ~25-30 min; daca GitHub limiteaza concurenta,
+#   o parte din joburi asteapta, dar tot ramane mult mai rapid decat varianta secventiala.
 #
 # REGULA PROIECTULUI: codul se comite inainte de rulare (workflow-ul verifica exact commitul pornit).
 
 on:
-  # DOAR manual. `on: push` a fost scos pe 11.10.2026: fiecare push pe `maestro-verify` pornea o
-  # rulare macOS, iar pe repo privat macOS consuma minutele de ~10x (11.10.2026: ~6 rulari).
-  # Din CLI: gh workflow run ios-verify.yml --ref maestro-verify
+  # DOAR manual. `on: push` a fost scos pe 11.10.2026 (fiecare push pornea o rulare macOS).
+  # Din CLI: gh workflow run ios-verify.yml --ref master
   workflow_dispatch:
 
 concurrency:
   group: ios-verify-macos
   cancel-in-progress: false
 
+env:
+  BUNDLE_ID: ro.ortodoxia.app
+  XCODE_WORKSPACE: ios/Ortodoxia.xcworkspace
+  XCODE_SCHEME: Ortodoxia
+  APP_BUILD_NUMBER: "21"
+  MAESTRO_CLI_NO_ANALYTICS: "1"
+  # 3 treceri = cerinta ownerului (72 de rezultate pe ambele platforme). Se poate da mai putin
+  # pentru o iteratie rapida pe un singur flow (workflow_dispatch nu are inca input; se schimba aici).
+  IOS_PASSES: "3"
+
 jobs:
-  verify:
-    name: Simulator iOS + flow-urile Maestro
-    # macos-26 = imaginea cu Xcode 26.6 IMPLICIT (17F113): exact toolchain-ul cu care
-    # Codemagic a compilat .app-ul cu succes. macos-15 are implicit 16.4 (Swift 6.1), iar
-    # "cel mai nou" de pe macos-15 e 26.3 = bug upstream expo/expo#50061.
+  build:
+    name: Build .app pentru simulator
     runs-on: macos-26
-    # 12 flow-uri x 3 treceri + build-ul .app-ului ≈ 75-80 min. Repo public = minute macOS nelimitate
-    # (la repo privat GitHub dadea doar 2000 min/luna, de ~10x pe macOS).
-    timeout-minutes: 120
-    env:
-      BUNDLE_ID: ro.ortodoxia.app
-      XCODE_WORKSPACE: ios/Ortodoxia.xcworkspace
-      XCODE_SCHEME: Ortodoxia
-      APP_BUILD_NUMBER: "21"
-      MAESTRO_CLI_NO_ANALYTICS: "1"
+    # npm + prebuild + pod install + xcodebuild ≈ 20-25 min.
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
 
@@ -150,6 +154,74 @@ jobs:
           fi
           ls -d build/ios-sim/Build/Products/Release-iphonesimulator/*.app
 
+      - name: Proba de retea a runnerului (DNS + TLS + HTTP pana la Supabase)
+        run: |
+          set +e
+          SUPABASE_URL=$(grep -E '^[[:space:]]*EXPO_PUBLIC_SUPABASE_URL=' .env | head -1 | cut -d= -f2- | tr -d '\r' | xargs)
+          echo "======== proba de retea a runnerului ========"
+          curl -sS -o /dev/null -w 'auth health: %{http_code} (%{time_total}s)\n' "$SUPABASE_URL/auth/v1/health" || true
+
+      - name: Impacheteaza .app-ul pentru joburile de flow-uri
+        run: |
+          set -euo pipefail
+          APP=$(ls -d build/ios-sim/Build/Products/Release-iphonesimulator/*.app | head -1)
+          echo "Aplicatie: $APP"
+          # ditto pastreaza structura si atributele (zip-ul se dezarhiveaza identic pe alt runner).
+          ditto -c -k --sequesterRsrc --keepParent "$APP" ios-sim-app.zip
+          ls -l ios-sim-app.zip
+
+      - name: Publica .app-ul (artefact pentru joburile de flow-uri)
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-sim-app
+          if-no-files-found: error
+          retention-days: 3
+          path: ios-sim-app.zip
+
+      - name: Publica logul de build daca a picat
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-log
+          if-no-files-found: warn
+          retention-days: 3
+          path: build/xcodebuild.log
+
+  flows:
+    name: flow ${{ matrix.flow }}
+    needs: build
+    runs-on: macos-26
+    # 3 treceri dintr-un flow ≈ 4-5 min + instalarea Maestro/simulatorului ≈ 2 min.
+    timeout-minutes: 45
+    strategy:
+      # Un flow picat NU opreste restul: vrem toate cele 36 de rezultate intr-o singura rulare.
+      fail-fast: false
+      matrix:
+        # Cele 12 flow-uri. `set-language-ro.yaml` e PROLOGUL (ruleaza in interiorul fiecarui flow),
+        # nu se ruleaza separat.
+        flow:
+          - home
+          - prayers
+          - calendar
+          - bible
+          - chat
+          - account
+          - auth
+          - live
+          - premium
+          - legal
+          - notifications
+          - errors
+    env:
+      FLOW: ${{ matrix.flow }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Descarca .app-ul construit
+        uses: actions/download-artifact@v4
+        with:
+          name: ios-sim-app
+
       - name: Instaleaza Maestro
         run: |
           set -e
@@ -160,6 +232,8 @@ jobs:
       - name: Porneste simulatorul si instaleaza aplicatia
         run: |
           set -e
+          ditto -x -k ios-sim-app.zip app-dir
+          APP=$(ls -d app-dir/*.app | head -1)
           DEVICE_UDID=$(xcrun simctl list devices available \
             | grep -E "iPhone .*\(([0-9A-F-]{36})\)" \
             | head -1 \
@@ -169,7 +243,6 @@ jobs:
             xcrun simctl list devices available
             exit 1
           fi
-          APP=$(ls -d build/ios-sim/Build/Products/Release-iphonesimulator/*.app | head -1)
           echo "DEVICE_UDID=$DEVICE_UDID" >> "$GITHUB_ENV"
           echo "Simulator: $DEVICE_UDID"
           echo "Aplicatie: $APP"
@@ -177,11 +250,10 @@ jobs:
           xcrun simctl bootstatus "$DEVICE_UDID" -b
           xcrun simctl install "$DEVICE_UDID" "$APP"
 
-      - name: Ruleaza flow-urile Maestro pe simulator (12 flow-uri x 3 treceri)
+      - name: Ruleaza flow-ul "${{ matrix.flow }}" in ${{ env.IOS_PASSES }} treceri
         run: |
-          # GitHub Actions ruleaza scriptul cu `bash -e`, deci fara `set +e` primul flow picat
-          # omoara scriptul INAINTE de `case "$code" in` si restul flow-urilor nu mai ruleaza
-          # (patit 11.10.2026: doar `live` a rulat, desi el a picat in prolog).
+          # GitHub Actions ruleaza scriptul cu `bash -e`, deci fara `set +e` prima trecere picata
+          # omoara scriptul INAINTE de `case "$code" in` si restul trecerilor nu mai ruleaza.
           set +e
           set -uo pipefail
           export PATH="$PATH:$HOME/.maestro/bin"
@@ -189,91 +261,98 @@ jobs:
           : > flow-results.txt
           FAILED=""
           PASSES="${IOS_PASSES:-3}"
+          F="maestro/${FLOW}.yaml"
+          if [ ! -f "$F" ]; then
+            echo "::error::flow inexistent: $F"
+            exit 1
+          fi
           for pass in $(seq 1 "$PASSES"); do
-            echo "######## TRECEREA $pass din $PASSES ########"
+            echo "======== pass$pass Maestro: $FLOW ========"
             mkdir -p "ci-screenshots/pass$pass"
-            # set-language-ro.yaml e PROLOGUL (ruleaza in interiorul fiecarui flow), nu se ruleaza separat.
-            for f in $(ls -1 maestro/*.yaml | grep -v 'set-language-ro'); do
-              name=$(basename "$f" .yaml)
-              echo "======== pass$pass Maestro: $name ========"
-              # ATENTIE: flagurile corecte sunt --format JUNIT si --output. Cu "-o" Maestro raspunde
-              # "Unknown option: '-o'", iese cu cod 2 si NU ruleaza niciun flow (patit 11.10.2026).
-              maestro --device "$DEVICE_UDID" test "$f" \
-                --format JUNIT --output "maestro-pass$pass-$name.xml" \
-                --debug-output "maestro-pass$pass-$name-debug"
-              code=$?
-              if [ "$code" -ne 0 ]; then
-                # DOVADA pentru diagnostic: arborele de accesibilitate exact in momentul picarii.
-                # Fara el, fiecare incercare pe macOS e oarba (11.10.2026).
-                maestro --device "$DEVICE_UDID" hierarchy --compact > "hierarchy-pass$pass-$name.txt" 2>&1 || true
-              fi
-              case "$code" in
-                0) printf 'pass%s\t%s\tPASS\n' "$pass" "$name" >> flow-results.txt ;;
-                1) printf 'pass%s\t%s\tFAIL (flow, exit 1)\n' "$pass" "$name" >> flow-results.txt; FAILED="$FAILED pass$pass:$name" ;;
-                2) printf 'pass%s\t%s\tEROARE CLI (exit 2): comanda Maestro e gresita, flow-ul NU a rulat\n' "$pass" "$name" >> flow-results.txt; FAILED="$FAILED pass$pass:$name" ;;
-                *) printf 'pass%s\t%s\tFAIL (exit %s)\n' "$pass" "$name" "$code" >> flow-results.txt; FAILED="$FAILED pass$pass:$name" ;;
-              esac
-              ls -l "maestro-pass$pass-$name.xml" 2>/dev/null || echo "  (nu s-a produs maestro-pass$pass-$name.xml)"
-              xcrun simctl io "$DEVICE_UDID" screenshot "ci-screenshots/pass$pass/$name.png" || true
-            done
+            # ATENTIE: flagurile corecte sunt --format JUNIT si --output. Cu "-o" Maestro raspunde
+            # "Unknown option: '-o'", iese cu cod 2 si NU ruleaza niciun flow (patit 11.10.2026).
+            maestro --device "$DEVICE_UDID" test "$F" \
+              --format JUNIT --output "maestro-pass$pass-$FLOW.xml" \
+              --debug-output "maestro-pass$pass-$FLOW-debug"
+            code=$?
+            if [ "$code" -ne 0 ]; then
+              # DOVADA pentru diagnostic: arborele de accesibilitate exact in momentul picarii.
+              # Fara el, fiecare incercare pe macOS e oarba (11.10.2026).
+              maestro --device "$DEVICE_UDID" hierarchy --compact > "hierarchy-pass$pass-$FLOW.txt" 2>&1 || true
+            fi
+            case "$code" in
+              0) printf 'pass%s\t%s\tPASS\n' "$pass" "$FLOW" >> flow-results.txt ;;
+              1) printf 'pass%s\t%s\tFAIL (flow, exit 1)\n' "$pass" "$FLOW" >> flow-results.txt; FAILED="$FAILED pass$pass" ;;
+              2) printf 'pass%s\t%s\tEROARE CLI (exit 2): comanda Maestro e gresita, flow-ul NU a rulat\n' "$pass" "$FLOW" >> flow-results.txt; FAILED="$FAILED pass$pass" ;;
+              *) printf 'pass%s\t%s\tFAIL (exit %s)\n' "$pass" "$FLOW" "$code" >> flow-results.txt; FAILED="$FAILED pass$pass" ;;
+            esac
+            ls -l "maestro-pass$pass-$FLOW.xml" 2>/dev/null || echo "  (nu s-a produs maestro-pass$pass-$FLOW.xml)"
+            xcrun simctl io "$DEVICE_UDID" screenshot "ci-screenshots/pass$pass/$FLOW.png" || true
           done
-          echo "======== REZULTAT PER FLOW (toate trecerile) ========"
+          echo "======== REZULTAT pentru $FLOW ========"
           cat flow-results.txt
           TOTAL=$(wc -l < flow-results.txt | tr -d ' ')
           PASSED=$(grep -c 'PASS$' flow-results.txt)
-          EXPECTED=$(( 12 * PASSES ))
-          echo "TOTAL=$TOTAL  PASS=$PASSED  FAIL=$(( TOTAL - PASSED ))  ASTEPTAT=$EXPECTED"
-          # POARTA 1: numarul de rezultate. O lista incompleta NU e niciodata verde.
-          if [ "$TOTAL" -ne "$EXPECTED" ]; then
-            echo "POARTA: ma asteptam la $EXPECTED rezultate (12 flow-uri x $PASSES treceri), am $TOTAL."
+          echo "TOTAL=$TOTAL  PASS=$PASSED  FAIL=$(( TOTAL - PASSED ))  ASTEPTAT=$PASSES"
+          # POARTA 1: numarul de rezultate pentru acest flow. O lista incompleta NU e niciodata verde.
+          if [ "$TOTAL" -ne "$PASSES" ]; then
+            echo "::error::ma asteptam la $PASSES rezultate pentru $FLOW, am $TOTAL."
             exit 1
           fi
-          # POARTA 2: nicio picare.
+          # POARTA 2: nicio trecere picata.
           if [ -n "$FAILED" ]; then
-            echo "FLOW-URI PICATE:$FAILED"
+            echo "::error::FLOW PICAT: $FLOW ($FAILED)"
             exit 1
           fi
-          echo "TOATE CELE $EXPECTED REZULTATE AU TRECUT."
+          echo "flow $FLOW: toate cele $PASSES treceri au trecut."
 
       - name: Colecteaza logul aplicatiei (cauza esecurilor)
         # DE CE: JUnit-ul spune UNDE a picat o asertiune, nu DE CE. Aplicatia isi scrie singura starea
         # cererii de chat intr-o linie stabila (`[chat-latency]`, src/lib/chat-latency.ts):
         #   `[chat-latency] exceptie <ms> ms`                     -> exceptie in traseul de trimitere
         #   `[chat-latency] stream intrerupt <ms> ms (network)`   -> reteaua (limita de mediu CI)
-        # Fara acest fisier, fiecare rulare pe macOS e oarba la cauza (patit 12.10.2026, flow-ul `chat`
-        # a picat pentru ca aplicatia si-a afisat eroarea de serviciu, fara sa se poata spune de ce).
-        if: always()
+        if: failure()
         run: |
           set +e
           UDID="${DEVICE_UDID:-booted}"
-          # 1. Liniile care decid cauza, direct in logul rularii.
-          xcrun simctl spawn "$UDID" log show --last 20m --style compact \
+          xcrun simctl spawn "$UDID" log show --last 15m --style compact \
             --predicate 'eventMessage CONTAINS "chat-latency"' > chat-latency.txt 2>&1
           echo "======== [chat-latency] (starea cererii de chat) ========"
           grep -F '[chat-latency]' chat-latency.txt || echo "  (nicio linie [chat-latency])"
-          # 2. Logul aplicatiei, pentru context (in Release nu exista logcat; console.log ajunge in os_log).
-          xcrun simctl spawn "$UDID" log show --last 20m --style compact \
+          xcrun simctl spawn "$UDID" log show --last 15m --style compact \
             --predicate 'processImagePath CONTAINS "Ortodoxia" OR senderImagePath CONTAINS "Ortodoxia"' \
             > app-log.txt 2>&1
           ls -l chat-latency.txt app-log.txt
-          # 3. Proba de retea a runnerului: DNS + TLS + HTTP pana la Supabase, FARA sa consume cota
-          #    (endpoint de sanatate: niciun mesaj AI). Arata daca egress-ul functiona in acel minut.
-          SUPABASE_URL=$(grep -E '^[[:space:]]*EXPO_PUBLIC_SUPABASE_URL=' .env | head -1 | cut -d= -f2- | tr -d '\r' | xargs)
-          echo "======== proba de retea a runnerului ========"
-          curl -sS -o /dev/null -w 'auth health: %{http_code} (%{time_total}s)\n' "$SUPABASE_URL/auth/v1/health" || true
 
-      - name: Publica dovezile
+      - name: Publica dovezile flow-ului
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: ios-verify-dovezi
+          name: ios-${{ matrix.flow }}-dovezi
           if-no-files-found: warn
+          retention-days: 7
           path: |
-            build/xcodebuild.log
-            maestro-*.xml
-            maestro-*-debug/**
+            maestro-pass*.xml
+            maestro-pass*-debug/**
             flow-results.txt
             ci-screenshots/**/*.png
-            hierarchy-*.txt
+            hierarchy-pass*.txt
             chat-latency.txt
             app-log.txt
+
+  poarta:
+    name: Poarta - toate cele 36 de rezultate
+    needs: [flows]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Refuza suita daca orice flow a picat sau nu a rulat
+        run: |
+          set -e
+          echo "rezultatul joburilor de flow-uri: ${{ needs.flows.result }}"
+          if [ "${{ needs.flows.result }}" != "success" ]; then
+            echo "::error::Cel putin un flow a picat sau nu a produs toate cele 3 rezultate. Suita NU e verde."
+            exit 1
+          fi
+          echo "VERDE: 12 flow-uri x 3 treceri = 36 de rezultate, zero picate."
