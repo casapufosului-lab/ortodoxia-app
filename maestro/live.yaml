@@ -11,6 +11,20 @@
 #
 # TOATE textele de mai jos sunt chei i18n reale (ro) din src/i18n/config.ts, extrase cu scriptul
 # extract-i18n.mjs (PowerShell distorsionează diacriticele), nu texte inventate.
+#
+# ── EXTINS 2026-10-12 (build 22) — ce s-a ADĂUGAT. Nimic din ce era înainte nu s-a șters și nu s-a
+#    slăbit; s-au adăugat doar porți noi:
+#   a) lista de surse se dovedește prin texte reale, nu doar prin „a apărut TRINITAS TV": subtitlul
+#      ecranului (live.subtitle), eticheta furnizorului (live.providerLabel), o stare dintre cele TREI
+#      valori posibile ale aplicației (live.statusLive / statusNotLive / statusNoDetection) și absența
+#      erorii de status (live.errorStatusFetch);
+#   b) playerul chiar a încărcat o PAGINĂ REALĂ, nu doar un eveniment: adresa COMISĂ începe cu https://
+#      (nu `about:blank`), adresa CERUTĂ la pornire e un https:// real (`cerut=`, de la onLoadStart),
+#      iar WebView-ul și-a măsurat o cutie NEnulă (`webview=<w>x<h>`; când nu a raportat nimic, linia e
+#      literal `webview=...` — vezi DIAGNOSTIC_PENDING), deci a avut unde să deseneze;
+#   c) playerul nu a raportat nicio eroare proprie (`Eroare player: ...`);
+#   d) explicația de jos a ecranului (live.disclaimer) e pe ecran — se derulează la ea abia la final,
+#      ca să nu miște lista de sub degetul care apasă „Vezi în direct".
 appId: ro.ortodoxia.app
 ---
 - launchApp:
@@ -41,6 +55,19 @@ appId: ro.ortodoxia.app
 - assertVisible:
     text: ".*Vezi în direct.*"
     label: "PORȚI: există o transmisiune LIVE embeddabilă (fără ea, playerul nu poate fi verificat)"
+# ── Adăugat 2026-10-12: lista se dovedește prin textele ei reale (nu doar prin prezența unui nume).
+- assertVisible:
+    text: "Urmărește Sfânta Liturghie în direct de la surse oficiale. Transmisiunile aparțin instituțiilor bisericești respective."
+    label: "PORȚI: identitatea ecranului 09 LIVE (subtitlul, care spune și cui aparțin transmisiunile)"
+- assertVisible:
+    text: "Furnizor: .*"
+    label: "PORȚI: fiecare sursă vine cu furnizorul ei (live.providerLabel), nu e un rând gol"
+- assertVisible:
+    text: "LIVE ACUM|Momentan nu este LIVE|Starea live nu este monitorizată pentru această sursă"
+    label: "PORȚI: starea afișată e una dintre cele TREI valori pe care aplicația le poate arăta (niciuna inventată)"
+- assertNotVisible:
+    text: ".*Nu am putut verifica transmisiunile acum\\..*"
+    label: "REGRESIA: funcția de status a răspuns (live.errorStatusFetch nu e pe ecran)"
 - tapOn: ".*Vezi în direct.*"
 - extendedWaitUntil:
     visible: ".*Deschide pe YouTube.*"
@@ -65,6 +92,19 @@ appId: ro.ortodoxia.app
 - assertNotVisible:
     text: ".*about:blank.*"
     label: "REGRESIA: documentul playerului nu are voie să fie about:blank"
+# ── Adăugat 2026-10-12: dovada că playerul a încărcat o PAGINĂ REALĂ, nu doar că s-a terminat un eveniment.
+- assertVisible:
+    text: "Pagina playerului: https://.*"
+    label: "PORȚI: documentul COMIS e o pagină https reală (about:blank nu începe cu https://)"
+- assertVisible:
+    text: "cerut=https://.*"
+    label: "PORȚI: cererea a plecat spre o adresă https reală (linia `cerut=`, de la onLoadStart)"
+- assertVisible:
+    text: "webview=\\d+x\\d+"
+    label: "PORȚI: WebView-ul și-a măsurat o cutie NEnulă, deci a avut unde desena (când nu raportează nimic, linia este `webview=...`)"
+- assertNotVisible:
+    text: ".*Eroare player.*"
+    label: "REGRESIA: playerul nu a raportat nicio eroare proprie (linia \"Eroare player: ...\")"
 - runFlow:
     when:
       platform: iOS
@@ -91,3 +131,15 @@ appId: ro.ortodoxia.app
     timeout: 15000
     label: "ne-am întors pe ecranul LIVE"
 - assertNotVisible: ".*Player YouTube live.*"
+# ── Adăugat 2026-10-12: explicația de jos a ecranului. Se derulează abia ACUM, la final, ca să nu miște
+#    lista înainte de apăsarea pe „Vezi în direct".
+- scrollUntilVisible:
+    element:
+      text: "Transmisiunile aparțin surselor oficiale. Aplicația afișează starea live doar pe baza datelor primite de la server."
+    direction: DOWN
+    timeout: 20000
+    centerElement: true
+    label: "PORȚI: ecranul își spune limita (live.disclaimer), nu doar promite un player"
+- assertVisible:
+    text: "Transmisiunile aparțin surselor oficiale. Aplicația afișează starea live doar pe baza datelor primite de la server."
+    label: "PORȚI: explicația e pe ecran (live.disclaimer)"

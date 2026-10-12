@@ -1,0 +1,158 @@
+# T2 — Autentificare (08): cont nou, autentificare, resetare de parolă — FĂRĂ să creeze sau să șteargă
+# vreun cont real și FĂRĂ să trimită niciun email.
+#
+# CUM SE POATE VERIFICA ASTA FĂRĂ EFECTE SECUNDARE (și de ce flow-ul arată așa):
+#  - Ecranul de autentificare se deschide din Cont, ca oaspete (`clearState: true`), deci NU se pleacă de
+#    la o sesiune existentă și nu se deconectează nimeni.
+#  - Toate cele patru porți de mai jos lovesc VALIDAREA LOCALĂ din `src/app/auth.tsx:268-297`, care se
+#    termină cu `Alert` și `return false` — adică înainte de orice cerere către Supabase. Excepție: pasul
+#    „Autentificare" cu email și parolă completate, care chiar pleacă la server, dar cu o parolă greșită
+#    pentru o adresă din domeniul rezervat `.test` (RFC 2606: nu poate exista, nu primește poștă).
+#  - Emailul de resetare NU se cere niciodată cu o adresă completată: „Am uitat parola" se apasă doar cu
+#    câmpul gol, unde codul se oprește la `auth.emailRequiredMessage` (`auth.tsx:506-510`) și nu ajunge la
+#    `resetPasswordForEmail`. Așa flow-ul nu consumă cota de emailuri a proiectului și nu trimite mesaje.
+#  - Termenii NU se bifează niciodată înainte de o apăsare pe „Creează cont": cu bifa pusă, validarea ar
+#    trece și `signUp()` ar CREA un cont real (`auth.tsx:322-341`). De aceea poarta de la pasul 9 se face
+#    cu bifa liberă — ea dovedește exact regula din B9 (contul nu se poate crea fără acceptarea termenilor).
+#  - Formularul de parolă nouă (`activeMode === 'reset-password'`) se atinge DOAR cu un link de recuperare
+#    real, deci nu poate fi deschis dintr-un flow anonim; în schimb se dovedește că NU s-a intrat în el
+#    (titlul „Alege o parolă nouă" trebuie să lipsească). Nu se asertează texte pe care flow-ul nu le
+#    poate produce.
+#  - Nu se asertează butonul Apple: pe iOS apare doar dacă modulul nativ e disponibil, pe Android nu
+#    există deloc (auth.tsx:621-654) — ar fi o aserțiune dependentă de platformă.
+appId: ro.ortodoxia.app
+---
+- launchApp:
+    clearState: true
+# Prolog comun: așază aplicația pe limba ROMÂNĂ.
+- runFlow: set-language-ro.yaml
+- extendedWaitUntil:
+    visible: ".*(Acasă|Home).*"
+    timeout: 45000
+    label: "PORȚI: aplicația a pornit"
+- tapOn:
+    text: ".*(Cont|Account).*"
+    label: "intrăm în Cont (de unde se deschide ecranul 08)"
+- extendedWaitUntil:
+    visible: "Contul meu"
+    timeout: 20000
+    label: "PORȚI: ecranul Cont s-a deschis"
+- scrollUntilVisible:
+    element:
+      text: "Autentificare sau cont nou"
+    direction: DOWN
+    timeout: 30000
+    label: "PORȚI: butonul de autentificare al oaspetelui (account.guestAuthButton)"
+- tapOn: "Autentificare sau cont nou"
+- extendedWaitUntil:
+    visible: "Bine ai revenit"
+    timeout: 30000
+    label: "PORȚI: ecranul 08 s-a deschis pe autentificare (auth.titleSignIn)"
+- assertVisible:
+    text: "Contul păstrează favoritele și conversațiile tale."
+    label: "PORȚI: ecranul își explică rostul (auth.subtitle)"
+- assertVisible: "Email"
+- assertVisible: "Parolă"
+- assertVisible:
+    text: "nume@email.ro"
+    label: "PORȚI: câmpul de email e gol și își arată exemplul (auth.emailPlaceholder)"
+- assertVisible: "Continuă cu Google"
+- assertVisible: "sau"
+# ── 1. RESETARE PAROLĂ — poarta „Am uitat parola" cu email gol: validare locală, NIMIC nu se trimite.
+- tapOn: "Am uitat parola"
+- extendedWaitUntil:
+    visible: "Email necesar"
+    timeout: 10000
+    label: "PORȚI: resetarea cere mai întâi o adresă (auth.emailRequiredTitle)"
+- assertVisible:
+    text: "Introdu mai întâi adresa ta de email."
+    label: "PORȚI: alerta de resetare spune exact ce lipsește (auth.emailRequiredAlertMessage)"
+- tapOn: "OK"
+- assertVisible:
+    text: "Introdu mai întâi o adresă de email validă."
+    label: "PORȚI: mesajul de resetare rămâne pe ecran, nu doar în alertă (auth.emailRequiredMessage)"
+- assertNotVisible:
+    text: "Mesaj trimis. Verifică emailul pentru instrucțiunile de resetare."
+    label: "REGRESIA: NU s-a trimis niciun email de resetare (ar fi fost o trimitere reală, cu cota consumată)"
+- assertNotVisible:
+    text: "Alege o parolă nouă"
+    label: "REGRESIA: nu s-a intrat în formularul de parolă nouă (acela cere un link real de recuperare)"
+# ── 2. AUTENTIFICARE cu câmpuri goale: validare locală (auth.tsx:281-284), fără nicio cerere la server.
+- tapOn: "Autentificare"
+- extendedWaitUntil:
+    visible: "Email invalid"
+    timeout: 10000
+    label: "PORȚI: autentificarea nu pleacă spre server cu email gol (auth.emailInvalidTitle)"
+- assertVisible:
+    text: "Introdu o adresă de email validă."
+    label: "PORȚI: mesajul e cel din i18n, nu un text tehnic (auth.emailInvalidMessage)"
+- tapOn: "OK"
+# ── 3. AUTENTIFICARE cu email completat și parolă prea scurtă: tot validare locală (auth.tsx:285-288).
+- tapOn: "nume@email.ro"
+- inputText: "maestro.e2e@invalid.test"
+- hideKeyboard
+- tapOn: "Autentificare"
+- extendedWaitUntil:
+    visible: "Parolă prea scurtă"
+    timeout: 10000
+    label: "PORȚI: parola minimă e impusă înainte de orice cerere (auth.passwordTooShortTitle)"
+- assertVisible:
+    text: "Parola trebuie să aibă cel puțin 6 caractere."
+    label: "PORȚI: cerința de parolă e spusă omului (auth.passwordTooShortMessage)"
+- tapOn: "OK"
+# ── 4. AUTENTIFICARE reală cu parolă greșită: singura cerere care ajunge la server. Nu creează nimic;
+#     răspunsul e fie „email sau parolă incorectă", fie eroarea de rețea (dacă mediul n-are internet).
+#     Ambele sunt răspunsuri reale ale aplicației, deci poarta le acceptă pe amândouă.
+- tapOn: "Parola ta"
+- inputText: "parola-gresita-123"
+- hideKeyboard
+- tapOn: "Autentificare"
+- extendedWaitUntil:
+    visible: "Autentificarea nu a reușit"
+    timeout: 40000
+    label: "PORȚI: autentificarea cu parolă greșită întoarce o eroare spusă omului (auth.signInFailedTitle)"
+- assertVisible:
+    text: "Email sau parolă incorectă.|Eroare de conexiune. Verifică internetul și încearcă din nou."
+    label: "PORȚI: mesajul de eșec e cel din i18n (auth.errorInvalidCredentials sau auth.errorNetwork)"
+- tapOn: "OK"
+# ── 5. CONT NOU: comutatorul duce în modul de creare de cont, cu câmpul de nume și bifa de termeni.
+- tapOn: "Creează cont"
+- extendedWaitUntil:
+    visible: "Creează contul"
+    timeout: 15000
+    label: "PORȚI: modul de cont nou s-a deschis (auth.titleSignUp)"
+- assertVisible:
+    text: "Nume afișat"
+    label: "PORȚI: contul nou cere un nume afișat (auth.displayNameLabel)"
+- assertVisible:
+    text: "Numele tău"
+    label: "PORȚI: câmpul de nume e gol și își arată exemplul (auth.displayNamePlaceholder)"
+- assertVisible: "Ai deja cont?"
+- assertVisible:
+    text: "Am citit și accept termenii de utilizare și politica de confidențialitate."
+    label: "PORȚI: termenii sunt pe ecran, ca bifă separată (auth.termsCheckbox)"
+# ── 6. Bifa de termeni chiar blochează crearea contului: se apasă „Creează cont" CU bifa liberă.
+#     Nimic nu pleacă la server (auth.tsx:292-295) — și tocmai de aceea NU se bifează înainte.
+- tapOn: "Creează cont"
+- extendedWaitUntil:
+    visible: "Termeni neacceptați"
+    timeout: 10000
+    label: "PORȚI: fără acceptarea termenilor contul NU se creează (auth.termsRequiredTitle, regula B9)"
+- assertVisible:
+    text: "Bifați acceptarea termenilor pentru a crea contul."
+    label: "PORȚI: mesajul spune exact ce trebuie bifat (auth.termsRequired)"
+- tapOn: "OK"
+- assertNotVisible:
+    text: "Verifică emailul"
+    label: "REGRESIA: nu s-a cerut confirmarea unui email — adică nu s-a creat niciun cont"
+# ── 7. Înapoi la autentificare (comutatorul invers) și starea finală a ecranului.
+- tapOn: "Autentificare"
+- extendedWaitUntil:
+    visible: "Bine ai revenit"
+    timeout: 15000
+    label: "PORȚI: comutatorul de întoarcere (Ai deja cont?) readuce ecranul pe autentificare"
+- assertVisible: "Nu ai cont?"
+- assertNotVisible:
+    text: "Alege o parolă nouă"
+    label: "REGRESIA: ecranul a rămas în starea normală, nu într-un flux de recuperare"
+- takeScreenshot: autentificare-08

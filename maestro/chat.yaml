@@ -8,6 +8,22 @@
 # `clearState: true` e deliberat: aplicația pornește ca o instalare nouă, deci sesiunea de oaspete
 # e nouă și cele 5 mesaje gratuite de ziua respectivă sunt neconsumate. Fără asta, a doua rulare pe
 # același emulator ar pica pe „Ai folosit toate cele {limit} mesaje disponibile azi."
+#
+# ── EXTINS 2026-10-12 (build 22) — ce s-a ADĂUGAT. Nimic din ce era înainte nu s-a șters și nu s-a
+#    slăbit; s-au adăugat doar porți noi:
+#   a) identitatea ecranului: subtitlul-declarație (chat.subtitle) e pe ecran, nu doar câmpul de scriere;
+#   b) TEXTUL RĂSPUNSULUI, nu doar butonul de raportare: pe ecran trebuie să existe un nod de text de
+#      cel puțin 40 de caractere care NU începe cu niciunul dintre textele fixe ale ecranului. Singurul
+#      asemenea nod este răspunsul (întrebarea are 18 caractere; subtitlul și mesajul de bun venit sunt
+#      excluse prin lookahead). Pattern-ul e verificat local cu regex-answer-check.mjs: 21 de texte fixe
+#      ale ecranului NU trec, 3 răspunsuri reale trec.
+#   c) conversația s-a încheiat curat: compozitorul e din nou activ, contorul de întrebări rămase arată
+#      o valoare reală (nu cardul „mesaje epuizate"), iar „Pregătesc răspunsul..." nu mai e pe ecran;
+#   d) bannerul de eroare e căutat pe TOATE formele lui, nu doar pe două (încărcare, cotă zilnică /
+#      de dispozitiv / de rețea / buget lunar, pauză între mesaje, ofertă Premium, mesaje epuizate).
+#
+# DE CE NU se forțează autentificarea aici: flow-ul e anonim prin construcție (`clearState: true`), deci
+# NU se poate produce un rând în `chat_messages` (rândul cere utilizator autentificat) și nu se încearcă.
 appId: ro.ortodoxia.app
 ---
 - launchApp:
@@ -25,6 +41,9 @@ appId: ro.ortodoxia.app
     timeout: 30000
     label: "PORȚI: ecranul de chat s-a deschis (câmpul de scriere e vizibil)"
 - assertVisible: "Bine ai venit. Poți întreba despre rugăciune, sărbători sau termeni din credința ortodoxă."
+- assertVisible:
+    text: "Răspunsurile AI pot greși și nu înlocuiesc sfatul preotului duhovnic. Nu oferă sfat medical; în urgențe sună la 112."
+    label: "PORȚI: identitatea ecranului 06 Întreabă (subtitlul-declarație, nu doar câmpul de scriere)"
 - tapOn: ".*Scrie întrebarea ta.*"
 - inputText: "Ce este rugaciunea?"
 # Fără asta, tastatura acoperă butonul „Trimite" (compozitorul e în ScrollView, jos).
@@ -39,6 +58,9 @@ appId: ro.ortodoxia.app
     visible: ".*Raportează.*"
     timeout: 120000
     label: "PORȚI: asistentul a terminat un răspuns (butonul de raportare există doar sub un răspuns complet)"
+- assertVisible:
+    text: "^(?!Răspunsurile AI)(?!Bine ai venit)(?!Plan gratuit: )(?!Plan Premium: )(?!Ai folosit)(?!Conversația)(?!Răspunsul AI)(?!Serviciul nu)(?!Primești la ora)[\\s\\S]{40,}$"
+    label: "PORȚI: TEXTUL răspunsului e pe ecran (un nod de peste 40 de caractere care nu e niciun text fix al ecranului)"
 # Mesajul utilizatorului nu mai e pe ecran după ce răspunsul (lung) s-a scris: conversația
 # derulează automat la fund. Deci NU se asertează „vizibil", se derulează până la el.
 - takeScreenshot: chat-answer
@@ -60,3 +82,52 @@ appId: ro.ortodoxia.app
 - assertNotVisible:
     text: ".*Prea multe cereri.*"
     label: "REGRESIA: cererile au fost limitate (rate limit)"
+# ── Adăugat 2026-10-12: restul formelor bannerului de eroare (chei reale din config.ts), scrise ca
+#    regex care acceptă prefixul/sufixul din jurul textului de pe ecran.
+- assertNotVisible:
+    text: ".*Conversația nu a putut fi încărcată\\. Încearcă din nou\\..*"
+    label: "REGRESIA: conversația nu s-a încărcat (chat.loadError)"
+- assertNotVisible:
+    text: ".*Mesajele vechi nu au putut fi încărcate\\..*"
+    label: "REGRESIA: istoricul vechi nu s-a încărcat (chat.oldMessagesLoadError)"
+- assertNotVisible:
+    text: ".*Limita de mesaje a fost atinsă\\. Încearcă din nou mai târziu\\..*"
+    label: "REGRESIA: cota zilnică (chat.quotaDailyLimit)"
+- assertNotVisible:
+    text: ".*Limita de mesaje pentru acest dispozitiv a fost atinsă astăzi\\..*"
+    label: "REGRESIA: cota pe dispozitiv (chat.quotaClientLimit)"
+- assertNotVisible:
+    text: ".*Limita de mesaje pentru această rețea a fost atinsă astăzi\\..*"
+    label: "REGRESIA: cota pe rețea (chat.quotaIpLimit)"
+- assertNotVisible:
+    text: ".*Bugetul lunar de mesaje AI a fost atins\\..*"
+    label: "REGRESIA: bugetul lunar (chat.quotaMonthlyCap)"
+- assertNotVisible:
+    text: ".*Așteaptă câteva secunde înainte de următorul mesaj\\..*"
+    label: "REGRESIA: pauza dintre mesaje (chat.quotaCooldown)"
+- assertNotVisible:
+    text: ".*Pentru a continua conversația, alege planul Premium.*"
+    label: "REGRESIA: s-a cerut plata în locul răspunsului (chat.premiumOffer)"
+- assertNotVisible:
+    text: "Ai folosit toate cele .* mesaje disponibile azi\\."
+    label: "REGRESIA: mesajele de azi s-au epuizat la prima întrebare (chat.noMessagesLeft)"
+# ── Adăugat 2026-10-12: starea de DUPĂ răspuns, verificată pozitiv (nu doar prin absența erorilor).
+- scrollUntilVisible:
+    element:
+      text: ".*(întrebări gratuite rămase azi|întrebare gratuită rămasă azi|mesaje rămase azi|mesaj rămas azi).*"
+    direction: UP
+    timeout: 20000
+    centerElement: true
+    label: "PORȚI: contorul de întrebări rămase arată o valoare reală după răspuns"
+- assertVisible:
+    text: ".*(întrebări gratuite rămase azi|întrebare gratuită rămasă azi|mesaje rămase azi|mesaj rămas azi).*"
+    label: "PORȚI: contorul e o valoare, nu cardul „mesaje epuizate\" (formele reale: chat.freeLimitLabel / chat.premiumLimitLabel)"
+- assertVisible:
+    text: ".*Scrie întrebarea ta.*"
+    label: "PORȚI: compozitorul e din nou activ după răspuns (câmpul de scriere e vizibil)"
+- assertVisible:
+    text: ".*Trimite.*"
+    label: "PORȚI: butonul de trimitere e din nou disponibil (ciclul de trimitere s-a încheiat, nu a rămas blocat)"
+- assertNotVisible:
+    text: ".*Pregătesc răspunsul\\.\\.\\..*"
+    label: "REGRESIA: indicatorul de așteptare nu a rămas pe ecran după răspuns (răspunsul chiar s-a terminat)"

@@ -1,0 +1,137 @@
+# T2 — Cont (07): profil, țară și limbă, calendar, notificări on/off, plan, despre, zona periculoasă.
+#
+# DE CE ARATĂ AȘA:
+#  - Ecranul se verifică în starea în care pornește Maestro: OASPETE (`clearState: true` → nicio sesiune
+#    salvată). De aceea cardul de profil e cel de oaspete, iar butoanele care schimbă date reale în cont
+#    („Șterge contul") NU se apasă nicăieri în acest flow — se asertează că NU există pentru un oaspete.
+#  - Toate textele asertate sunt chei i18n reale (română) din src/i18n/config.ts, extrase cu scriptul
+#    extract-i18n.mjs (PowerShell distorsionează diacriticele), plus două șiruri care NU vin din i18n, ci
+#    din cod: numele limbilor (LANGUAGE_LABELS, src/app/(tabs)/account.tsx:45-61) și codul de regiune
+#    afișat sub țară (`option.locale`, src/i18n/config.ts:80 → `ro-RO`).
+#  - FUS ORAR: aplicația NU are selector de fus orar și nu afișează niciun fus orar pe ecran.
+#    `timeZone` există doar în tipul de configurare al regiunii (src/i18n/config.ts:81,
+#    `timeZone: 'Europe/Bucharest'`) și e folosit la construirea configurației
+#    (src/app/(tabs)/account.tsx:312) — se derivă din țară, nu se alege. Nu se inventează un pas pentru
+#    el: ce se poate aserta real este regiunea și codul ei de localizare (`ro-RO`), care sunt exact
+#    sursa fusului orar. (Aceeași limitare este raportată și în raportul taskului.)
+#  - Planul de abonament: cardul are DOAR valorile pe care le poate lua `planLabelText`/`planBodyText`
+#    (src/app/(tabs)/account.tsx:398-402, chei din src/lib/subscription.ts:228-274). Nu se asertează
+#    niciun text care depinde de magazin (preț, „cumpără"), pentru că pe simulator magazinul poate lipsi.
+appId: ro.ortodoxia.app
+---
+- launchApp:
+    clearState: true
+# Prolog comun: așază aplicația pe limba ROMÂNĂ (ecranul Cont e chiar unealta lui: opțiunea „Română").
+- runFlow: set-language-ro.yaml
+- extendedWaitUntil:
+    visible: ".*(Acasă|Home).*"
+    timeout: 45000
+    label: "PORȚI: aplicația a pornit"
+- tapOn:
+    text: ".*(Cont|Account).*"
+    label: "deschidem ecranul 07 din bara de tab-uri"
+- extendedWaitUntil:
+    visible: "Contul meu"
+    timeout: 20000
+    label: "PORȚI: ecranul Cont s-a deschis (titlul e cel din i18n, account.pageTitle)"
+- assertVisible: "Salvează favoritele, conversațiile și accesul Premium."
+# ── 1. PROFIL (starea de oaspete: exact ce vede un om care nu s-a autentificat)
+- assertVisible: "Folosești aplicația fără cont"
+- assertVisible:
+    text: "Creează un cont pentru a sincroniza conținutul pe dispozitivele tale."
+    label: "PORȚI: profilul de oaspete își explică rostul (account.guestBody)"
+- assertVisible:
+    text: "Autentificare sau cont nou"
+    label: "PORȚI: din Cont se poate ajunge la autentificare (account.guestAuthButton)"
+- assertNotVisible:
+    text: "Cont activ"
+    label: "REGRESIA: ecranul nu ne prezintă ca fiind autentificați (account.activeTitle lipsește pentru oaspete)"
+- assertNotVisible:
+    text: ".*Zona periculoasă.*"
+    label: "REGRESIA: un oaspete nu primește secțiunea de ștergere a contului (account.dangerZoneTitle)"
+- assertNotVisible:
+    text: ".*Șterge contul.*"
+    label: "REGRESIA: butonul de ștergere a contului nu există fără cont (fără risc de ștergere reală)"
+# ── 2. ȚARĂ ȘI LIMBĂ (inclusiv codul de regiune din care se derivă fusul orar)
+- scrollUntilVisible:
+    element:
+      text: "Țară și limbă"
+    direction: DOWN
+    timeout: 30000
+    label: "PORȚI: secțiunea Țară și limbă (account.regionTitle)"
+- assertVisible:
+    text: "Țara stabilește calendarul, sursele locale și moneda. Limba poate fi schimbată separat când adăugăm traduceri noi."
+    label: "PORȚI: ecranul spune ce anume schimbă țara (account.regionDescription)"
+- assertVisible: "Țara"
+- assertVisible:
+    text: "România"
+    label: "PORȚI: țara implicită e o regiune reală din listă (DEFAULT_COUNTRY = 'RO')"
+- assertVisible:
+    text: "ro-RO"
+    label: "PORȚI: sub țară e codul de localizare al regiunii (sursa fusului orar: Europe/Bucharest)"
+- scrollUntilVisible:
+    element:
+      text: "English"
+    direction: DOWN
+    timeout: 20000
+    label: "PORȚI: lista de limbi complete e pe ecran (numele native, nu traduceri)"
+- assertVisible:
+    text: "Română"
+    label: "PORȚI: limba curentă e chiar cea pe care a fixat-o prologul"
+# ── 3. CALENDAR BISERICESC (descrierea de calendar e dinamică pentru RO, deci nu se asertează textul ei)
+- assertVisible: "Calendar bisericesc"
+# ── 4. NOTIFICĂRI (starea reală la prima pornire: oprite) și limita onestă a simulatoarelor:
+#     un push real (APNs/FCM) NU poate fi dovedit aici; se asertează starea și butoanele, nu livrarea.
+- scrollUntilVisible:
+    element:
+      text: "Notificări zilnice"
+    direction: DOWN
+    timeout: 20000
+    label: "PORȚI: secțiunea de notificări (account.notificationsSectionTitle)"
+- assertVisible:
+    text: "Primești la ora 10:00 versetul, mesajul zilei și sărbătoarea din calendarul ales."
+    label: "PORȚI: ecranul promite exact ora la care trimite (account.notificationsDescription)"
+- assertVisible:
+    text: "Notificările sunt oprite."
+    label: "PORȚI: starea de pornire e cea corectă — OPRITE, fără nicio urmă de activare nesolicitată"
+- assertVisible:
+    text: "Conectează-te pentru notificări"
+    label: "PORȚI: un oaspete e îndrumat să se conecteze, nu i se promite un push imposibil"
+- assertNotVisible:
+    text: "Notificările sunt active."
+    label: "REGRESIA: aplicația nu se laudă cu notificări active fără cont și fără acord"
+- assertNotVisible:
+    text: "Activează notificările"
+    label: "REGRESIA: butonul de activare nu se oferă unui oaspete (ar cere cont, ar promite în gol)"
+# ── 5. ABONAMENT (planul afișat iese din planSummary; se acoperă TOATE valorile pe care le poate lua)
+- scrollUntilVisible:
+    element:
+      text: "Abonament"
+    direction: DOWN
+    timeout: 20000
+    label: "PORȚI: secțiunea de abonament (account.subscriptionSectionTitle)"
+- assertVisible:
+    text: "Se verifică planul…|Plan Gratuit|Premium.*"
+    label: "PORȚI: planul afișat e unul real (account.planChecking sau o etichetă de abonament din planSummary)"
+- assertVisible:
+    text: "Ai 5 mesaje AI pe zi\\. Conținutul de bază rămâne gratuit\\.|Ai [0-9]+ de mesaje AI pe zi\\."
+    label: "PORȚI: se spune câte mesaje AI are omul (plan gratuit = 5/zi, abonat = câte are)"
+- assertVisible:
+    text: "Vezi Premium|Vezi abonamentul"
+    label: "PORȚI: cardul de abonament duce într-un loc real, potrivit stării planului"
+- assertVisible:
+    text: "Deschide Chatul AI"
+    label: "PORȚI: din Cont se poate ajunge direct în conversația AI"
+# ── 6. DESPRE APLICAȚIE (documentele legale sunt reale, nu rânduri moarte)
+- scrollUntilVisible:
+    element:
+      text: "Despre aplicație"
+    direction: DOWN
+    timeout: 20000
+    label: "PORȚI: secțiunea Despre aplicație (account.aboutSectionTitle)"
+- assertVisible: "Politica de confidențialitate"
+- assertVisible: "Termeni și condiții"
+- assertVisible:
+    text: "Surse și responsabilitate editorială"
+    label: "PORȚI: aplicația declară pe ecran cine răspunde de conținut"
+- takeScreenshot: cont-07
