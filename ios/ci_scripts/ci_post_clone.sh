@@ -81,8 +81,37 @@ npm ci
 # --------------------------------------------------------- 4. proiectul iOS
 step "4/6 expo prebuild -p ios (necondiționat, fără --clean)"
 IOS_DIR="$REPO_ROOT/ios"
+
+# CAPCANĂ DOVEDITĂ (12.10.2026, măsurat cu git status pe un checkout curat):
+# dacă ios/ există dar NU conține încă niciun .xcodeproj, Expo consideră folderul
+# „malformat" și — fiind neinteractiv, ca orice CI — îl ȘTERGE FĂRĂ SĂ ÎNTREBE,
+# chiar și fără --clean. Locurile din sursa CLI-ului:
+#   @expo/cli/build/src/prebuild/prebuildAsync.js:124-127  (fără --clean cheamă
+#     promptToClearMalformedNativeProjectsAsync)
+#   @expo/cli/build/src/prebuild/clearNativeFolder.js:167-183  (malformat = nu
+#     există .xcodeproj/.pbxproj)
+#   @expo/cli/build/src/prebuild/clearNativeFolder.js:194-204  (neinteractiv ⇒
+#     șterge direct; lasă doar warning-ul „project files will be cleared and reinitialized")
+# Măsurat: după rulare, `git status --short` → " D ios/ci_scripts/ci_post_clone.sh".
+# Adică dispărea ci_scripts/ întreg (inclusiv acest script), iar un eventual
+# ci_pre_xcodebuild.sh / ci_post_xcodebuild.sh comis acolo nu mai era la locul lui.
+# Protecție: se salvează ci_scripts înainte de prebuild și se pune la loc după.
+CI_SCRIPTS_DIR="$IOS_DIR/ci_scripts"
+CI_SCRIPTS_BACKUP=""
+if [ -d "$CI_SCRIPTS_DIR" ]; then
+  CI_SCRIPTS_BACKUP="$(mktemp -d)/ci_scripts"
+  cp -R "$CI_SCRIPTS_DIR" "$CI_SCRIPTS_BACKUP"
+  echo "ci_scripts salvat înainte de prebuild ($(find "$CI_SCRIPTS_BACKUP" -type f | wc -l | tr -d ' ') fișiere)"
+fi
+
 npx expo prebuild -p ios
 [ -d "$IOS_DIR" ] || fail "expo prebuild s-a terminat, dar $IOS_DIR nu există."
+
+if [ -n "$CI_SCRIPTS_BACKUP" ]; then
+  mkdir -p "$CI_SCRIPTS_DIR"
+  cp -R "$CI_SCRIPTS_BACKUP/." "$CI_SCRIPTS_DIR/"
+  echo "ci_scripts pus la loc ($(find "$CI_SCRIPTS_DIR" -type f | wc -l | tr -d ' ') fișiere)"
+fi
 
 # Descoperirea proiectului: Xcode Cloud are nevoie de un .xcodeproj/.xcworkspace
 # stabil. La Expo, numele fișierului dă și numele schemei.
