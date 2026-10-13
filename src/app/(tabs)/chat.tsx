@@ -508,26 +508,24 @@ function ChatConversation() {
     return () => clearTimeout(timeoutId);
   }, [isSending, loadConversation]);
 
-  const send = async () => {
     /**
      * OB.1 (13.10.2026) — fiecare apăsare pe „Trimite” lasă o linie în logul aplicației, inclusiv
      * când cererea NU pleacă. Motivul, în paranteză, e cel afișat de tester în artefact: fără el,
      * un ecran fără răspuns nu se poate deosebi de o rețea căzută (măsurat: chat 0/3 pe iOS, cotă
      * curată, zero linii `[chat-latency]` în artefact).
+     *
+     * Gardurile de mai jos raman scrise fiecare pe o SINGURA linie, in forma lor literala:
+     * `tests/chat-send-guards.test.mjs` le cauta ca text in sursa (anti-regresie) si verifica
+     * ordinea dintre ele. Instrumentul scrie motivul pe linia de dinaintea gardului, nu in gard.
      */
-    if (isSendingRef.current) {
-      logChatLatency('cerere oprită', 0, 'o cerere este deja în curs');
-      return;
-    }
-    if (isLoading) {
-      logChatLatency('cerere oprită', 0, 'se încarcă conversația');
-      return;
-    }
+  const send = async () => {
+    if (isSendingRef.current) logChatLatency('cerere oprită', 0, 'o cerere este deja în curs');
+    if (isSendingRef.current) return;
+    if (isLoading) logChatLatency('cerere oprită', 0, 'se încarcă conversația');
+    if (isLoading) return;
     const clean = input.trim();
-    if (!clean) {
-      logChatLatency('cerere oprită', 0, 'text gol');
-      return;
-    }
+    if (!clean) logChatLatency('cerere oprită', 0, 'text gol');
+    if (!clean) return;
 
     if (remaining <= 0) {
       setErrorMessage(t('chat.freeLimitReached').replace('{count}', String(dailyLimit)));
