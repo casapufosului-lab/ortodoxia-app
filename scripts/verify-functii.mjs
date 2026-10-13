@@ -17,6 +17,7 @@
  * COD DE IEȘIRE: 0 = toate verificările care au putut rula au trecut; 1 = cel puțin o verificare a picat.
  */
 import { readFileSync, writeFileSync } from 'node:fs';
+import { execSync } from 'node:child_process';
 
 // ─── argumente ────────────────────────────────────────────────────────────────
 const argv = process.argv.slice(2);
@@ -314,7 +315,17 @@ const picate = rezultate.filter((r) => r.stare === 'FAIL').length;
 const neclare = rezultate.filter((r) => r.stare === 'NEVERIFICAT').length;
 const raport = {
   cand: new Date().toISOString(),
-  commit: (() => { try { return readFileSync('.git/HEAD', 'utf8').trim(); } catch { return null; } })(),
+  // REPARAT 13.10.2026: inainte se scria CONTINUTUL din `.git/HEAD` (adica "ref: refs/heads/master"),
+  // care nu e un commit. Dovada trebuie sa spuna PE CE COMMIT s-a masurat, altfel nu se poate lega de
+  // artefactele suitelor. Acum: SHA-ul real + daca arborele de lucru era murdar la masurare.
+  commit: (() => {
+    const ruleaza = (cmd) => {
+      try { return execSync(cmd, { encoding: 'utf8' }).trim(); } catch { return null; }
+    };
+    const sha = ruleaza('git rev-parse HEAD');
+    const murdar = ruleaza('git status --porcelain');
+    return sha ? `${sha}${murdar ? ' (arbore de lucru cu modificari necomise)' : ''}` : null;
+  })(),
   zi: azi,
   total: rezultate.length,
   trecute, picate, neclare,
