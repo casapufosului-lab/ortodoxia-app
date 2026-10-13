@@ -340,7 +340,10 @@ const raport = {
     };
     const sha = ruleaza('git rev-parse HEAD');
     const murdar = ruleaza('git status --porcelain');
-    return sha ? `${sha}${murdar ? ' (arbore de lucru cu modificari necomise)' : ''}` : null;
+    const modificate = murdar
+      ? murdar.split(/\r?\n/).filter(Boolean).map((l) => l.trim()).slice(0, 8).join('; ')
+      : '';
+    return sha ? `${sha}${modificate ? ` (arbore de lucru cu modificari necomise: ${modificate})` : ''}` : null;
   })(),
   zi: azi,
   total: rezultate.length,
