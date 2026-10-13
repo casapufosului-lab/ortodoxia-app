@@ -1,0 +1,172 @@
+# T6 — CHAT, STAREA B: cota gratuită epuizată (5 întrebări) ⇒ aplicația se OPRESTE și cere Premium.
+#
+# CE DOVEDEȘTE (cerința ownerului, 13.10.2026): primele 5 întrebări ale zilei primesc răspuns complet;
+# după a 5-a, aplicația nu mai trimite nimic și arată cardul de stop + ofertă Premium. Ambele stări sunt
+# reale și separate: starea A (în cotă) e `maestro/chat.yaml`, starea B (cotă epuizată) e ACEST fișier.
+# Nu se șterge și nu se slăbește nimic din chat.yaml; aserțiunile de aici se ADAGĂ.
+#
+# DE UNDE SE ȘTIE CĂ RĂSPUNSUL E COMPLET: sub un răspuns complet al asistentului apare butonul
+# „Raportează" (chat.reportButton, `src/app/(tabs)/chat.tsx:837-845`); el nu apare nici pe mesajul
+# utilizatorului, nici pe indicatorul „Pregătesc răspunsul...", nici pe textul care sosește în streaming.
+#
+# CUM ARATĂ STAREA B ÎN COD (citit, nu presupus):
+#   `chat.tsx:530-534`  — garda locală `if (remaining <= 0) { setErrorMessage(...); return; }` oprește
+#                         cererea ÎNAINTE de plecare, deci al 6-lea mesaj nu ajunge la server;
+#   `chat.tsx:802-815`  — când `remaining <= 0`, cardul afișat este `chat.noMessagesLeft` (stop) +
+#                         `chat.premiumOffer` (ofertă) + butonul `chat.choosePremiumButton`.
+#                         Cardul de EROARE e a doua ramură a aceluiași `? :`, deci NU se afișează cât timp
+#                         cota e epuizată: o eroare afișată în locul ofertei ar fi DEFECT, nu „stare acceptată".
+#
+# COTA CURATĂ: `clearState: true` pornește ca instalare nouă ⇒ identitate nouă ⇒ 5/5 întrebări.
+# Consumul e pe `scope=device` (1 mesaj per instalare), dovedit cu cheia de service. Contorul de pe ecran
+# pentru oaspete este `chat.freeLimitLabel` = „{count} din {limit} întrebări gratuite rămase azi".
+#
+# PESTE ASTA (în afara flow-ului, în harness): plafonul se citește înainte/după din bază
+# (`reserve_ai_request` / `ai_client_usage_daily`), ca să se vadă negru pe alb că a 6-a cerere NU a
+# crescut consumul. Flow-ul dovedește ecranul; baza o citește instrumentul; raportul le pune împreună.
+#
+# TEXT FĂRĂ DIACRITICE în `inputText`: pe Android `inputText` trimite textul prin `adb input text`, care
+# nu duce diacritice. Aserțiunile (citite din ierarhie) folosesc însă textul EXACT, cu diacritice.
+#
+# PAUZA DINTRE MESAJE: serverul are `p_cooldown_seconds DEFAULT 5` (migrația
+# `20260903000100_harden_ai_usage.sql:9`) — fiecare ciclu așteaptă răspunsul complet (zeci de secunde),
+# deci cooldown-ul nu poate fi confundat cu plafonul zilnic.
+appId: ro.ortodoxia.app
+---
+- launchApp:
+    clearState: true
+# Prolog comun: așază aplicația pe limba ROMÂNĂ (emulatorul/simulatorul e implicit pe engleză, iar
+# aplicația urmează limba dispozitivului la prima pornire — altfel aserțiunile de mai jos pică).
+- runFlow: set-language-ro.yaml
+- extendedWaitUntil:
+    visible: ".*(Acasă|Home).*"
+    timeout: 90000
+    label: "PORȚI: aplicația a pornit"
+# Tabul de chat se cere EXACT (nu prin centrul ecranului și nu prin „Întreabă ghidul AI" de pe Acasă):
+# în rularea Codemagic 6acd43eb selectorul larg apăsa butonul de pe Acasă, iar ierarhia de la picare
+# arăta „Biblia, tab ... selected=true". Același motiv ca în chat.yaml/calendar.yaml.
+- tapOn:
+    text: "^Întreabă(, tab.*)?$"
+    label: "PORȚI: intru in chat prin tabul de chat (nu prin butonul de pe Acasă)"
+- extendedWaitUntil:
+    visible: ".*Scrie întrebarea ta.*"
+    timeout: 30000
+    label: "PORȚI: ecranul de chat s-a deschis (câmpul de scriere e vizibil)"
+# ── PORȚI: cotă curată. Dacă identitatea nu e nouă, contorul nu poate arăta 5/5 și flow-ul se oprește
+#    AICI, cu motivul scris: „cotă", nu „defect".
+- assertVisible:
+    text: "^5 din 5 întrebări gratuite rămase azi$"
+    label: "PORȚI: contorul arată cotă CURATĂ, 5/5, înainte de prima întrebare (identitate nouă prin clearState)"
+# ── 1/5. Fiecare ciclu: scriu întrebarea, ascund tastatura (altfel acoperă butonul „Trimite"), trimit,
+#    și aștept butonul „Raportează" = răspuns COMPLET primit.
+- tapOn: ".*Scrie întrebarea ta.*"
+- inputText: "Ce este rugaciunea?"
+- hideKeyboard
+- tapOn: ".*Trimite.*"
+- extendedWaitUntil:
+    visible: ".*Raportează.*"
+    timeout: 120000
+    label: "TREAPTA 1/5: asistentul a terminat un răspuns complet (butonul de raportare există doar sub un răspuns complet)"
+# ── 2/5
+- tapOn: ".*Scrie întrebarea ta.*"
+- inputText: "Cum ma rog dimineata?"
+- hideKeyboard
+- tapOn: ".*Trimite.*"
+- extendedWaitUntil:
+    visible: ".*Raportează.*"
+    timeout: 120000
+    label: "TREAPTA 2/5: asistentul a terminat un răspuns complet"
+# ── 3/5
+- tapOn: ".*Scrie întrebarea ta.*"
+- inputText: "Ce este postul?"
+- hideKeyboard
+- tapOn: ".*Trimite.*"
+- extendedWaitUntil:
+    visible: ".*Raportează.*"
+    timeout: 120000
+    label: "TREAPTA 3/5: asistentul a terminat un răspuns complet"
+# ── 4/5
+- tapOn: ".*Scrie întrebarea ta.*"
+- inputText: "Cine a fost Sfantul Ioan?"
+- hideKeyboard
+- tapOn: ".*Trimite.*"
+- extendedWaitUntil:
+    visible: ".*Raportează.*"
+    timeout: 120000
+    label: "TREAPTA 4/5: asistentul a terminat un răspuns complet"
+# ── 5/5 — ultima întrebare din cotă. Pe ecran, cât timp cota nu e epuizată, NU există cardul de stop.
+- assertNotVisible:
+    text: "^Ai folosit toate cele 5 mesaje disponibile azi\\.$"
+    label: "PORȚI: înainte de a 5-a întrebare cotă NU e epuizată (cardul de stop nu e pe ecran)"
+- tapOn: ".*Scrie întrebarea ta.*"
+- inputText: "Ce este Sfanta Liturghie?"
+- hideKeyboard
+- tapOn: ".*Trimite.*"
+- extendedWaitUntil:
+    visible: ".*Raportează.*"
+    timeout: 120000
+    label: "TREAPTA 5/5: asistentul a terminat un răspuns complet (a 5-a întrebare din cotă)"
+# ── STAREA B. Conversația e lungă și ecranul derulează la fund, deci cardurile de sus se caută cu
+#    scrollUntilVisible (care PICĂ dacă textul nu există — nu e un „optional" deghizat).
+- scrollUntilVisible:
+    element:
+      text: "^0 din 5 întrebări gratuite rămase azi$"
+    direction: UP
+    timeout: 30000
+    label: "STAREA B: contorul a scăzut la 0/5 — cota gratuită s-a consumat pe ecran"
+- takeScreenshot: chat-quota-stareB-contor-0-din-5
+- scrollUntilVisible:
+    element:
+      text: "^Ai folosit toate cele 5 mesaje disponibile azi\\.$"
+    direction: UP
+    timeout: 30000
+    label: "STAREA B: mesajul de STOP (chat.noMessagesLeft) e pe ecran"
+- scrollUntilVisible:
+    element:
+      text: ".*Pentru a continua conversația, alege planul Premium \\(.*\\).*"
+    direction: UP
+    timeout: 30000
+    label: "STAREA B: OFERTA Premium (chat.premiumOffer), cu prețul din magazin în paranteză"
+- assertVisible:
+    text: "^Alege planul Premium$"
+    label: "STAREA B: butonul de Premium (chat.choosePremiumButton) e pe ecran"
+- takeScreenshot: chat-quota-stareB-oferta-premium
+# ── AL 6-LEA MESAJ: trebuie să NU plece. Compozitorul rămâne editabil în cod
+#    (`chat.tsx:871` — `editable={!isSending && !isLoading}`, fără condiție pe cotă), deci se poate apăsa;
+#    oprirea o face garda din `send()` (`chat.tsx:530-534`).
+- tapOn: ".*Scrie întrebarea ta.*"
+- inputText: "Mai am o intrebare?"
+- hideKeyboard
+- tapOn: ".*Trimite.*"
+- extendedWaitUntil:
+    notVisible: ".*Pregătesc răspunsul\\.\\.\\..*"
+    timeout: 20000
+    label: "AL 6-LEA: nu pornește niciun răspuns (indicatorul de așteptare nu apare după apăsare)"
+# ── Ce NU are voie să apară în starea B: erorile. Cardul de eroare e a doua ramură a `? :` din
+#    `chat.tsx:802-823`, deci apariția lui aici ar însemna că aplicația a încercat cererea și a primit refuz,
+#    în loc să se oprească singură și să ofere Premium.
+- assertNotVisible:
+    text: ".*Serviciul nu este disponibil.*"
+    label: "STAREA B: fără bannerul „Serviciul nu este disponibil” (nu se acceptă eroarea ca rezultat)"
+- assertNotVisible:
+    text: ".*Răspunsul AI nu a putut fi generat.*"
+    label: "STAREA B: fără bannerul de eroare AI"
+- assertNotVisible:
+    text: ".*Conversația nu a putut fi încărcată.*"
+    label: "STAREA B: fără bannerul de încărcare eșuată (chat.loadError) — ecranul e cel de cotă epuizată, nu unul de eroare"
+- assertNotVisible:
+    text: ".*Limita de mesaje a fost atinsă.*"
+    label: "STAREA B: fără bannerul de plafon zilnic (chat.quotaDailyLimit)"
+- assertNotVisible:
+    text: ".*Creează un cont pentru a continua.*"
+    label: "STAREA B: fără textul de eroare chat.freeLimitReached (cardul de cotă are prioritate în cod)"
+- assertVisible:
+    text: "^Ai folosit toate cele 5 mesaje disponibile azi\\.$"
+    label: "STAREA B: după al 6-lea mesaj, cardul de stop e ÎNCĂ pe ecran"
+- assertVisible:
+    text: "^Alege planul Premium$"
+    label: "STAREA B: după al 6-lea mesaj, oferta Premium e ÎNCĂ pe ecran"
+- assertVisible:
+    text: ".*Scrie întrebarea ta.*"
+    label: "STAREA B: ecranul e funcțional (câmpul de scriere există), nu o pagină moartă de eroare"
+- takeScreenshot: chat-quota-stareB-dupa-al-6-lea-mesaj
