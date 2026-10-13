@@ -11,7 +11,22 @@
  *   [chat-latency] eșec HTTP 210 ms (status 429)
  */
 
-export type ChatLatencyStage = 'primul text' | 'total' | 'eșec HTTP' | 'stream întrerupt' | 'excepție';
+/**
+ * Treptele scrise în log. Fiecare apăsare pe „Trimite” lasă cel puțin o linie: `cererea a plecat`
+ * (cererea chiar a ieșit pe rețea) sau `cerere oprită` (aplicația a refuzat-o înainte de plecare,
+ * cu motivul în paranteză). Prima variantă fără a doua însemna că un ecran fără răspuns nu spune
+ * dacă a picat rețeaua ori dacă aplicația a oprit cererea înainte s-o trimită — exact cazul
+ * măsurat pe 13.10.2026 (chat 0/3 pe iOS, cu cotă curată „5 din 5”, fără nicio linie în log).
+ */
+export type ChatLatencyStage =
+  | 'cererea a plecat'
+  | 'primul text'
+  | 'total'
+  | 'eșec HTTP'
+  | 'stream întrerupt'
+  | 'excepție'
+  | 'cerere oprită'
+  | 'încărcare eșuată';
 
 export const CHAT_LATENCY_PREFIX = '[chat-latency]';
 

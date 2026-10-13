@@ -333,6 +333,19 @@ function ChatConversation() {
     if (loadRequestRef.current !== requestId) return;
 
     if (usageResult.error || threadResult.error || subscriptionResult.error) {
+      // OB.1 (13.10.2026) — motivul exact al încărcării eșuate se scrie în log: altfel mesajul
+      // «Serviciul nu este disponibil» din încărcare arată identic cu un eșec de trimitere.
+      logChatLatency(
+        'încărcare eșuată',
+        0,
+        [
+          usageResult.error ? `consum: ${usageResult.error.message}` : null,
+          threadResult.error ? `fir: ${threadResult.error.message}` : null,
+          subscriptionResult.error ? `abonament: ${subscriptionResult.error.message}` : null,
+        ]
+          .filter((part): part is string => part !== null)
+          .join(' | '),
+      );
       setErrorMessage(t('chat.loadError'));
       setIsLoading(false);
       return;
@@ -360,6 +373,8 @@ function ChatConversation() {
       if (loadRequestRef.current !== requestId) return;
 
       if (error) {
+        // OB.1 (13.10.2026) — același motiv ca mai sus, pe ramura mesajelor vechi.
+        logChatLatency('încărcare eșuată', 0, `mesaje vechi: ${error.message}`);
         setErrorMessage(t('chat.oldMessagesLoadError'));
       } else if (data && data.length > 0) {
         setMessages([...data].reverse().map((message) => ({
@@ -494,18 +509,35 @@ function ChatConversation() {
   }, [isSending, loadConversation]);
 
   const send = async () => {
-    if (isSendingRef.current) return;
-    if (isLoading) return;
+    /**
+     * OB.1 (13.10.2026) — fiecare apăsare pe „Trimite” lasă o linie în logul aplicației, inclusiv
+     * când cererea NU pleacă. Motivul, în paranteză, e cel afișat de tester în artefact: fără el,
+     * un ecran fără răspuns nu se poate deosebi de o rețea căzută (măsurat: chat 0/3 pe iOS, cotă
+     * curată, zero linii `[chat-latency]` în artefact).
+     */
+    if (isSendingRef.current) {
+      logChatLatency('cerere oprită', 0, 'o cerere este deja în curs');
+      return;
+    }
+    if (isLoading) {
+      logChatLatency('cerere oprită', 0, 'se încarcă conversația');
+      return;
+    }
     const clean = input.trim();
-    if (!clean) return;
+    if (!clean) {
+      logChatLatency('cerere oprită', 0, 'text gol');
+      return;
+    }
 
     if (remaining <= 0) {
       setErrorMessage(t('chat.freeLimitReached').replace('{count}', String(dailyLimit)));
+      logChatLatency('cerere oprită', 0, `cotă epuizată (${dailyLimit}/zi)`);
       return;
     }
 
     if (clean.length > 1200) {
       setErrorMessage(t('chat.maxLengthError'));
+      logChatLatency('cerere oprită', 0, 'text prea lung');
       return;
     }
 
@@ -529,6 +561,7 @@ function ChatConversation() {
      * conversaţiei), iar prefixul `[chat-latency]` e cel căutat în loguri.
      */
     const requestStartedAt = Date.now();
+    logChatLatency('cererea a plecat', 0, threadId ? 'fir existent' : 'fir nou');
     let assistantId: string | null = null;
     let streamedText = '';
 
