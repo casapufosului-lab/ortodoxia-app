@@ -73,7 +73,12 @@ appId: ro.ortodoxia.app
       text: "12. Drepturile dumneavoastră în detaliu și autoritatea de supraveghere"
     direction: DOWN
     timeout: 30000
-    centerElement: true
+# centerElement: true  <-- SCOS (dovada 13.10.2026: elementul e ULTIMUL din document, deci nu poate fi
+#   centrat. Ierarhia salvata la picare (artefactele rularii GitHub pass1/pass2 legal, 12-13.10.2026) il
+#   arata PE ECRAN: "accessibilityText=12. Drepturile dumneavoastra in detaliu si autoritatea de
+#   supraveghere; bounds=[20,432][382,475]; enabled=true", in timp ce scrollUntilVisible raporta
+#   "No visible element found". Aceeasi reparație ca la termeni (46de096), DOAR pe pasul dovedit;
+#   ceilalti pasi cu centerElement (randurile de link) ramân neatinse - n-au picat niciodata.
     label: "ultimul capitol al politicii (documentul chiar se derulează pînă jos)"
 - assertVisible:
     text: "12. Drepturile dumneavoastră în detaliu și autoritatea de supraveghere"

@@ -138,7 +138,10 @@ appId: ro.ortodoxia.app
       text: "Transmisiunile aparțin surselor oficiale. Aplicația afișează starea live doar pe baza datelor primite de la server."
     direction: DOWN
     timeout: 20000
-    centerElement: true
+    # centerElement: true  <-- SCOS (dovada 13.10.2026: textul e ULTIMUL element de pe ecranul LIVE,
+    #   deci nu poate fi centrat; ierarhia salvata la picare, in artefactele rularii GitHub
+    #   (pass1 si pass2, flow live), il arata PE ECRAN, in timp ce scrollUntilVisible raporta
+    #   "No visible element found". Aceeasi clasa de reparatie ca la legal/terms, DOAR pe pasul dovedit.)
     label: "PORȚI: ecranul își spune limita (live.disclaimer), nu doar promite un player"
 - assertVisible:
     text: "Transmisiunile aparțin surselor oficiale. Aplicația afișează starea live doar pe baza datelor primite de la server."

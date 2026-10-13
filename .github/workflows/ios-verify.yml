@@ -196,6 +196,10 @@ jobs:
     strategy:
       # Un flow picat NU opreste restul: vrem toate cele 36 de rezultate intr-o singura rulare.
       fail-fast: false
+      # Valuri: 12 joburi pe ACELASI runner macOS. Fara limita, ultimele flow-uri stau in coada si pot fi
+      # anulate fara sa apuce sa ruleze (11.10.2026: bible si errors au stat 05:22:47 -> 05:44:32 in coada).
+      # Doua valuri de cate 6: toate cele 12 flow-uri apuca sa ruleze intr-o singura rulare.
+      max-parallel: 6
       matrix:
         # Cele 12 flow-uri. `set-language-ro.yaml` e PROLOGUL (ruleaza in interiorul fiecarui flow),
         # nu se ruleaza separat.
@@ -281,22 +285,12 @@ jobs:
               # Fara el, fiecare incercare pe macOS e oarba (11.10.2026).
               maestro --device "$DEVICE_UDID" hierarchy --compact > "hierarchy-pass$pass-$FLOW.incercarea1.txt" 2>&1 || true
               cp -f "maestro-pass$pass-$FLOW.xml" "maestro-pass$pass-$FLOW.incercarea1.xml" 2>/dev/null || true
-              # RELUARE AUTOMATA, O SINGURA DATA (cerinta owner 12.10.2026): daca trecerea a picat,
-              # o reluam o singura data in ACEEASI rulare si ACEEASI trecere. Dovada primei incercari
-              # ramane pe disc (.incercarea1.xml + .incercarea1.txt), iar rezultatul care conteaza
-              # este al reluarii. Nimic nu se slabeste: daca reluarea pica si ea, trecerea e PICATA.
-              printf 'trecerea %s: incercarea 1 a picat (exit %s); dovada: maestro-pass%s-%s.incercarea1.xml + hierarchy-pass%s-%s.incercarea1.txt; REIA o data\n' \
+              maestro --device "$DEVICE_UDID" hierarchy --compact > "hierarchy-pass$pass-$FLOW.txt" 2>&1 || true
+              # FARA RELUARE (decizia ownerului, 13.10.2026): verde = 3 treceri CURATE DIN PRIMA INCERCARE.
+              # O trecere picata = trecere PICATA: seria se reia de la 1 si se repara cauza.
+              # Dovada pentru diagnostic ramane pe disc (.incercarea1.xml + .incercarea1.txt).
+              printf 'trecerea %s: incercarea 1 a picat (exit %s) - trecerea e PICATA, NU se reia; dovada: maestro-pass%s-%s.incercarea1.xml + hierarchy-pass%s-%s.incercarea1.txt\n' \
                 "$pass" "$code" "$pass" "$FLOW" "$pass" "$FLOW" >> retry-log.txt
-              maestro --device "$DEVICE_UDID" test "$F" \
-                --format JUNIT --output "maestro-pass$pass-$FLOW.xml" \
-                --debug-output "maestro-pass$pass-$FLOW-debug"
-              code=$?
-              if [ "$code" -ne 0 ]; then
-                printf 'trecerea %s: reluarea a picat si ea (exit %s) - trecerea ramane PICATA\n' "$pass" "$code" >> retry-log.txt
-                maestro --device "$DEVICE_UDID" hierarchy --compact > "hierarchy-pass$pass-$FLOW.txt" 2>&1 || true
-              else
-                printf 'trecerea %s: reluarea a TRECUT (INCONCLUCENT la incercarea 1)\n' "$pass" >> retry-log.txt
-              fi
             fi
             case "$code" in
               0) printf 'pass%s\t%s\tPASS\n' "$pass" "$FLOW" >> flow-results.txt ;;
