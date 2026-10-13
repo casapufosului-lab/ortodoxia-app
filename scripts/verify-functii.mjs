@@ -16,8 +16,10 @@
  *
  * COD DE IEȘIRE: 0 = toate verificările care au putut rula au trecut; 1 = cel puțin o verificare a picat.
  */
-import { readFileSync, writeFileSync } from 'node:fs';
+import { readFileSync, writeFileSync, existsSync } from 'node:fs';
 import { execSync } from 'node:child_process';
+import { homedir } from 'node:os';
+import { join } from 'node:path';
 
 // ─── argumente ────────────────────────────────────────────────────────────────
 const argv = process.argv.slice(2);
@@ -25,7 +27,11 @@ const arg = (nume) => {
   const i = argv.indexOf(nume);
   return i >= 0 ? argv[i + 1] : null;
 };
-const envPath = arg('--env');
+// REPARAT 13.10.2026: `npm run verify:functii` trebuie sa fie o comanda care merge si singura.
+// Daca nu se da `--env`, se cauta (fara sa se tipareasca vreo valoare): intai variabila OW_SECRETS_ENV,
+// apoi seiful de pe acest calculator (%USERPROFILE%\.ow-secrets\supabase.env). In CI cheile vin din mediu.
+const seifImplicit = join(homedir(), '.ow-secrets', 'supabase.env');
+const envPath = arg('--env') || process.env.OW_SECRETS_ENV || (existsSync(seifImplicit) ? seifImplicit : null);
 const outPath = arg('--out');
 const logPath = arg('--log');
 const faraF6 = argv.includes('--fara-f6');
