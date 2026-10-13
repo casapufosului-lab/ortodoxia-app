@@ -83,7 +83,9 @@ jobs:
         with:
           distribution: temurin
           java-version: "17"
-          cache: gradle
+          # FARA `cache: gradle`: la acest pas nu exista inca niciun fisier gradle in arbore
+          # (android/ e git-ignorat si se genereaza la prebuild), iar actiunea cade cu
+          # "No file ... matched to [**/*.gradle*]". Cache-ul se poate readuce dupa prebuild.
 
       - name: Scrie .env din configuratia publica (.github/ci.env)
         run: |
