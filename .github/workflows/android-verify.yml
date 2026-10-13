@@ -63,12 +63,15 @@ jobs:
         run: |
           set -e
           TOATE='["home","prayers","calendar","bible","chat","account","auth","live","premium","legal","notifications","errors"]'
+          # Flow-uri care NU intra in suita de 12 si deci NU se numara in cele 36 de rezultate:
+          # starea B a chatului (cota epuizata) se cere EXPLICIT, ca masuratoare separata a functiei F5-B.
+          OPTIONALE='["chat-quota"]'
           CERUT="${{ inputs.flow }}"
           if [ -z "$CERUT" ] || [ "$CERUT" = "toate" ]; then
             echo "flows=$TOATE" >> "$GITHUB_OUTPUT"
             echo "rulez toata suita: 12 flow-uri x ${{ inputs.passes }} treceri"
           else
-            echo "$TOATE" | grep -q "\"$CERUT\"" || { echo "::error::flow necunoscut: $CERUT"; exit 1; }
+            { echo "$TOATE"; echo "$OPTIONALE"; } | grep -q "\"$CERUT\"" || { echo "::error::flow necunoscut: $CERUT"; exit 1; }
             echo "flows=[\"$CERUT\"]" >> "$GITHUB_OUTPUT"
             echo "rulez un singur flow: $CERUT"
           fi
