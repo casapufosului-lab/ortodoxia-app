@@ -120,7 +120,9 @@ appId: ro.ortodoxia.app
     element:
       text: "Caută o rugăciune"
     direction: UP
-    timeout: 30000
+    # Masurat 13.10.2026: de la pozitia de jos pana in capul listei sunt ~1210 px in sus, iar
+    # o glisare urca ~400 px => in 30 de secunde incap doar 3 glisari (11 s/verificare) => nu ajungea.
+    timeout: 90000
     label: "câmpul de căutare e în capul ecranului (după derulare)"
 - tapOn: "Caută o rugăciune"
 - inputText: "vamesului"
@@ -156,7 +158,8 @@ appId: ro.ortodoxia.app
     element:
       text: ".*Tatăl nostru.*"
     direction: UP
-    timeout: 20000
+    # Aceeasi distanta in sus ca la pasul de cautare: bugetul de 20 s era si mai scurt decat cel de 30 s.
+    timeout: 90000
     centerElement: true
     label: "primul card e din nou pe ecran (primul buton de favorit din ierarhie e al lui)"
 - tapOn:
