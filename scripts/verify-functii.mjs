@@ -32,8 +32,18 @@ const arg = (nume) => {
 // apoi seiful de pe acest calculator (%USERPROFILE%\.ow-secrets\supabase.env). In CI cheile vin din mediu.
 const seifImplicit = join(homedir(), '.ow-secrets', 'supabase.env');
 const envPath = arg('--env') || process.env.OW_SECRETS_ENV || (existsSync(seifImplicit) ? seifImplicit : null);
-const outPath = arg('--out');
-const logPath = arg('--log');
+// REPARAT 13.10.2026 (a doua oara in aceeasi zi): dovada se scria DOAR daca se dadea --out/--log.
+// Rulat ca `npm run verify:functii` scria doar in consola => pe disc rămânea dovada veche, iar
+// matricea se genera din ea. Acum comanda scrie INTOTDEAUNA dovada, in calea fixa a ownerului
+// (C:\Users\pcgar\OpenWorker\verde\dovezi-functie) cand seiful local exista, altfel in ./dovezi-functie.
+const dirDovezi =
+  arg('--dir') ||
+  process.env.OW_DOVEZI_DIR ||
+  (existsSync(join(homedir(), '.ow-secrets'))
+    ? join(homedir(), 'OpenWorker', 'verde', 'dovezi-functie')
+    : join(process.cwd(), 'dovezi-functie'));
+const outPath = arg('--out') || join(dirDovezi, 'verify-functii.json');
+const logPath = arg('--log') || join(dirDovezi, 'verify-functii-log.txt');
 const faraF6 = argv.includes('--fara-f6');
 const doar = (arg('--doar') || '').split(',').map((s) => s.trim()).filter(Boolean);
 
