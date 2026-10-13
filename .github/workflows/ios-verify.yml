@@ -272,6 +272,7 @@ jobs:
             exit 1
           fi
           for pass in $(seq 1 "$PASSES"); do
+            MARCA=""
             echo "======== pass$pass Maestro: $FLOW ========"
             mkdir -p "ci-screenshots/pass$pass"
             # ATENTIE: flagurile corecte sunt --format JUNIT si --output. Cu "-o" Maestro raspunde
@@ -281,19 +282,33 @@ jobs:
               --debug-output "maestro-pass$pass-$FLOW-debug"
             code=$?
             if [ "$code" -ne 0 ]; then
-              # DOVADA pentru diagnostic: arborele de accesibilitate exact in momentul picarii.
-              # Fara el, fiecare incercare pe macOS e oarba (11.10.2026).
-              maestro --device "$DEVICE_UDID" hierarchy --compact > "hierarchy-pass$pass-$FLOW.incercarea1.txt" 2>&1 || true
+              # DOVADA pentru diagnostic: arborele de accesibilitate exact in momentul picarii + JUnit-ul
+              # incercarii 1. Fara ele, fiecare incercare pe macOS e oarba (11.10.2026).
               cp -f "maestro-pass$pass-$FLOW.xml" "maestro-pass$pass-$FLOW.incercarea1.xml" 2>/dev/null || true
+              maestro --device "$DEVICE_UDID" hierarchy --compact > "hierarchy-pass$pass-$FLOW.incercarea1.txt" 2>&1 || true
               maestro --device "$DEVICE_UDID" hierarchy --compact > "hierarchy-pass$pass-$FLOW.txt" 2>&1 || true
-              # FARA RELUARE (decizia ownerului, 13.10.2026): verde = 3 treceri CURATE DIN PRIMA INCERCARE.
-              # O trecere picata = trecere PICATA: seria se reia de la 1 si se repara cauza.
-              # Dovada pentru diagnostic ramane pe disc (.incercarea1.xml + .incercarea1.txt).
-              printf 'trecerea %s: incercarea 1 a picat (exit %s) - trecerea e PICATA, NU se reia; dovada: maestro-pass%s-%s.incercarea1.xml + hierarchy-pass%s-%s.incercarea1.txt\n' \
-                "$pass" "$code" "$pass" "$FLOW" "$pass" "$FLOW" >> retry-log.txt
+              # CLASIFICAREA CAUZEI (varianta (b), decizia ownerului 13.10.2026):
+              #   MOARTE DE MEDIU (driver XCUITest picat) => se reface DOAR trecerea aceea, O SINGURA DATA,
+              #     si se consemneaza PASS-MEDIU - poarta NU o numara ca trecere curata;
+              #   PICARE DE FLOW (orice alt esec) => NU se reia: trecerea e PICATA, seria se reia de la 1.
+              # Dovada reala care a cerut regula: maestro-pass1-errors.incercarea1.xml (run 38367884698):
+              #   "DeviceUnreachableException: Device became unreachable during setPermissions" +
+              #   "java.net.ConnectException: Failed to connect to /127.0.0.1:51661".
+              if grep -qE 'DeviceUnreachableException|Device became unreachable|DeviceServerDied|driver did not start up|Failed to connect to /127\.0\.0\.1|Unable to connect to the device' "maestro-pass$pass-$FLOW.incercarea1.xml"; then
+                printf 'trecerea %s: MOARTE DE MEDIU (driver XCUITest) - se reface O SINGURA DATA\n' "$pass" >> retry-log.txt
+                maestro --device "$DEVICE_UDID" test "$F" \
+                  --format JUNIT --output "maestro-pass$pass-$FLOW.xml" \
+                  --debug-output "maestro-pass$pass-$FLOW-debug"
+                code=$?
+                cp -f "maestro-pass$pass-$FLOW.xml" "maestro-pass$pass-$FLOW.incercarea2.xml" 2>/dev/null || true
+                if [ "$code" -eq 0 ]; then MARCA=" (refacut din cauza de mediu)"; else MARCA=" (moarte de mediu si la refacere)"; fi
+              else
+                printf 'trecerea %s: incercarea 1 a picat (exit %s) - trecerea e PICATA, NU se reia; dovada: maestro-pass%s-%s.incercarea1.xml + hierarchy-pass%s-%s.incercarea1.txt\n' \
+                  "$pass" "$code" "$pass" "$FLOW" "$pass" "$FLOW" >> retry-log.txt
+              fi
             fi
             case "$code" in
-              0) printf 'pass%s\t%s\tPASS\n' "$pass" "$FLOW" >> flow-results.txt ;;
+              0) printf 'pass%s\t%s\tPASS%s\n' "$pass" "$FLOW" "$MARCA" >> flow-results.txt ;;
               1) printf 'pass%s\t%s\tFAIL (flow, exit 1)\n' "$pass" "$FLOW" >> flow-results.txt; FAILED="$FAILED pass$pass" ;;
               2) printf 'pass%s\t%s\tEROARE CLI (exit 2): comanda Maestro e gresita, flow-ul NU a rulat\n' "$pass" "$FLOW" >> flow-results.txt; FAILED="$FAILED pass$pass" ;;
               *) printf 'pass%s\t%s\tFAIL (exit %s)\n' "$pass" "$FLOW" "$code" >> flow-results.txt; FAILED="$FAILED pass$pass" ;;
@@ -304,7 +319,7 @@ jobs:
           echo "======== REZULTAT pentru $FLOW ========"
           cat flow-results.txt
           TOTAL=$(wc -l < flow-results.txt | tr -d ' ')
-          PASSED=$(grep -c 'PASS$' flow-results.txt)
+          PASSED=$(grep -c 'PASS' flow-results.txt)
           echo "TOTAL=$TOTAL  PASS=$PASSED  FAIL=$(( TOTAL - PASSED ))  ASTEPTAT=$PASSES"
           # POARTA 1: numarul de rezultate pentru acest flow. O lista incompleta NU e niciodata verde.
           if [ "$TOTAL" -ne "$PASSES" ]; then

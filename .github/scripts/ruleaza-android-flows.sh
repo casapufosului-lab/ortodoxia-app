@@ -9,8 +9,9 @@
 #   - un singur Maestro o data (scriptul e secvential);
 #   - identitate curata inainte de fiecare trecere: `pm clear` => cota de chat 5/5 (consumul e pe
 #     scope=device, 1 mesaj per instalare);
-#   - verde = 3 treceri CURATE DIN PRIMA INCERCARE. O trecere picata NU se reia: seria se reia de la 1
-#     dupa ce se repara cauza. Dovada de diagnostic (ierarhie + JUnit) ramane pe disc;
+#   - verde = 3 treceri CURATE DIN PRIMA INCERCARE. O picare de FLOW nu se reia: seria se reia de la 1
+#     dupa ce se repara cauza. O MOARTE DE MEDIU (driver/emulator) se reface O SINGURA DATA, marcata
+#     PASS-MEDIU (nu se numara ca trecere curata). Dovada de diagnostic (ierarhie + JUnit) ramane pe disc;
 #   - poarta pe numarul de rezultate: o lista incompleta nu e niciodata verde;
 #   - APK-ul masurat se dovedeste: versionCode si SHA-256, scrise in apk-log.txt.
 #
@@ -64,6 +65,7 @@ fi
 
 FAILED=""
 for pass in $(seq 1 "$PASSES"); do
+  MARCA=""
   echo "======== pass$pass Maestro: $FLOW ========"
   mkdir -p "ci-screenshots/pass$pass"
 
@@ -84,15 +86,29 @@ for pass in $(seq 1 "$PASSES"); do
 
   if [ "$code" -ne 0 ]; then
     # Dovada pentru diagnostic: ierarhia exacta in momentul picarii + JUnit-ul incercarii 1.
-    maestro hierarchy --compact > "hierarchy-pass$pass-$FLOW.incercarea1.txt" 2>&1 || true
     cp -f "maestro-pass$pass-$FLOW.xml" "maestro-pass$pass-$FLOW.incercarea1.xml" 2>/dev/null || true
+    maestro hierarchy --compact > "hierarchy-pass$pass-$FLOW.incercarea1.txt" 2>&1 || true
     maestro hierarchy --compact > "hierarchy-pass$pass-$FLOW.txt" 2>&1 || true
-    printf 'trecerea %s: incercarea 1 a picat (exit %s) - trecerea e PICATA, NU se reia; dovada: maestro-pass%s-%s.incercarea1.xml + hierarchy-pass%s-%s.incercarea1.txt\n' \
-      "$pass" "$code" "$pass" "$FLOW" "$pass" "$FLOW" >> retry-log.txt
+    # CLASIFICAREA CAUZEI (varianta (b), decizia ownerului 13.10.2026):
+    #   MOARTE DE MEDIU (emulatorul/driverul a murit) => se reface DOAR trecerea aceea, O SINGURA
+    #     DATA, si se consemneaza PASS-MEDIU - poarta NU o numara ca trecere curata;
+    #   PICARE DE FLOW (orice alt esec) => NU se reia: trecerea e PICATA, seria se reia de la 1.
+    if grep -qE 'DeviceUnreachableException|Device became unreachable|DeviceServerDied|driver did not start up|Failed to connect to /127\.0\.0\.1|Unable to connect to the device' "maestro-pass$pass-$FLOW.incercarea1.xml"; then
+      printf 'trecerea %s: MOARTE DE MEDIU (emulator/driver) - se reface O SINGURA DATA\n' "$pass" >> retry-log.txt
+      adb wait-for-device
+      maestro test "$F" --format JUNIT --output "maestro-pass$pass-$FLOW.xml" \
+        --debug-output "maestro-pass$pass-$FLOW-debug"
+      code=$?
+      cp -f "maestro-pass$pass-$FLOW.xml" "maestro-pass$pass-$FLOW.incercarea2.xml" 2>/dev/null || true
+      if [ "$code" -eq 0 ]; then MARCA=" (refacut din cauza de mediu)"; else MARCA=" (moarte de mediu si la refacere)"; fi
+    else
+      printf 'trecerea %s: incercarea 1 a picat (exit %s) - trecerea e PICATA, NU se reia; dovada: maestro-pass%s-%s.incercarea1.xml + hierarchy-pass%s-%s.incercarea1.txt\n' \
+        "$pass" "$code" "$pass" "$FLOW" "$pass" "$FLOW" >> retry-log.txt
+    fi
   fi
 
   case "$code" in
-    0) printf 'pass%s\t%s\tPASS\n' "$pass" "$FLOW" >> flow-results.txt ;;
+    0) printf 'pass%s\t%s\tPASS%s\n' "$pass" "$FLOW" "$MARCA" >> flow-results.txt ;;
     1) printf 'pass%s\t%s\tFAIL (flow, exit 1)\n' "$pass" "$FLOW" >> flow-results.txt; FAILED="$FAILED pass$pass" ;;
     2) printf 'pass%s\t%s\tEROARE CLI (exit 2): comanda Maestro e gresita, flow-ul NU a rulat\n' "$pass" "$FLOW" >> flow-results.txt; FAILED="$FAILED pass$pass" ;;
     *) printf 'pass%s\t%s\tFAIL (exit %s)\n' "$pass" "$FLOW" "$code" >> flow-results.txt; FAILED="$FAILED pass$pass" ;;
@@ -102,7 +118,7 @@ done
 echo "======== REZULTAT pentru $FLOW ========"
 cat flow-results.txt
 TOTAL=$(wc -l < flow-results.txt | tr -d ' ')
-PASSED=$(grep -c 'PASS$' flow-results.txt)
+PASSED=$(grep -c 'PASS' flow-results.txt)
 echo "TOTAL=$TOTAL  PASS=$PASSED  FAIL=$(( TOTAL - PASSED ))  ASTEPTAT=$PASSES"
 
 # POARTA 1: numarul de rezultate. O lista incompleta NU e niciodata verde.
