@@ -53,7 +53,11 @@ appId: ro.ortodoxia.app
     element:
       text: "Slujbe LIVE — Urmărește Sfânta Liturghie în direct"
     direction: DOWN
-    timeout: 20000
+    # 20 s -> 60 s (13.10.2026, rularea iOS 38367884698): in trecerea 1 eticheta cardului LIVE nu
+    # aparuse in 20 s (traseul rece al CI, eticheta se compune dupa raspunsul serviciului LIVE), dar
+    # in trecerile 2 si 3 acelasi pas a trecut. Bugetul se mareste (ca la bible: 30 s -> 90 s),
+    # textul cerut ramane neschimbat.
+    timeout: 60000
     centerElement: true
     label: "cardul LIVE (se derulează până la el; titlul „Slujbe LIVE” apare de două ori, eticheta de accesibilitate e unică)"
 - assertVisible:

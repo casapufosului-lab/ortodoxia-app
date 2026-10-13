@@ -64,9 +64,14 @@ appId: ro.ortodoxia.app
 - assertVisible:
     text: "Poți căuta cu sau fără diacritice, de exemplu: „tatal nostru”."
     label: "indiciul de căutare (prayers.searchHint) — promite căutarea fără diacritice"
-- assertNotVisible:
-    text: "Se încarcă rugăciunile..."
-    label: "lista nu mai e în starea de încărcare (prayers.loading)"
+# 13.10.2026 (rularea iOS 38367884698, trecerea 3): verificarea instant `assertNotVisible` a picat
+# pentru ca lista era inca in curs de incarcare, nu pentru ca indicatorul ar ramane pe ecran.
+# Se cere ACELASI lucru (indicatorul dispare), cu un buget de asteptare; continutul real e cerut
+# oricum mai jos (scrollUntilVisible „Tatal nostru" + categoria citita din baza).
+- extendedWaitUntil:
+    notVisible: "Se încarcă rugăciunile..."
+    timeout: 60000
+    label: "POARTĂ: lista a terminat de încărcat (indicatorul prayers.loading a dispărut)"
 - assertNotVisible:
     text: "Nu am putut încărca rugăciunile. Încearcă din nou."
     label: "REGRESIA: ecranul nu e pe mesajul de eroare de încărcare (prayers.loadError)"
