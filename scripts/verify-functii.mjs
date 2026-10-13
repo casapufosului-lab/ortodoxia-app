@@ -16,10 +16,10 @@
  *
  * COD DE IEȘIRE: 0 = toate verificările care au putut rula au trecut; 1 = cel puțin o verificare a picat.
  */
-import { readFileSync, writeFileSync, existsSync } from 'node:fs';
+import { readFileSync, writeFileSync, existsSync, readdirSync, statSync } from 'node:fs';
 import { execSync } from 'node:child_process';
 import { homedir } from 'node:os';
-import { join } from 'node:path';
+import { join, basename } from 'node:path';
 
 // ─── argumente ────────────────────────────────────────────────────────────────
 const argv = process.argv.slice(2);
@@ -43,6 +43,9 @@ const dirDovezi =
     ? join(homedir(), 'OpenWorker', 'verde', 'dovezi-functie')
     : join(process.cwd(), 'dovezi-functie'));
 const outPath = arg('--out') || join(dirDovezi, 'verify-functii.json');
+// REPARAT 13.10.2026: F8 are nevoie de artefatele de flow `live` (JUnit Maestro) ca sa stie FEREASTRA
+// rularii reale: Android le scrie in <repo>\maestro-out\, iOS in radacina de dovezi a ownerului.
+const radacinaVerde = process.env.OW_VERDE_DIR || join(homedir(), 'OpenWorker', 'verde');
 const logPath = arg('--log') || join(dirDovezi, 'verify-functii-log.txt');
 const faraF6 = argv.includes('--fara-f6');
 const doar = (arg('--doar') || '').split(',').map((s) => s.trim()).filter(Boolean);
@@ -218,14 +221,54 @@ await verifica('F5', 'Chat: plafonul de cotă (RPC reserve_ai_request)', async (
 });
 
 // ─── F8 — LIVE: rând în fereastra rulării ────────────────────────────────────
+// REPARAT 13.10.2026 (a patra hiba a instrumentului): fereastra era „ultimele 3 ore fata de ceasul de acum”,
+// deci iesea ROSU pe un instrument care merge (rândul real cu page-ready era de la 12:12Z, masuratoarea la
+// 17:00Z). Fereastra se calculeaza acum FATA DE O RULARE REALA: se cauta artefatele de flow `live` (JUnit
+// Maestro: <repo>\maestro-out\...-live.xml si <verde>\ios-*\...), se citeste `timestamp=` din JUnit, iar un
+// rând cu page-ready trebuie sa cada in [ts - 20 min, ts + 10 min]. Fara niciun artefat de `live` pe disc
+// verificarea NU se declara verde (NEVERIFICAT). Linia de detaliu arata MEREU cel mai nou rând din baza pe
+// fiecare platforma, ca sa nu ascunda un instrument mut: pe 13.10, pe Android vc8 rândurile exista, dar
+// page_state e NULL (dovedit cu citirea de mai jos), in timp ce iOS scrie lanțul page-ready|api-ready|player-ready.
 await verifica('F8', 'LIVE: live_player_diagnostics din fereastra rulării', async () => {
-  const de = new Date(Date.now() - 3 * 3600 * 1000).toISOString();
-  const r = await SELECT('live_player_diagnostics', `select=created_at,video_id,loaded,page_state,app_version,device&created_at=gte.${de}&loaded=is.true&order=created_at.desc&limit=5`);
+  const ferestre = [];
+  const aduna = (dir, adancime) => {
+    if (adancime > 4 || !existsSync(dir)) return;
+    let intrari = [];
+    try { intrari = readdirSync(dir, { withFileTypes: true }); } catch { return; }
+    for (const e of intrari) {
+      const p = join(dir, e.name);
+      if (e.isDirectory()) { aduna(p, adancime + 1); continue; }
+      if (!/-live\.xml$/i.test(e.name)) continue;
+      let ts = null;
+      try { ts = /timestamp="([^"]+)"/.exec(readFileSync(p, 'utf8').slice(0, 2000)) || null; ts = ts ? ts[1] : null; } catch { ts = null; }
+      if (!ts) ts = new Date(statSync(p).mtimeMs).toISOString().slice(0, 19);
+      // Acelasi timestamp citit in ambele feluri (UTC si ora locala a masinii): nu ghicim fusul orar, ci
+      // acceptam orice interpretare care aseaza rândul in fereastra rularii.
+      for (const ms of [Date.parse(ts + 'Z'), Date.parse(ts)]) if (Number.isFinite(ms)) ferestre.push({ cale: p, ts, ms });
+    }
+  };
+  aduna(join(process.cwd(), 'maestro-out'), 0);
+  aduna(radacinaVerde, 0);
+  if (!ferestre.length) return NU('nu exista niciun artefat de flow `live` (JUnit Maestro) pe disc: fereastra rularii nu se poate stabili');
+  const de = new Date(Math.min(...ferestre.map((f) => f.ms)) - 20 * 60 * 1000).toISOString();
+  const r = await SELECT('live_player_diagnostics', `select=created_at,video_id,loaded,page_state,app_version,device&created_at=gte.${de}&order=created_at.desc&limit=200`);
   if (!r.ok) return FAIL(`citirea a picat: HTTP ${r.status}`);
-  const ok = (Array.isArray(r.body) ? r.body : []).filter((x) => /page-ready/.test(String(x.page_state || '')));
-  if (!ok.length) return FAIL(`niciun rând cu page-ready în ultimele 3 h (rânduri: ${Array.isArray(r.body) ? r.body.length : 0})`);
-  const x = ok[0];
-  return PASS(`${ok.length} rând(uri) cu page-ready în ultimele 3 h; ultimul ${x.created_at} video ${x.video_id} (${x.device}, app ${x.app_version})`);
+  const randuri = Array.isArray(r.body) ? r.body : [];
+  const ultimul = [];
+  for (const x of randuri) if (!ultimul.some((u) => u.plat === String(x.device))) ultimul.push({ plat: String(x.device), x });
+  const detaliu = ultimul.slice(0, 3).map(({ plat, x }) => `${plat}: ultimul rând ${x.created_at} (loaded=${x.loaded}, page_state=${x.page_state === null ? 'NULL' : String(x.page_state).slice(0, 46)})`).join('; ');
+  const potrivite = [];
+  for (const x of randuri) {
+    if (!/page-ready/.test(String(x.page_state || ''))) continue;
+    const t = Date.parse(x.created_at);
+    const f = ferestre.find((w) => t >= w.ms - 20 * 60 * 1000 && t <= w.ms + 10 * 60 * 1000);
+    if (f) potrivite.push({ x, f });
+  }
+  if (!potrivite.length) {
+    return FAIL(`niciun rând cu page-ready in fereastra niciunei rulari live (${ferestre.length} ferestre din ${new Set(ferestre.map((f) => f.cale)).size} artefate, ${randuri.length} rânduri citite din ${de}). ${detaliu}`);
+  }
+  const { x, f } = potrivite[0];
+  return PASS(`${potrivite.length} rând(uri) cu page-ready in fereastra rularii ${f.ts} (artefat: ${basename(f.cale)}); ultimul ${x.created_at} video ${x.video_id} (${x.device}, app ${x.app_version}). ${detaliu}`);
 });
 
 // ─── F7 — notificări: livrări + preferințe ───────────────────────────────────
