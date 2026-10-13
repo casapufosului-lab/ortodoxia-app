@@ -78,7 +78,8 @@
     "content:export:check": "node scripts/bible-corpus-export.mjs --check",
     "lint:chat-backend": "node scripts/lint-chat-backend.cjs",
     "test:safety": "node scripts/safety-gate.mjs",
-    "preflight": "npm run verify && npm run lint && node scripts/preflight.mjs"
+    "preflight": "npm run verify && npm run lint && node scripts/preflight.mjs",
+    "verify:functii": "node scripts/verify-functii.mjs"
   },
   "private": true
 }
