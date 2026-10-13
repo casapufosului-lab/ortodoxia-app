@@ -15,9 +15,15 @@ appId: ro.ortodoxia.app
 # iconita, nici daca bara intreaga e un singur nod); pe Android textul e un nod propriu,
 # selectoarele de tab cer doar ca textul sa CONTINĂ eticheta (nu conteaza ordinea fata de
 # "Cont".
+# REPARAT 13.10.2026 (dovada: rularea locala Android pe APK vc8, maestro-out/android-chatlocal):
+# poarta de pornire avea 45 s, dar pe acest emulator lansarea la rece a build-ului de RELEASE trece
+# de 45 s: procesul a pornit 13:03:58, iar `ReactNativeJS: Running "main"` a aparut la 13:04:46
+# (logcat), cu 2 secunde dupa expirarea portii (13:04:44). La picare ecranul avea zero noduri de text
+# - doar systemui si action_bar_root (aplicatia inca nu randase). Bugetul devine 90 s; nu se scoate
+# nicio aserciune, nu se pune `optional: true`, textul cerut ramane acelasi.
 - extendedWaitUntil:
     visible: ".*(Cont|Account).*"
-    timeout: 45000
+    timeout: 90000
     label: "PROLOG: bara de tab-uri s-a desenat (aplicatia a pornit)"
 - tapOn:
     text: ".*(Cont|Account).*"
