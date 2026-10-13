@@ -59,36 +59,84 @@ appId: ro.ortodoxia.app
     label: "PORȚI: contorul arată cotă CURATĂ, 5/5, înainte de prima întrebare (identitate nouă prin clearState)"
 # ── 1/5. Fiecare ciclu: scriu întrebarea, ascund tastatura (altfel acoperă butonul „Trimite"), trimit,
 #    și aștept butonul „Raportează" = răspuns COMPLET primit.
+- scrollUntilVisible:
+    element:
+      text: ".*Scrie întrebarea ta.*"
+    direction: DOWN
+    timeout: 30000
+    label: "CICLUL 1/6: derulăm până la compozitor — răspunsul lung îl împinge sub zona vizibilă (rețetă dovedită în chat.yaml:132-137)"
 - tapOn: ".*Scrie întrebarea ta.*"
 - inputText: "Ce este rugaciunea?"
 - hideKeyboard
+- scrollUntilVisible:
+    element:
+      text: ".*Trimite.*"
+    direction: DOWN
+    timeout: 30000
+    label: "CICLUL 1/6: derulăm până la butonul de trimitere — același motiv ca la compozitor"
 - tapOn: ".*Trimite.*"
 - extendedWaitUntil:
     visible: ".*Raportează.*"
     timeout: 120000
     label: "TREAPTA 1/5: asistentul a terminat un răspuns complet (butonul de raportare există doar sub un răspuns complet)"
 # ── 2/5
+- scrollUntilVisible:
+    element:
+      text: ".*Scrie întrebarea ta.*"
+    direction: DOWN
+    timeout: 30000
+    label: "CICLUL 2/6: derulăm până la compozitor — răspunsul lung îl împinge sub zona vizibilă (rețetă dovedită în chat.yaml:132-137)"
 - tapOn: ".*Scrie întrebarea ta.*"
 - inputText: "Cum ma rog dimineata?"
 - hideKeyboard
+- scrollUntilVisible:
+    element:
+      text: ".*Trimite.*"
+    direction: DOWN
+    timeout: 30000
+    label: "CICLUL 2/6: derulăm până la butonul de trimitere — același motiv ca la compozitor"
 - tapOn: ".*Trimite.*"
 - extendedWaitUntil:
     visible: ".*Raportează.*"
     timeout: 120000
     label: "TREAPTA 2/5: asistentul a terminat un răspuns complet"
 # ── 3/5
+- scrollUntilVisible:
+    element:
+      text: ".*Scrie întrebarea ta.*"
+    direction: DOWN
+    timeout: 30000
+    label: "CICLUL 3/6: derulăm până la compozitor — răspunsul lung îl împinge sub zona vizibilă (rețetă dovedită în chat.yaml:132-137)"
 - tapOn: ".*Scrie întrebarea ta.*"
 - inputText: "Ce este postul?"
 - hideKeyboard
+- scrollUntilVisible:
+    element:
+      text: ".*Trimite.*"
+    direction: DOWN
+    timeout: 30000
+    label: "CICLUL 3/6: derulăm până la butonul de trimitere — același motiv ca la compozitor"
 - tapOn: ".*Trimite.*"
 - extendedWaitUntil:
     visible: ".*Raportează.*"
     timeout: 120000
     label: "TREAPTA 3/5: asistentul a terminat un răspuns complet"
 # ── 4/5
+- scrollUntilVisible:
+    element:
+      text: ".*Scrie întrebarea ta.*"
+    direction: DOWN
+    timeout: 30000
+    label: "CICLUL 4/6: derulăm până la compozitor — răspunsul lung îl împinge sub zona vizibilă (rețetă dovedită în chat.yaml:132-137)"
 - tapOn: ".*Scrie întrebarea ta.*"
 - inputText: "Cine a fost Sfantul Ioan?"
 - hideKeyboard
+- scrollUntilVisible:
+    element:
+      text: ".*Trimite.*"
+    direction: DOWN
+    timeout: 30000
+    label: "CICLUL 4/6: derulăm până la butonul de trimitere — același motiv ca la compozitor"
 - tapOn: ".*Trimite.*"
 - extendedWaitUntil:
     visible: ".*Raportează.*"
@@ -98,34 +146,49 @@ appId: ro.ortodoxia.app
 - assertNotVisible:
     text: "^Ai folosit toate cele 5 mesaje disponibile azi\\.$"
     label: "PORȚI: înainte de a 5-a întrebare cotă NU e epuizată (cardul de stop nu e pe ecran)"
+- scrollUntilVisible:
+    element:
+      text: ".*Scrie întrebarea ta.*"
+    direction: DOWN
+    timeout: 30000
+    label: "CICLUL 5/6: derulăm până la compozitor — răspunsul lung îl împinge sub zona vizibilă (rețetă dovedită în chat.yaml:132-137)"
 - tapOn: ".*Scrie întrebarea ta.*"
 - inputText: "Ce este Sfanta Liturghie?"
 - hideKeyboard
+- scrollUntilVisible:
+    element:
+      text: ".*Trimite.*"
+    direction: DOWN
+    timeout: 30000
+    label: "CICLUL 5/6: derulăm până la butonul de trimitere — același motiv ca la compozitor"
 - tapOn: ".*Trimite.*"
 - extendedWaitUntil:
     visible: ".*Raportează.*"
     timeout: 120000
     label: "TREAPTA 5/5: asistentul a terminat un răspuns complet (a 5-a întrebare din cotă)"
+#    BUGET: masurat pe 13.10 (rularea chatquota2) - urcarea de la fundul unei conversatii de 5 raspunsuri
+#    pana la contorul din capul ecranului nu se termina in 30 s: pasul a ars bugetul si a raportat
+#    "No visible element found" desi textul era pe ecran (ierarhia + captura de la pasul 055).
 # ── STAREA B. Conversația e lungă și ecranul derulează la fund, deci cardurile de sus se caută cu
 #    scrollUntilVisible (care PICĂ dacă textul nu există — nu e un „optional" deghizat).
 - scrollUntilVisible:
     element:
       text: "^0 din 5 întrebări gratuite rămase azi$"
     direction: UP
-    timeout: 30000
+    timeout: 120000
     label: "STAREA B: contorul a scăzut la 0/5 — cota gratuită s-a consumat pe ecran"
 - takeScreenshot: chat-quota-stareB-contor-0-din-5
 - scrollUntilVisible:
     element:
       text: "^Ai folosit toate cele 5 mesaje disponibile azi\\.$"
     direction: UP
-    timeout: 30000
+    timeout: 120000
     label: "STAREA B: mesajul de STOP (chat.noMessagesLeft) e pe ecran"
 - scrollUntilVisible:
     element:
       text: ".*Pentru a continua conversația, alege planul Premium \\(.*\\).*"
     direction: UP
-    timeout: 30000
+    timeout: 120000
     label: "STAREA B: OFERTA Premium (chat.premiumOffer), cu prețul din magazin în paranteză"
 - assertVisible:
     text: "^Alege planul Premium$"
@@ -134,9 +197,21 @@ appId: ro.ortodoxia.app
 # ── AL 6-LEA MESAJ: trebuie să NU plece. Compozitorul rămâne editabil în cod
 #    (`chat.tsx:871` — `editable={!isSending && !isLoading}`, fără condiție pe cotă), deci se poate apăsa;
 #    oprirea o face garda din `send()` (`chat.tsx:530-534`).
+- scrollUntilVisible:
+    element:
+      text: ".*Scrie întrebarea ta.*"
+    direction: DOWN
+    timeout: 30000
+    label: "CICLUL 6/6 (al 6-lea mesaj): derulăm până la compozitor"
 - tapOn: ".*Scrie întrebarea ta.*"
 - inputText: "Mai am o intrebare?"
 - hideKeyboard
+- scrollUntilVisible:
+    element:
+      text: ".*Trimite.*"
+    direction: DOWN
+    timeout: 30000
+    label: "CICLUL 6/6 (al 6-lea mesaj, NU trebuie să plece): derulăm până la butonul de trimitere"
 - tapOn: ".*Trimite.*"
 - extendedWaitUntil:
     notVisible: ".*Pregătesc răspunsul\\.\\.\\..*"

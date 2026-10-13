@@ -46,6 +46,17 @@ echo "apk: $APK sha256=$SHA" | tee -a apk-log.txt
 echo "--- instalare"
 adb install -r -t "$APK" || { echo "::error::instalarea APK-ului a esuat"; exit 1; }
 
+# DOVADA care NU depinde de logcat: instrumentul de chat scrie aceleasi linii si intr-un FISIER din
+# containerul de date al aplicatiei (src/lib/chat-latency.ts). Imaginea de emulator din CI este
+# `google_apis` (nu Play), deci `adb root` functioneaza si fisierul se citeste direct:
+#   /data/data/<pachet>/files/chat-latency.log
+# In build-ul de RELEASE logcat-ul a dat 0 linii `[chat-latency]` (masurat 13.10.2026, iOS), deci
+# fisierul este canalul pe care se sprijina dovada. Daca `adb root` nu merge, linia ramane in logcat.
+adb root >/dev/null 2>&1 || echo "(adb root nu a mers; ramane logcat-ul)"
+sleep 2
+adb wait-for-device
+FISIER_LATENCY="/data/data/$APP_ID/files/chat-latency.log"
+
 # versionCode-ul REAL al binarului instalat (nu cel din fisiere): asa se prinde un APK vechi.
 VCODE=$(adb shell dumpsys package "$APP_ID" | grep -m1 'versionCode=' | tr -d '\r' | sed -E 's/.*versionCode=([0-9]+).*/\1/')
 VNAME=$(adb shell dumpsys package "$APP_ID" | grep -m1 'versionName=' | tr -d '\r' | sed -E 's/.*versionName=([^ ]+).*/\1/')
@@ -82,7 +93,11 @@ for pass in $(seq 1 "$PASSES"); do
   # Captura de ecran a starii de la finalul trecerii (cerinta: fiecare celula are si PNG).
   adb exec-out screencap -p > "ci-screenshots/pass$pass/$FLOW.png" 2>/dev/null
   # Linia instrumentului [chat-latency] (ReactNativeJS merge in logcat) - dovada de observabilitate.
+  printf -- '--- pass%s (fisierul aplicatiei) ---\n' "$pass" >> chat-latency.txt
+  adb exec-out cat "$FISIER_LATENCY" 2>/dev/null | tr -d '\r' | grep -F '[chat-latency]' >> chat-latency.txt
+  printf -- '--- pass%s (logcat) ---\n' "$pass" >> chat-latency.txt
   adb logcat -d -v brief 2>/dev/null | grep -F '[chat-latency]' >> chat-latency.txt
+  adb shell ls -l "$FISIER_LATENCY" 2>/dev/null || echo "  (fisierul $FISIER_LATENCY nu exista la finalul trecerii)"
 
   if [ "$code" -ne 0 ]; then
     # Dovada pentru diagnostic: ierarhia exacta in momentul picarii + JUnit-ul incercarii 1.

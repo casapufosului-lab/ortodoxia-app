@@ -338,10 +338,33 @@ jobs:
         # cererii de chat intr-o linie stabila (`[chat-latency]`, src/lib/chat-latency.ts):
         #   `[chat-latency] exceptie <ms> ms`                     -> exceptie in traseul de trimitere
         #   `[chat-latency] stream intrerupt <ms> ms (network)`   -> reteaua (limita de mediu CI)
-        if: failure()
+        # Ruleaza MEREU (nu doar la esec): dovada instrumentului trebuie sa existe si pe o rulare
+        # verde, altfel "instrumentul merge" nu se poate citi din artefact.
+        if: always()
         run: |
           set +e
           UDID="${DEVICE_UDID:-booted}"
+          # (1) FISIERUL scris de instrument in containerul de date al aplicatiei. Acesta NU depinde de
+          # ce colecteaza logul sistemului (in build-ul de RELEASE logul a dat 0 linii `[chat-latency]`,
+          # masurat 13.10.2026 pe rularea 38367884698), deci este canalul pe care se sprijina dovada.
+          APP=$(ls -d app-dir/*.app 2>/dev/null | head -1)
+          : > chat-latency-fisier.txt
+          if [ -n "$APP" ]; then
+            BUNDLE=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$APP/Info.plist" 2>/dev/null)
+            echo "pachet: ${BUNDLE:-<necunoscut>}"
+            if [ -n "$BUNDLE" ]; then
+              CONTAINER=$(xcrun simctl get_app_container "$UDID" "$BUNDLE" data 2>/dev/null)
+              echo "container de date: ${CONTAINER:-<negasit>}"
+              if [ -n "$CONTAINER" ]; then
+                ls -l "$CONTAINER/Documents" 2>/dev/null || echo "  (nu pot lista Documents)"
+                cp "$CONTAINER/Documents/chat-latency.log" chat-latency-fisier.txt 2>/dev/null \
+                  || echo "  (fisierul Documents/chat-latency.log nu exista)"
+              fi
+            fi
+          fi
+          echo "======== [chat-latency] din FISIERUL aplicatiei ========"
+          grep -F '[chat-latency]' chat-latency-fisier.txt || echo "  (nicio linie [chat-latency] in fisier)"
+          # (2) Canalul vechi (logul sistemului), pastrat pentru comparatie.
           xcrun simctl spawn "$UDID" log show --last 15m --style compact \
             --predicate 'eventMessage CONTAINS "chat-latency"' > chat-latency.txt 2>&1
           echo "======== [chat-latency] (starea cererii de chat) ========"
@@ -349,7 +372,7 @@ jobs:
           xcrun simctl spawn "$UDID" log show --last 15m --style compact \
             --predicate 'processImagePath CONTAINS "Ortodoxia" OR senderImagePath CONTAINS "Ortodoxia"' \
             > app-log.txt 2>&1
-          ls -l chat-latency.txt app-log.txt
+          ls -l chat-latency.txt chat-latency-fisier.txt app-log.txt
 
       - name: Publica dovezile flow-ului
         if: always()
@@ -367,6 +390,7 @@ jobs:
             ci-screenshots/**/*.png
             hierarchy-pass*.txt
             chat-latency.txt
+            chat-latency-fisier.txt
             app-log.txt
 
   poarta:

@@ -80,22 +80,35 @@ jobs:
     name: Build APK release (fara chei de magazin)
     needs: plan
     runs-on: ubuntu-latest
-    # npm ci + prebuild + gradle (o singura arhitectura) ≈ 25 min.
-    timeout-minutes: 70
+    # Masurat pe 13.10.2026: rularea 38393388634 a fost ANULATA de plafon (11:53:56 -> 13:04:16,
+    # exact 70 de minute, build complet rece, fara niciun cache) si niciun flow nu a apucat sa ruleze.
+    # 150 de minute acopera un build rece; cu cache-ul Gradle de mai jos, urmatoarele sunt scurte.
+    timeout-minutes: 150
     steps:
       - uses: actions/checkout@v4
 
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
+          cache: npm
 
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: "17"
-          # FARA `cache: gradle`: la acest pas nu exista inca niciun fisier gradle in arbore
-          # (android/ e git-ignorat si se genereaza la prebuild), iar actiunea cade cu
-          # "No file ... matched to [**/*.gradle*]". Cache-ul se poate readuce dupa prebuild.
+
+      - name: Cache Gradle (dependinte + transformari)
+        # Build-ul rece a depasit 70 de minute (rularea 38393388634). Cache-ul se pune ca pas separat,
+        # nu prin `cache: gradle` din setup-java: la acel pas android/ nu exista inca (se face la prebuild),
+        # iar actiunea cade cu "No file ... matched to [**/*.gradle*]".
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-${{ runner.os }}-${{ hashFiles('package-lock.json') }}-${{ hashFiles('.github/workflows/android-verify.yml') }}
+          restore-keys: |
+            gradle-${{ runner.os }}-
 
       - name: Scrie .env din configuratia publica (.github/ci.env)
         run: |
