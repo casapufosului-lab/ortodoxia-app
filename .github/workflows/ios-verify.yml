@@ -259,6 +259,7 @@ jobs:
           export PATH="$PATH:$HOME/.maestro/bin"
           mkdir -p ci-screenshots
           : > flow-results.txt
+          : > retry-log.txt
           FAILED=""
           PASSES="${IOS_PASSES:-3}"
           F="maestro/${FLOW}.yaml"
@@ -278,7 +279,24 @@ jobs:
             if [ "$code" -ne 0 ]; then
               # DOVADA pentru diagnostic: arborele de accesibilitate exact in momentul picarii.
               # Fara el, fiecare incercare pe macOS e oarba (11.10.2026).
-              maestro --device "$DEVICE_UDID" hierarchy --compact > "hierarchy-pass$pass-$FLOW.txt" 2>&1 || true
+              maestro --device "$DEVICE_UDID" hierarchy --compact > "hierarchy-pass$pass-$FLOW.incercarea1.txt" 2>&1 || true
+              cp -f "maestro-pass$pass-$FLOW.xml" "maestro-pass$pass-$FLOW.incercarea1.xml" 2>/dev/null || true
+              # RELUARE AUTOMATA, O SINGURA DATA (cerinta owner 12.10.2026): daca trecerea a picat,
+              # o reluam o singura data in ACEEASI rulare si ACEEASI trecere. Dovada primei incercari
+              # ramane pe disc (.incercarea1.xml + .incercarea1.txt), iar rezultatul care conteaza
+              # este al reluarii. Nimic nu se slabeste: daca reluarea pica si ea, trecerea e PICATA.
+              printf 'trecerea %s: incercarea 1 a picat (exit %s); dovada: maestro-pass%s-%s.incercarea1.xml + hierarchy-pass%s-%s.incercarea1.txt; REIA o data\n' \
+                "$pass" "$code" "$pass" "$FLOW" "$pass" "$FLOW" >> retry-log.txt
+              maestro --device "$DEVICE_UDID" test "$F" \
+                --format JUNIT --output "maestro-pass$pass-$FLOW.xml" \
+                --debug-output "maestro-pass$pass-$FLOW-debug"
+              code=$?
+              if [ "$code" -ne 0 ]; then
+                printf 'trecerea %s: reluarea a picat si ea (exit %s) - trecerea ramane PICATA\n' "$pass" "$code" >> retry-log.txt
+                maestro --device "$DEVICE_UDID" hierarchy --compact > "hierarchy-pass$pass-$FLOW.txt" 2>&1 || true
+              else
+                printf 'trecerea %s: reluarea a TRECUT (INCONCLUCENT la incercarea 1)\n' "$pass" >> retry-log.txt
+              fi
             fi
             case "$code" in
               0) printf 'pass%s\t%s\tPASS\n' "$pass" "$FLOW" >> flow-results.txt ;;
@@ -333,8 +351,10 @@ jobs:
           retention-days: 7
           path: |
             maestro-pass*.xml
+            maestro-pass*.incercarea1.xml
             maestro-pass*-debug/**
             flow-results.txt
+            retry-log.txt
             ci-screenshots/**/*.png
             hierarchy-pass*.txt
             chat-latency.txt
