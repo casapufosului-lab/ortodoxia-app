@@ -15,8 +15,13 @@ import { contentBoxStyle, screenBottomPadding } from '@/lib/responsive-layout';
  * - pe ecrane late (≥ `WIDE_SCREEN_MIN_WIDTH`) conținutul se centrează și se limitează la
  *   `CONTENT_MAX_WIDTH`, ca să nu se întindă pe tot ecranul unui foldable/tabletă.
  * Ambele calcule sunt în `@/lib/responsive-layout` și sunt testate direct.
+ * `footer` (13.10.2026) este pentru ecranele cu o zonă care NU are voie să deruleze:
+ * compozitorul din chat. Dovedit cu artefacte: în starea B a chatului (`chat-quota`, pasul 041)
+ * compozitorul ieșea de pe ecran pe măsură ce conversația creștea, deci omul nu mai putea scrie.
+ * Când există `footer`, zona derulantă lasă locul de jos footer-ului (care primește zona sigură) —
+ * altfel ar rămâne un gol mare între ultimul mesaj și compozitor.
  */
-export function Screen({ children, style, contentStyle }: PropsWithChildren<{ style?: ViewStyle; contentStyle?: ViewStyle }>) {
+export function Screen({ children, style, contentStyle, footer }: PropsWithChildren<{ style?: ViewStyle; contentStyle?: ViewStyle; footer?: ReactNode }>) {
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
 
@@ -26,11 +31,17 @@ export function Screen({ children, style, contentStyle }: PropsWithChildren<{ st
         contentContainerStyle={[
           styles.screen,
           contentBoxStyle(width),
-          { paddingBottom: screenBottomPadding(insets.bottom) },
+          { paddingBottom: footer ? SCREEN_SCROLL_BOTTOM_WITH_FOOTER : screenBottomPadding(insets.bottom) },
           contentStyle,
         ]}>
         {children}
       </ScrollView>
+      {/* `footer` (13.10.2026): zona care NU are voie sa deruleze — compozitorul din chat.
+          Dovedit in artefacte: in starea B (`chat-quota`, pasul 041) compozitorul iesea de pe ecran
+          pe masura ce conversatia crestea, deci omul nu mai putea scrie deloc. */}
+      {footer ? (
+        <View style={[styles.footer, { paddingBottom: screenBottomPadding(insets.bottom) }]}>{footer}</View>
+      ) : null}
     </SafeAreaView>
   );
 }
@@ -126,9 +137,15 @@ export function SecondaryButton({ label, onPress, disabled = false, accessibilit
   );
 }
 
+/** Cât loc lasă zona derulantă sub ultimul element când jos e un `footer` fixat (compozitorul din chat). */
+const SCREEN_SCROLL_BOTTOM_WITH_FOOTER = 12;
+
 const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: palette.skyLight },
   screen: { width: '100%', padding: 20, gap: 18 },
+  /* `footer`: conținut FIXAT sub zona derulantă (compozitorul din chat). Aceeași margine
+     laterală ca `screen` (20), ca să nu se vadă o ruptură; jos primește zona sigură a sistemului. */
+  footer: { width: '100%', paddingHorizontal: 20, paddingTop: 12, gap: 8 },
   header: { gap: 6, paddingTop: 8 },
   eyrow: { color: palette.goldDark, fontSize: 12, fontWeight: '800', letterSpacing: 1.2, textTransform: 'uppercase' },
   title: { color: palette.ink, fontSize: 30, lineHeight: 36, fontWeight: '800' },

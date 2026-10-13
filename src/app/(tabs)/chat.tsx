@@ -765,7 +765,64 @@ function ChatConversation() {
 
   return (
     <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-      <Screen style={styles.chatScreen}>
+      {/* Compozitorul stă FIXAT jos, în afara zonei derulante (proprietatea `footer` a lui
+          `Screen`). Dovedit pe 13.10.2026: când conversația crește (starea B, cota epuizată),
+          compozitorul ieșea de pe ecran — `chat-quota`, pasul 041: „Element not found: Text
+          matching regex: .*Scrie întrebarea ta.*", iar captura pasului arăta doar mesajele și bara
+          de tab-uri. Fără compozitor pe ecran, omul nu mai poate scrie deloc. */}
+      <Screen
+        style={styles.chatScreen}
+        contentStyle={styles.chatScrollContent}
+        footer={
+          <>
+          <View style={styles.composer}>
+            <TextInput
+              accessibilityLabel={t('chat.inputPlaceholder')}
+              value={input}
+              onChangeText={setInput}
+              placeholder={t('chat.inputPlaceholder')}
+              placeholderTextColor={palette.muted}
+              multiline
+              editable={!isSending && !isLoading}
+              maxLength={1200}
+              style={styles.input}
+            />
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={dictationStatus === 'listening' ? t('chat.dictationStopAccessibility') : t('chat.dictationStartAccessibility')}
+              disabled={isSending || isLoading || dictationStatus === 'processing'}
+              onPress={() => void toggleDictation()}
+              style={[
+                styles.mic,
+                dictationStatus === 'listening' && styles.micListening,
+                dictationStatus === 'error' && styles.micError,
+                (isSending || isLoading || dictationStatus === 'processing') && styles.disabled,
+              ]}
+            >
+              <SymbolView
+                name={{ ios: dictationStatus === 'listening' ? 'mic.fill' : 'mic', android: 'mic', web: 'mic' }}
+                size={22}
+                tintColor={dictationStatus === 'listening' ? palette.blue : palette.ink}
+                fallback={<Text style={styles.micFallback}>Mic</Text>}
+              />
+            </Pressable>
+            <Pressable accessibilityRole="button" disabled={isSending || isLoading} onPress={() => void send()} style={[styles.send, (isSending || isLoading) && styles.disabled]}>
+              <Text style={styles.sendText}>{t('chat.sendButton')}</Text>
+            </Pressable>
+          </View>
+          <Text
+            accessibilityLiveRegion="polite"
+            style={[
+              styles.dictationMessage,
+              dictationStatus === 'listening' && styles.dictationListeningText,
+              dictationStatus === 'error' && styles.dictationErrorText,
+            ]}
+          >
+            {dictationMessage || ' '}
+          </Text>
+          </>
+        }
+      >
         <PageHeader eyebrow={t('chat.eyebrow')} title={t('chat.title')} subtitle={t('chat.subtitle')} />
         <Card style={styles.limitCard}>
           {/* Plural-aware: a remaining count of 1 needs the singular noun/verb in
@@ -860,51 +917,6 @@ function ChatConversation() {
             ) : null}
           </View>
         )}
-        <View style={styles.composer}>
-          <TextInput
-            accessibilityLabel={t('chat.inputPlaceholder')}
-            value={input}
-            onChangeText={setInput}
-            placeholder={t('chat.inputPlaceholder')}
-            placeholderTextColor={palette.muted}
-            multiline
-            editable={!isSending && !isLoading}
-            maxLength={1200}
-            style={styles.input}
-          />
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel={dictationStatus === 'listening' ? t('chat.dictationStopAccessibility') : t('chat.dictationStartAccessibility')}
-            disabled={isSending || isLoading || dictationStatus === 'processing'}
-            onPress={() => void toggleDictation()}
-            style={[
-              styles.mic,
-              dictationStatus === 'listening' && styles.micListening,
-              dictationStatus === 'error' && styles.micError,
-              (isSending || isLoading || dictationStatus === 'processing') && styles.disabled,
-            ]}
-          >
-            <SymbolView
-              name={{ ios: dictationStatus === 'listening' ? 'mic.fill' : 'mic', android: 'mic', web: 'mic' }}
-              size={22}
-              tintColor={dictationStatus === 'listening' ? palette.blue : palette.ink}
-              fallback={<Text style={styles.micFallback}>Mic</Text>}
-            />
-          </Pressable>
-          <Pressable accessibilityRole="button" disabled={isSending || isLoading} onPress={() => void send()} style={[styles.send, (isSending || isLoading) && styles.disabled]}>
-            <Text style={styles.sendText}>{t('chat.sendButton')}</Text>
-          </Pressable>
-        </View>
-        <Text
-          accessibilityLiveRegion="polite"
-          style={[
-            styles.dictationMessage,
-            dictationStatus === 'listening' && styles.dictationListeningText,
-            dictationStatus === 'error' && styles.dictationErrorText,
-          ]}
-        >
-          {dictationMessage || ' '}
-        </Text>
       </Screen>
     </KeyboardAvoidingView>
   );
@@ -918,6 +930,9 @@ const styles = StyleSheet.create({
      acelasi albastru ca limita, fara sa alerte omul. */
   activationPending: { color: palette.blue, fontSize: 12, lineHeight: 17, textAlign: 'center', paddingTop: 4 },
   messages: { gap: 10 },
+  /* Cu compozitorul fixat jos (footer), zona derulantă nu mai lasă locul zonei sigure:
+     o face compozitorul. Rămâne doar o respiratie între ultimul mesaj și compozitor. */
+  chatScrollContent: { paddingBottom: 12 },
   chatScreen: { backgroundColor: palette.skyLight },
   message: { maxWidth: '88%', paddingHorizontal: 15, paddingVertical: 12, borderRadius: 16 },
   userMessage: { backgroundColor: palette.blue, alignSelf: 'flex-end', borderBottomRightRadius: 4 },
