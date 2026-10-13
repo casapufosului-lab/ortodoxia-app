@@ -38,5 +38,10 @@ export function chatLatencyLine(stage: ChatLatencyStage, milliseconds: number, d
 
 /** Scrie linia în logul aplicaţiei. Conţinutul conversaţiei nu are ce căuta aici. */
 export function logChatLatency(stage: ChatLatencyStage, milliseconds: number, detail?: string): void {
-  console.log(chatLatencyLine(stage, milliseconds, detail));
+  // DE CE `console.warn`, NU `console.log` (masurat 13.10.2026, rularea iOS 38367884698): in build-ul
+  // de RELEASE `console.log` NU ajunge in logul sistemului — in `app-log.txt` din artefact (17 896 de
+  // linii ale procesului aplicatiei) marcajul `[chat-latency]` aparea de 0 ori, desi instrumentul era
+  // apelat. Canalul de avertismente (RCTLog -> os_log pe iOS, logcat `ReactNativeJS` pe Android) este
+  // colectat de CI. Formatul liniei ramane neschimbat, iar aici se scriu DOAR durate si stari.
+  console.warn(chatLatencyLine(stage, milliseconds, detail));
 }

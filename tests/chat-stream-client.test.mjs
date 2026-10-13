@@ -339,13 +339,21 @@ test('linia de latență are format stabil și nu conține conținutul conversa�
 });
 
 test('logChatLatency scrie linia în logul aplicației', () => {
+  // 13.10.2026: canalul verificat este `console.warn`, nu `console.log`. In build-ul de RELEASE
+  // `console.log` NU ajunge in logul sistemului (masurat: 0 linii `[chat-latency]` in app-log.txt
+  // din artefactul rularii iOS 38367884698, 17 896 de linii ale procesului aplicatiei), in timp ce
+  // canalul de avertismente este colectat de CI. Asertiunea pe CONTINUT ramane aceeasi, iar aici se
+  // fixeaza si ca `console.log` NU mai e folosit (altfel dovada dispare din log).
   const written = [];
-  const original = console.log;
-  console.log = (line) => written.push(line);
+  const originalWarn = console.warn;
+  const originalLog = console.log;
+  console.warn = (line) => written.push(line);
+  console.log = (line) => written.push('[gresit: console.log] ' + line);
   try {
     logChatLatency('primul text', 1840);
   } finally {
-    console.log = original;
+    console.warn = originalWarn;
+    console.log = originalLog;
   }
   assert.deepEqual(written, ['[chat-latency] primul text 1840 ms']);
 });
