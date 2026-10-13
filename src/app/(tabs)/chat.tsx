@@ -559,12 +559,22 @@ function ChatConversation() {
      * conversaţiei), iar prefixul `[chat-latency]` e cel căutat în loguri.
      */
     const requestStartedAt = Date.now();
-    logChatLatency('cererea a plecat', 0, threadId ? 'fir existent' : 'fir nou');
+    logChatLatency('cererea a plecat', 0, `${user ? 'cont' : 'oaspete'}, ${threadId ? 'fir existent' : 'fir nou'}`);
     let assistantId: string | null = null;
     let streamedText = '';
 
     try {
-      if (!user) await ensureGuestChatSession();
+      if (!user) {
+        // OB.3 (13.10.2026) — motivul se scrie în log ACOLO UNDE EROAREA EXISTĂ. Fără el, mesajul de
+        // pe ecran („serviciul nu este disponibil") nu deosebește o rețea ruptă de un pas rupt
+        // ÎNAINTEA cererii — exact cazul măsurat pe iOS (rulează 38367884698: chat 0/3, cotă curată
+        // „5 din 5", nicio cerere în log). Se scrie numele și mesajul erorii, nu conversația.
+        await ensureGuestChatSession().catch((error: unknown) => {
+          logChatLatency('excepție', Date.now() - requestStartedAt, `sesiunea de oaspete: ${error instanceof Error ? error.message : String(error)}`);
+          throw error;
+        });
+      }
+      logChatLatency('pregatire', Date.now() - requestStartedAt, `sesiune ${user ? 'cont' : 'oaspete'} gata`);
       const chatClient = user ? supabase : chatGuestSupabase;
       if (!isCurrentRequest()) return;
 
@@ -584,7 +594,10 @@ function ChatConversation() {
         },
         message: clean,
         threadId,
-        deviceId: await getAiLimitDeviceId(),
+        deviceId: await getAiLimitDeviceId().catch((error: unknown) => {
+          logChatLatency('excepție', Date.now() - requestStartedAt, `id de dispozitiv: ${error instanceof Error ? error.message : String(error)}`);
+          throw error;
+        }),
         onEvent: (event) => {
           if (!isCurrentRequest()) return;
           if (event.type === 'meta') {

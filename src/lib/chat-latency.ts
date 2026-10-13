@@ -20,6 +20,7 @@
  */
 export type ChatLatencyStage =
   | 'cererea a plecat'
+  | 'pregatire'
   | 'primul text'
   | 'total'
   | 'eșec HTTP'
