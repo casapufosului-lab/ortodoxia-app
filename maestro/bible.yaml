@@ -161,7 +161,10 @@ appId: ro.ortodoxia.app
     element:
       text: ".*A doua zi, a văzut pe Isus venind la el.*"
     direction: DOWN
-    timeout: 45000
+# Buget RIDICAT pe masuratoare, nu pe presupunere (13.10.2026, android-r171, commands.json pasul 37):
+# derularea pana la Ioan 1:29 a consumat 44 073 ms din bugetul de 45 000 ms (98%) - la primul varf de
+# incarcare dadea timeout. Asertitunea ramane identica: acelasi text, aceeasi 100% vizibilitate.
+    timeout: 90000
     centerElement: true
     label: "POARTĂ: derularea ajunge la Ioan 1:29 (a doua jumătate a capitolului de 51 de versete)"
 - assertVisible:
@@ -175,7 +178,10 @@ appId: ro.ortodoxia.app
     element:
       text: "Caută în capitolul curent"
     direction: UP
-    timeout: 30000
+# Buget RIDICAT pe masuratoare (13.10.2026, android-r171, commands.json pasul 40: FAILED dupa 32 532 ms
+# din 30 000 ms, iar in ierarhia salvata la picare campul de cautare nu mai era deloc in arborele vizibil).
+# Acelasi pas, aceeasi conditie (textul "Caută în capitolul curent", 100% vizibil) - doar bugetul difera.
+    timeout: 90000
     label: "câmpul de căutare e deasupra cititorului (după derulare)"
 - tapOn: "Caută în capitolul curent"
 - inputText: "zzzqqq"
