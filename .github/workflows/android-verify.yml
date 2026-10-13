@@ -4,9 +4,16 @@ name: Android verify (emulator + Maestro, fara publicare)
 # emulator curat, nu pe emulatorul din casa (decizia ownerului, 13.10.2026). Local ramane pentru
 # verificari scurte de 5 minute, care NU intra in cele 36 de rezultate.
 #
-# NU publica nimic: nu exista pas de urcare in Play. APK-ul se construieste AICI, din commitul rulat,
-# semnat cu cheia de debug a proiectului (gradle cade pe `signingConfigs.debug` cand nu exista keystore
-# de urcare) - deci NU ajung chei de magazin in GitHub si nu se urca niciun binar nicaieri.
+# NU publica nimic: nu exista pas de urcare in Play. APK-ul se construieste AICI, din commitul rulat.
+# REPARAT 13.10.2026: comentariul de dinainte spunea ca "gradle cade pe signingConfigs.debug cand nu
+# exista keystore de urcare" - FALS, si de aceea prima rulare a picat (jobul "Build APK release",
+# eroarea: "Build de release fara keystore. Seteaza ORTODOXIA_UPLOAD_STORE_FILE, ..."). Pluginul
+# `plugins/with-android-hardening.js` refuza deliberat un build de release fara keystore, dar accepta
+# keystore-ul injectat prin proprietatile `android.injected.signing.*` (calea folosita si de EAS).
+# Deci: jobul isi genereaza un keystore de ARUNCAT (cheie noua, parole aleatorii, doar pentru aceasta
+# rulare) si il injecteaza asa. Nu se comite nicio cheie, nu se folosesc chei de magazin, iar binarul
+# rezultat NU poate fi urcat in Play (nu e semnat cu cheia de upload) - si nici nu se urca: nu exista
+# pas de publicare.
 #
 # CAND PORNETE: doar manual. `gh workflow run android-verify.yml -f flow=toate`
 #   - `flow=toate`   -> toate cele 12 flow-uri x 3 treceri = 36 de rezultate (suita completa);
@@ -129,11 +136,31 @@ jobs:
           test -s android/app/google-services.json || { echo "::error::android/app/google-services.json lipseste sau e gol"; exit 1; }
           grep -n "versionCode\|applicationId" android/app/build.gradle
 
+      - name: Keystore de CI, de aruncat (doar pentru masuratoare; fara chei de magazin)
+        # `plugins/with-android-hardening.js` refuza release-ul fara keystore, dar accepta keystore-ul
+        # injectat prin `android.injected.signing.*`. Generam o cheie noua, cu parole aleatorii, valabila
+        # doar cat ruleaza jobul. Parolele nu se tiparesc (sunt variabile de shell; GitHub afiseaza textul
+        # scriptului, nu valorile expandate).
+        run: |
+          set -e
+          KS="$RUNNER_TEMP/ci-release.keystore"
+          PW="$(head -c 24 /dev/urandom | base64 | tr -d '/+=' | head -c 24)"
+          keytool -genkeypair -v -keystore "$KS" -alias ci -keyalg RSA -keysize 2048 \
+            -validity 1 -storepass "$PW" -keypass "$PW" \
+            -dname "CN=Ortodoxia CI, OU=measurement, O=Ortodoxia, L=Bucuresti, C=RO" > /dev/null
+          echo "CI_KEYSTORE=$KS" >> "$GITHUB_ENV"
+          echo "CI_KEYSTORE_PW=$PW" >> "$GITHUB_ENV"
+          echo "keystore de CI generat ($(basename "$KS"), alias ci); parola nu se tipareste"
+
       - name: Build APK release (doar x86_64, cat pentru emulator)
         run: |
           set -e
           cd android
-          ./gradlew assembleRelease --no-daemon -PreactNativeArchitectures=x86_64
+          ./gradlew assembleRelease --no-daemon -PreactNativeArchitectures=x86_64 \
+            -Pandroid.injected.signing.store.file="$CI_KEYSTORE" \
+            -Pandroid.injected.signing.store.password="$CI_KEYSTORE_PW" \
+            -Pandroid.injected.signing.key.alias=ci \
+            -Pandroid.injected.signing.key.password="$CI_KEYSTORE_PW"
 
       - name: Masoara APK-ul (marime + SHA-256)
         run: |
