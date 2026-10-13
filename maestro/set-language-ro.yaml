@@ -30,29 +30,27 @@ appId: ro.ortodoxia.app
     label: "PROLOG: tab-ul de cont (eticheta depinde de limba curenta si, pe iOS, de iconita)"
 # Pe INSTALARE NOUA (chat.yaml foloseste `clearState: true`) prima apasare pe tab poate cadea cat timp
 # aplicatia isi termina initializarea (dovada 2026-10-12, rularea p1-chat: apasare la 11:57:17, la 13 s
-# dupa pornirea JS, iar ecranul a ramas Acasa). De aceea CONFIRMAM ca ecranul Cont s-a deschis si, daca
-# nu, mai apasam O DATA acelasi tab (apasarea pe tab-ul deja activ nu schimba nimic, deci e sigura).
-# Poarta NU se leaga de textul „Română": acela sta sub pliu si se aduce in ecran cu scroll-ul de mai jos
-# (asa a functionat in 5 rulari din 8; a se vedea si raportul, secțiunea de diagnostic).
-- extendedWaitUntil:
-    visible: ".*(Contul meu|My account|Țară și limbă|Country and language|PROFIL|PROFILE).*"
-    timeout: 15000
-    optional: true
-    label: "PROLOG: ecranul Cont s-a deschis"
-- runFlow:
-    when:
-      notVisible: ".*(Contul meu|My account|Țară și limbă|Country and language|PROFIL|PROFILE).*"
+# dupa pornirea JS, iar ecranul a ramas Acasa).
+#
+# REPARAT 13.10.2026. Dovada: rularea locala Android tag=chatlocal2, JUnit
+# `maestro-out/android-chatlocal2/chatlocal2-chat-reluare1.xml` — „No visible element found: Română".
+# Ce s-a intamplat: poarta de mai sus se satisface pe ECRANUL ACASA (tab-ul „Account" e chiar pe Acasa),
+# deci trece inainte ca aplicatia sa fie interactiva; apasarea pe tab se pierde, ecranul ramane Acasa in
+# engleza, iar `scrollUntilVisible Română` deruleaza ~10 minute pe ecranul greșit si pica.
+# Mecanismul de mai jos NU slăbește nicio aserțiune: cere explicit ca ecranul Cont SA SE DESCHIDA si reia
+# (apasare + așteptare) pana reușește, cu un numar mărginit de încercări. Așteptarea nu mai e
+# `optional: true` — daca ecranul Cont nu se deschide in 4 încercări, prologul cade (corect: fara el
+# aserțiunile românești nu au obiect), iar mesajul de eroare arata exact pasul care a picat.
+- retry:
+    maxRetries: 4
     commands:
       - tapOn:
           text: ".*(Cont|Account).*"
-          label: "PROLOG: a doua apăsare pe tab-ul de cont (prima s-a pierdut la inițializare)"
-      # `optional: true` este deliberat: dacă numele din engleză al ecranului Cont diferă de presupunerea
-      # de aici, flow-ul NU pică pe poartă — merge mai departe si deruleaza ca inainte.
+          label: "PROLOG: tab-ul de cont (prima apăsare se poate pierde la inițializare)"
       - extendedWaitUntil:
           visible: ".*(Contul meu|My account|Țară și limbă|Country and language|PROFIL|PROFILE).*"
-          timeout: 20000
-          optional: true
-          label: "PROLOG: ecranul Cont s-a deschis la a doua apăsare"
+          timeout: 25000
+          label: "PROLOG: ecranul Cont s-a deschis"
 - scrollUntilVisible:
     element:
       text: "Română"
