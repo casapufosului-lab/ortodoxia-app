@@ -31,6 +31,19 @@
 # PAUZA DINTRE MESAJE: serverul are `p_cooldown_seconds DEFAULT 5` (migrația
 # `20260903000100_harden_ai_usage.sql:9`) — fiecare ciclu așteaptă răspunsul complet (zeci de secunde),
 # deci cooldown-ul nu poate fi confundat cu plafonul zilnic.
+#
+# REPARAT 14.10.2026 — ascunderea tastaturii se face DOAR pe Android (măsurat, nu presupus):
+#   • iOS, rularea completă din Codemagic (build 6acf15c8c26598b8d0c4a02e, commit e988b3a, 13 flow-uri x 3
+#     treceri): singurul flow PICAT din 39 de celule a fost ACESTA, în TOATE cele 3 treceri, exact la pasul
+#     `hideKeyboard`: „Couldn't hide the keyboard. This can happen if the app uses a custom input or doesn't
+#     expose a standard dismiss action.". Același pas TRECE pe iOS în account/auth/bible/prayers ⇒ nu pasul
+#     e defect, ci contextul de aici (compozitor ascuns după cardul de cotă epuizată).
+#   • Android: pasul e OBLIGATORIU — fără el flow-ul PICĂ („Element not found: .*Trimite.*", măsurat
+#     14.10.2026 pe emulator, APK vc8), fiindcă `KeyboardAvoidingView` are `behavior` DOAR pe iOS
+#     (`src/app/(tabs)/chat.tsx:767`: `behavior={Platform.OS === 'ios' ? 'padding' : undefined}`), deci
+#     compozitorul stă sub tastatură.
+#   Constructul de mai jos (`runFlow` cu `when.platform`) este deja dovedit VERDE pe AMBELE platforme în
+#   `maestro/chat.yaml`. Nu se slăbește NICIO aserțiune: „Trimite" rămâne cerut explicit la fiecare pas.
 appId: ro.ortodoxia.app
 ---
 - launchApp:
@@ -67,7 +80,13 @@ appId: ro.ortodoxia.app
     label: "CICLUL 1/6: derulăm până la compozitor — răspunsul lung îl împinge sub zona vizibilă (rețetă dovedită în chat.yaml:132-137)"
 - tapOn: ".*Scrie întrebarea ta.*"
 - inputText: "Ce este rugaciunea?"
-- hideKeyboard
+# Ascunderea tastaturii DOAR pe Android (măsurat 14.10.2026; motivul întreg e în antet):
+# pe Android e obligatorie, pe iOS același pas face flow-ul să pice („Couldn't hide the keyboard").
+- runFlow:
+    when:
+      platform: Android
+    commands:
+      - hideKeyboard
 - scrollUntilVisible:
     element:
       text: ".*Trimite.*"
@@ -88,7 +107,12 @@ appId: ro.ortodoxia.app
     label: "CICLUL 2/6: derulăm până la compozitor — răspunsul lung îl împinge sub zona vizibilă (rețetă dovedită în chat.yaml:132-137)"
 - tapOn: ".*Scrie întrebarea ta.*"
 - inputText: "Cum ma rog dimineata?"
-- hideKeyboard
+# tastatura se ascunde doar pe Android — același motiv măsurat ca mai sus (vezi antetul)
+- runFlow:
+    when:
+      platform: Android
+    commands:
+      - hideKeyboard
 - scrollUntilVisible:
     element:
       text: ".*Trimite.*"
@@ -109,7 +133,12 @@ appId: ro.ortodoxia.app
     label: "CICLUL 3/6: derulăm până la compozitor — răspunsul lung îl împinge sub zona vizibilă (rețetă dovedită în chat.yaml:132-137)"
 - tapOn: ".*Scrie întrebarea ta.*"
 - inputText: "Ce este postul?"
-- hideKeyboard
+# tastatura se ascunde doar pe Android — același motiv măsurat ca mai sus (vezi antetul)
+- runFlow:
+    when:
+      platform: Android
+    commands:
+      - hideKeyboard
 - scrollUntilVisible:
     element:
       text: ".*Trimite.*"
@@ -130,7 +159,12 @@ appId: ro.ortodoxia.app
     label: "CICLUL 4/6: derulăm până la compozitor — răspunsul lung îl împinge sub zona vizibilă (rețetă dovedită în chat.yaml:132-137)"
 - tapOn: ".*Scrie întrebarea ta.*"
 - inputText: "Cine a fost Sfantul Ioan?"
-- hideKeyboard
+# tastatura se ascunde doar pe Android — același motiv măsurat ca mai sus (vezi antetul)
+- runFlow:
+    when:
+      platform: Android
+    commands:
+      - hideKeyboard
 - scrollUntilVisible:
     element:
       text: ".*Trimite.*"
@@ -154,7 +188,12 @@ appId: ro.ortodoxia.app
     label: "CICLUL 5/6: derulăm până la compozitor — răspunsul lung îl împinge sub zona vizibilă (rețetă dovedită în chat.yaml:132-137)"
 - tapOn: ".*Scrie întrebarea ta.*"
 - inputText: "Ce este Sfanta Liturghie?"
-- hideKeyboard
+# tastatura se ascunde doar pe Android — același motiv măsurat ca mai sus (vezi antetul)
+- runFlow:
+    when:
+      platform: Android
+    commands:
+      - hideKeyboard
 - scrollUntilVisible:
     element:
       text: ".*Trimite.*"
@@ -205,7 +244,12 @@ appId: ro.ortodoxia.app
     label: "CICLUL 6/6 (al 6-lea mesaj): derulăm până la compozitor"
 - tapOn: ".*Scrie întrebarea ta.*"
 - inputText: "Mai am o intrebare?"
-- hideKeyboard
+# tastatura se ascunde doar pe Android — același motiv măsurat ca mai sus (vezi antetul)
+- runFlow:
+    when:
+      platform: Android
+    commands:
+      - hideKeyboard
 - scrollUntilVisible:
     element:
       text: ".*Trimite.*"
