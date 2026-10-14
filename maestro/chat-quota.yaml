@@ -121,7 +121,9 @@ appId: ro.ortodoxia.app
 # TREAPTA 1/5, dovada ADEVĂRATĂ (adăugat 14.10.2026): pasul „Raportează" de mai sus NU dovedea
 # terminarea răspunsului — cardul de bun venit are propriul buton „Raportează" și rămâne pe ecran
 # toată conversația (măsurat: ierarhia de la picare arată cardul de bun venit, conversația și cardul
-# de stop SIMULTAN; „TREAPTA 1/5" s-a încheiat la 1,7 s după tap, imposibil pentru un răspuns real).
+# de stop SIMULTAN); iar „TREAPTA 1/5" s-a încheiat la 0,3 s după tap — nouă măsurători în logurile
+# sondei din 14.10.2026: 0,286 / 0,290 / 0,292 / 0,302 / 0,317 / 0,321 / 0,353 / 0,356 s, imposibil
+# pentru un răspuns real, care durează zeci de secunde.
 # Butonul de trimitere se deblochează abia când `isSending` devine false = răspunsul s-a terminat.
 - extendedWaitUntil:
     visible:
@@ -180,7 +182,9 @@ appId: ro.ortodoxia.app
 # TREAPTA 2/5, dovada ADEVĂRATĂ (adăugat 14.10.2026): pasul „Raportează" de mai sus NU dovedea
 # terminarea răspunsului — cardul de bun venit are propriul buton „Raportează" și rămâne pe ecran
 # toată conversația (măsurat: ierarhia de la picare arată cardul de bun venit, conversația și cardul
-# de stop SIMULTAN; „TREAPTA 1/5" s-a încheiat la 1,7 s după tap, imposibil pentru un răspuns real).
+# de stop SIMULTAN); iar „TREAPTA 1/5" s-a încheiat la 0,3 s după tap — nouă măsurători în logurile
+# sondei din 14.10.2026: 0,286 / 0,290 / 0,292 / 0,302 / 0,317 / 0,321 / 0,353 / 0,356 s, imposibil
+# pentru un răspuns real, care durează zeci de secunde.
 # Butonul de trimitere se deblochează abia când `isSending` devine false = răspunsul s-a terminat.
 - extendedWaitUntil:
     visible:
@@ -239,7 +243,9 @@ appId: ro.ortodoxia.app
 # TREAPTA 3/5, dovada ADEVĂRATĂ (adăugat 14.10.2026): pasul „Raportează" de mai sus NU dovedea
 # terminarea răspunsului — cardul de bun venit are propriul buton „Raportează" și rămâne pe ecran
 # toată conversația (măsurat: ierarhia de la picare arată cardul de bun venit, conversația și cardul
-# de stop SIMULTAN; „TREAPTA 1/5" s-a încheiat la 1,7 s după tap, imposibil pentru un răspuns real).
+# de stop SIMULTAN); iar „TREAPTA 1/5" s-a încheiat la 0,3 s după tap — nouă măsurători în logurile
+# sondei din 14.10.2026: 0,286 / 0,290 / 0,292 / 0,302 / 0,317 / 0,321 / 0,353 / 0,356 s, imposibil
+# pentru un răspuns real, care durează zeci de secunde.
 # Butonul de trimitere se deblochează abia când `isSending` devine false = răspunsul s-a terminat.
 - extendedWaitUntil:
     visible:
@@ -298,7 +304,9 @@ appId: ro.ortodoxia.app
 # TREAPTA 4/5, dovada ADEVĂRATĂ (adăugat 14.10.2026): pasul „Raportează" de mai sus NU dovedea
 # terminarea răspunsului — cardul de bun venit are propriul buton „Raportează" și rămâne pe ecran
 # toată conversația (măsurat: ierarhia de la picare arată cardul de bun venit, conversația și cardul
-# de stop SIMULTAN; „TREAPTA 1/5" s-a încheiat la 1,7 s după tap, imposibil pentru un răspuns real).
+# de stop SIMULTAN); iar „TREAPTA 1/5" s-a încheiat la 0,3 s după tap — nouă măsurători în logurile
+# sondei din 14.10.2026: 0,286 / 0,290 / 0,292 / 0,302 / 0,317 / 0,321 / 0,353 / 0,356 s, imposibil
+# pentru un răspuns real, care durează zeci de secunde.
 # Butonul de trimitere se deblochează abia când `isSending` devine false = răspunsul s-a terminat.
 - extendedWaitUntil:
     visible:
@@ -360,7 +368,9 @@ appId: ro.ortodoxia.app
 # TREAPTA 5/5, dovada ADEVĂRATĂ (adăugat 14.10.2026): pasul „Raportează" de mai sus NU dovedea
 # terminarea răspunsului — cardul de bun venit are propriul buton „Raportează" și rămâne pe ecran
 # toată conversația (măsurat: ierarhia de la picare arată cardul de bun venit, conversația și cardul
-# de stop SIMULTAN; „TREAPTA 1/5" s-a încheiat la 1,7 s după tap, imposibil pentru un răspuns real).
+# de stop SIMULTAN); iar „TREAPTA 1/5" s-a încheiat la 0,3 s după tap — nouă măsurători în logurile
+# sondei din 14.10.2026: 0,286 / 0,290 / 0,292 / 0,302 / 0,317 / 0,321 / 0,353 / 0,356 s, imposibil
+# pentru un răspuns real, care durează zeci de secunde.
 # Butonul de trimitere se deblochează abia când `isSending` devine false = răspunsul s-a terminat.
 - extendedWaitUntil:
     visible:
