@@ -1,0 +1,194 @@
+# EAS Workflows — proba iOS pe simulator (Maestro), FARA publicare.
+#
+# De ce exista acest fisier:
+#   Canalul de verificare de la GitHub (`.github/workflows/ios-verify.yml`) foloseste imaginea
+#   `macos-26` — singura care are Xcode 26.6 (necesar pentru acest proiect: `macos-15` are
+#   Xcode 16.4/Swift 6.1 si `pod install` nu trece; Xcode 26.0-26.3 au bugul upstream
+#   expo/expo#50061). Pe 14.10.2026, trei rulari la rand au fost anulate de GitHub dupa exact
+#   15m01s, cu ZERO pași executati („The job was not acquired by Runner of type hosted even
+#   after multiple attempts" / „Due to capacity constraints, jobs targeting macOS arm64 runners
+#   may experience longer queue times") — adica a fost o problema de capacitate a imaginii, nu de
+#   aplicatie.
+#   EAS ruleaza pe masini macOS proprii, cu coada prioritara pe planul platit, si are un job
+#   gata facut pentru Maestro (`type: maestro`), deci proba iOS se poate face independent de cozile
+#   de la GitHub.
+#
+# CAT COSTA (tarife oficiale Expo, citite la 14.10.2026 — planul Starter, 19 $/luna, da 45 $ credit):
+#   build de iOS (worker mediu):        2 $ pe build (o singura data, folosit de toate trecerile)
+#   worker macOS mediu (job non-build): 0,075 $ pe minut
+#   job de Maestro:                     0,05 $ pe job + minutele de mai sus
+#   => proba completa (13 flow-uri x 3 treceri) ≈ 5-6 $, adica ~3 din cele 22 de build-uri
+#      acoperite de creditul de 45 $.
+#
+# Ce face, exact ca la GitHub (aceleasi 13 flow-uri, aceleasi fisiere, nicio asertiune schimbata):
+#   1. construieste `.app`-ul pentru simulator, cu profilul `ios-simulator` din eas.json
+#      (extinde `preview`, deci mosteneste cheile RevenueCat si adresa Supabase; NU este build de
+#      dezvoltare, deci aplicatia porneste singura, cu pachetul JS inclus — exact ca la GitHub);
+#   2. ruleaza cele 13 flow-uri in 3 treceri (3 joburi, cate o trecere fiecare), pe un worker
+#      `macos-medium`; la fiecare trecere se salveaza jurnalul de latenta al aplicatiei
+#      (`Documents/chat-latency.log`), ca sa se poata decide mecanismul de la chat-quota.
+#
+# Cum se porneste (manual, niciodata la push):
+#   npx eas-cli@latest workflow:run .eas/workflows/ios-verify.yml
+#
+# `set-language-ro.yaml` NU apare in lista: este prologul comun pe care cele 13 flow-uri il cheama
+# cu `runFlow`, nu un test de sine statator (la GitHub la fel — lista din matrice nu il contine).
+
+name: Ortodoxia iOS - verificare pe simulator (Maestro)
+run_name: Proba iOS - 13 flow-uri x 3 treceri, fara publicare
+
+on:
+  # `{}` (obiect gol) este OBLIGATORIU: EAS respinge `workflow_dispatch:` fara valoare
+  # („Invalid input: expected object, received null") — prins la prima pornire, 14.10.2026.
+  # Poarta locala check-eas-workflow.mjs verifica acum si asta.
+  workflow_dispatch: {}
+
+jobs:
+  build_simulator:
+    name: Construieste .app-ul pentru simulator
+    type: build
+    params:
+      platform: ios
+      profile: ios-simulator
+      message: "Proba iOS (Maestro) - fara publicare"
+
+  # Trei treceri, ca la Android (36 de celule = 12 flow-uri x 3). Aici: 13 x 3 = 39 de celule.
+  # Fiecare trecere este un job separat pentru ca `type: maestro` ruleaza lista o singura data.
+  flows_trecerea_1:
+    name: Trecerea 1 - cele 13 flow-uri
+    type: maestro
+    needs: [build_simulator]
+    # macos-medium: 5 nuclee, 20 GiB RAM (0,075 $/minut). Nu exista macos-26 vs macos-15 aici —
+    # imaginea o alege EAS, iar Xcode-ul propriu este compatibil cu proiectul.
+    runs_on: macos-medium
+    params:
+      build_id: ${{ needs.build_simulator.outputs.build_id }}
+      flow_path:
+        - maestro/home.yaml
+        - maestro/prayers.yaml
+        - maestro/calendar.yaml
+        - maestro/bible.yaml
+        - maestro/chat.yaml
+        - maestro/chat-quota.yaml
+        - maestro/account.yaml
+        - maestro/auth.yaml
+        - maestro/live.yaml
+        - maestro/premium.yaml
+        - maestro/legal.yaml
+        - maestro/notifications.yaml
+        - maestro/errors.yaml
+      # 0 reincercari: vrem starea reala, nu una mascata de reincercari. Fiecare trecere este
+      # o masuratoare curata; daca un flow cade, cade pe bune si il vedem.
+      retries: 0
+      record_screen: false
+      output_format: junit
+    hooks:
+      after_maestro_tests:
+        - name: pastreaza jurnalul de latenta al trecerii 1
+          run: |
+            set +e
+            mkdir -p dovezi
+            CONT=$(xcrun simctl get_app_container booted ro.ortodoxia.app data 2>/dev/null)
+            if [ -z "$CONT" ] || [ ! -f "$CONT/Documents/chat-latency.log" ]; then
+              for UDID in $(xcrun simctl list devices | grep -Eo '[0-9A-F]{8}-([0-9A-F]{4}-){3}[0-9A-F]{12}'); do
+                C=$(xcrun simctl get_app_container "$UDID" ro.ortodoxia.app data 2>/dev/null)
+                if [ -n "$C" ] && [ -f "$C/Documents/chat-latency.log" ]; then CONT="$C"; break; fi
+              done
+            fi
+            if [ -n "$CONT" ] && [ -f "$CONT/Documents/chat-latency.log" ]; then
+              cp "$CONT/Documents/chat-latency.log" dovezi/chat-latency-pass1.txt
+              echo "=== chat-latency-pass1.txt ($(wc -l < dovezi/chat-latency-pass1.txt | tr -d ' ') linii) ==="
+              cat dovezi/chat-latency-pass1.txt
+            else
+              echo "Documents/chat-latency.log lipseste pentru trecerea 1 (instrumentul nu a scris nimic)"
+            fi
+
+  flows_trecerea_2:
+    name: Trecerea 2 - cele 13 flow-uri
+    type: maestro
+    needs: [build_simulator]
+    runs_on: macos-medium
+    params:
+      build_id: ${{ needs.build_simulator.outputs.build_id }}
+      flow_path:
+        - maestro/home.yaml
+        - maestro/prayers.yaml
+        - maestro/calendar.yaml
+        - maestro/bible.yaml
+        - maestro/chat.yaml
+        - maestro/chat-quota.yaml
+        - maestro/account.yaml
+        - maestro/auth.yaml
+        - maestro/live.yaml
+        - maestro/premium.yaml
+        - maestro/legal.yaml
+        - maestro/notifications.yaml
+        - maestro/errors.yaml
+      retries: 0
+      record_screen: false
+      output_format: junit
+    hooks:
+      after_maestro_tests:
+        - name: pastreaza jurnalul de latenta al trecerii 2
+          run: |
+            set +e
+            mkdir -p dovezi
+            CONT=$(xcrun simctl get_app_container booted ro.ortodoxia.app data 2>/dev/null)
+            if [ -z "$CONT" ] || [ ! -f "$CONT/Documents/chat-latency.log" ]; then
+              for UDID in $(xcrun simctl list devices | grep -Eo '[0-9A-F]{8}-([0-9A-F]{4}-){3}[0-9A-F]{12}'); do
+                C=$(xcrun simctl get_app_container "$UDID" ro.ortodoxia.app data 2>/dev/null)
+                if [ -n "$C" ] && [ -f "$C/Documents/chat-latency.log" ]; then CONT="$C"; break; fi
+              done
+            fi
+            if [ -n "$CONT" ] && [ -f "$CONT/Documents/chat-latency.log" ]; then
+              cp "$CONT/Documents/chat-latency.log" dovezi/chat-latency-pass2.txt
+              echo "=== chat-latency-pass2.txt ($(wc -l < dovezi/chat-latency-pass2.txt | tr -d ' ') linii) ==="
+              cat dovezi/chat-latency-pass2.txt
+            else
+              echo "Documents/chat-latency.log lipseste pentru trecerea 2 (instrumentul nu a scris nimic)"
+            fi
+
+  flows_trecerea_3:
+    name: Trecerea 3 - cele 13 flow-uri
+    type: maestro
+    needs: [build_simulator]
+    runs_on: macos-medium
+    params:
+      build_id: ${{ needs.build_simulator.outputs.build_id }}
+      flow_path:
+        - maestro/home.yaml
+        - maestro/prayers.yaml
+        - maestro/calendar.yaml
+        - maestro/bible.yaml
+        - maestro/chat.yaml
+        - maestro/chat-quota.yaml
+        - maestro/account.yaml
+        - maestro/auth.yaml
+        - maestro/live.yaml
+        - maestro/premium.yaml
+        - maestro/legal.yaml
+        - maestro/notifications.yaml
+        - maestro/errors.yaml
+      retries: 0
+      record_screen: false
+      output_format: junit
+    hooks:
+      after_maestro_tests:
+        - name: pastreaza jurnalul de latenta al trecerii 3
+          run: |
+            set +e
+            mkdir -p dovezi
+            CONT=$(xcrun simctl get_app_container booted ro.ortodoxia.app data 2>/dev/null)
+            if [ -z "$CONT" ] || [ ! -f "$CONT/Documents/chat-latency.log" ]; then
+              for UDID in $(xcrun simctl list devices | grep -Eo '[0-9A-F]{8}-([0-9A-F]{4}-){3}[0-9A-F]{12}'); do
+                C=$(xcrun simctl get_app_container "$UDID" ro.ortodoxia.app data 2>/dev/null)
+                if [ -n "$C" ] && [ -f "$C/Documents/chat-latency.log" ]; then CONT="$C"; break; fi
+              done
+            fi
+            if [ -n "$CONT" ] && [ -f "$CONT/Documents/chat-latency.log" ]; then
+              cp "$CONT/Documents/chat-latency.log" dovezi/chat-latency-pass3.txt
+              echo "=== chat-latency-pass3.txt ($(wc -l < dovezi/chat-latency-pass3.txt | tr -d ' ') linii) ==="
+              cat dovezi/chat-latency-pass3.txt
+            else
+              echo "Documents/chat-latency.log lipseste pentru trecerea 3 (instrumentul nu a scris nimic)"
+            fi
