@@ -4,7 +4,20 @@ name: iOS verify (simulator + Maestro, fara publicare)
 # runneri macOS de la GitHub, care pornesc in SECUNDE (fara coada de 1-2 ore a Codemagic).
 #
 # NU publica nimic: nu are pas de TestFlight / App Store Connect, iar build-ul e Release pentru
-# SIMULATOR, fara semnare (CODE_SIGNING_ALLOWED=NO).
+# SIMULATOR, semnat ad-hoc asa cum semneaza Xcode pentru simulator (CODE_SIGN_IDENTITY="-").
+#
+# CORECTIE 14.10.2026 (masurata in rularea 38535947525, jobul `flow chat`): pana azi build-ul se facea
+# NESEMNAT (CODE_SIGNING_ALLOWED=NO). Un .app de simulator fara entitlementuri nu poate folosi seiful
+# de chei: `expo-secure-store` raspunde cu
+#   FunctionCallException: Calling the 'getValueWithKeyAsync' function has failed
+# Citit din fisierul propriu al aplicatiei (`Documents/chat-latency.log`):
+#   [chat-latency] cererea a plecat 0 ms (oaspete, fir nou)
+#   [chat-latency] excepție 659 ms (sesiunea de oaspete: FunctionCallException: ... getValueWithKeyAsync ...)
+# Adaptorul de sesiune REFUZA prin constructie sa scrie tokenul in clar (`src/lib/secure-session-storage.ts`,
+# secțiunea "NO PLAINTEXT FALLBACK"), deci sesiunea de oaspete nu se putea salva, iar flow-ul `chat` cadea in
+# toate cele 3 treceri pe asertiunea de raspuns real (nu pe vreun pas de tastatura). Acelasi lucru era deja
+# dovedit si reparat pe Codemagic pe 12.10.2026 (`codemagic.yaml:244-260`: ".app-ul nu are niciun entitlement,
+# deci securityd refuza orice acces la seif (Code=-34018)"), dar corectia NU fusese adusa in acest workflow.
 #
 # CAND PORNETE:
 #   - DOAR manual (workflow_dispatch). `on: push` a fost scos pe 11.10.2026: fiecare push pornea o
@@ -125,7 +138,7 @@ jobs:
       - name: Set build number
         run: cd ios && agvtool new-version -all "$APP_BUILD_NUMBER"
 
-      - name: Build .app pentru simulator (Release, fara semnare)
+      - name: Build .app pentru simulator (Release, semnat ad-hoc ca pentru orice proiect RN)
         run: |
           set -uo pipefail
           mkdir -p build
@@ -133,6 +146,14 @@ jobs:
           # Fara `| tail`: pe 11.10.2026 exact filtrul acesta a ascuns mesajul de eroare
           # (ultimele 60 de linii erau doar "note: Disabling previews") si a lasat in log doar
           # un exit 65 fara nicio explicatie. Scriem tot in fisier si scoatem la iveala erorile.
+          #
+          # SEMNAREA: build-ul de simulator se face asa cum il face Xcode in mod normal pentru
+          # simulator - semnare pornita, identitate ad-hoc ("-" = Sign to Run Locally), fara echipa
+          # si fara profil - si pachetul NU se mai modifica dupa build. In configuratia aceasta
+          # entitlementurile derivate (application-identifier, get-task-allow) fac seiful de chei
+          # accesibil. Fara ele, `expo-secure-store` nu poate scrie sesiunea (Code=-34018) si
+          # flow-ul `chat` cade inainte sa trimita vreo cerere. Aceeasi configuratie ca in
+          # `codemagic.yaml:232`, unde a fost dovedita pe 12.10.2026.
           set +e
           xcodebuild \
             -workspace "$XCODE_WORKSPACE" \
@@ -141,7 +162,7 @@ jobs:
             -sdk iphonesimulator \
             -destination "generic/platform=iOS Simulator" \
             -derivedDataPath build/ios-sim \
-            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
+            CODE_SIGNING_ALLOWED=YES CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="-" CODE_SIGN_STYLE=Manual \
             build > "$LOG" 2>&1
           CODE=$?
           set -e
@@ -153,6 +174,33 @@ jobs:
             exit "$CODE"
           fi
           ls -d build/ios-sim/Build/Products/Release-iphonesimulator/*.app
+
+      - name: Verifica semnatura .app-ului (conditia pentru seif) - poarta, nu doar dovada
+        run: |
+          set -uo pipefail
+          APP=$(ls -d build/ios-sim/Build/Products/Release-iphonesimulator/*.app | head -1)
+          {
+            echo "== aplicatia: $APP"
+            echo "== identitatea semnaturii (codesign -dv):"
+            codesign -dv --verbose=2 "$APP" 2>&1 || true
+            echo "== entitlementurile din semnatura:"
+            codesign -d --entitlements - "$APP" 2>&1 || true
+            echo "== verificare semnatura:"
+            codesign --verify --strict "$APP" 2>&1 && echo "semnatura verificata" || true
+            echo "== conditia pentru seif (application-identifier):"
+            if codesign -d --entitlements - "$APP" 2>/dev/null | grep -q "application-identifier"; then
+              echo "PREZENT: aplicatia poate folosi seiful de chei."
+            else
+              echo "LIPSA: fara application-identifier, securityd refuza seiful (Code=-34018)."
+            fi
+          } | tee entitlements.txt
+          # Poarta: acest pas OPREste rularea daca seiful e inaccesibil. Altfel cele 12 joburi de
+          # flow-uri pornesc pe o aplicatie care nu-si poate salva sesiunea si dau 36 de rezultate
+          # inselatoare, iar cauza (build nesemnat) nu se vede in niciunul dintre ele.
+          if ! codesign -d --entitlements - "$APP" 2>/dev/null | grep -q "application-identifier"; then
+            echo "::error::.app-ul nu are application-identifier: build-ul a iesit nesemnat, deci flow-urile care folosesc seiful (chat) ar cadea din cauza mediului, nu a aplicatiei."
+            exit 1
+          fi
 
       - name: Proba de retea a runnerului (DNS + TLS + HTTP pana la Supabase)
         run: |
