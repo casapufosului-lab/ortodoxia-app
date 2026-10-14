@@ -318,7 +318,11 @@ appId: ro.ortodoxia.app
 # ÎNAINTE de text: `supabase/functions/orthodox-chat/index.ts:687-696`).
 - scrollUntilVisible:
     element:
-      text: "^o întrebare gratuită rămasă azi din 5$"
+      # AMBELE forme reale ale contorului la 1/5 (măsurat 14.10.2026, pasul step-062 al sondei Android:
+      # ecranul arăta „1 din 5 întrebări gratuite rămase azi" — forma de bază, fiindcă `Intl.PluralRules`
+      # nu selectează categoria „one" în runtime-ul Android; pe iOS, cu ICU complet, forma selectată poate fi
+# singularul — de aceea poarta cere EXACT 1 în oricare dintre cele două formulări, nu o formă anume).
+      text: "^(o întrebare gratuită rămasă azi din 5|1 din 5 întrebări gratuite rămase azi)$"
     direction: UP
     timeout: 120000
     label: "CICLUL 4/6: contorul serverului a scăzut la 1/5 — a 4-a întrebare a fost numărată în cota gratuită"
