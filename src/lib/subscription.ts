@@ -317,6 +317,15 @@ export function purchaseAvailability(input: {
    *  ascundă un buton care ar funcționa (aceeași regulă ca la butoanele de autentificare). */
   canMakePayments: boolean | null;
   offeringsLoad: StoreOfferingsLoad;
+  /**
+   * T5 (14.10.2026) — au trecut `STORE_STATE_UNKNOWN_TIMEOUT_MS` secunde fără niciun răspuns de la
+   * `getOfferings()`. Fără el, `checking` putea ține la nesfârșit, iar
+   * `purchaseAvailabilityMessageKey('checking')` este `null` **prin proiectare** — cardul planului
+   * rămânea fără buton ȘI fără nicio explicație (dovedit pe build-ul de CI iOS din 14.10.2026:
+   * `availabilityFor('monthly') = checking` după ~100 de secunde). Cu el, starea degenerează onest în
+   * `offerings-error`, care îi spune omului ce s-a întâmplat și ce poate face.
+   */
+  offeringsUnknownExpired?: boolean;
   packageCount: number;
   hasPackageForPlan: boolean;
   /** Prețul primit de la magazin (`priceString`). Fără el nu afișăm preț și nu activăm butonul. */
@@ -324,7 +333,7 @@ export function purchaseAvailability(input: {
 }): PurchaseAvailability {
   if (!input.storeConfigured) return 'store-unavailable';
   if (input.canMakePayments === false) return 'device-cannot-pay';
-  if (input.offeringsLoad === 'loading') return 'checking';
+  if (input.offeringsLoad === 'loading') return input.offeringsUnknownExpired === true ? 'offerings-error' : 'checking';
   if (input.offeringsLoad === 'error') return 'offerings-error';
   if (input.packageCount <= 0) return 'no-offerings';
   if (!input.hasPackageForPlan) return 'no-package';

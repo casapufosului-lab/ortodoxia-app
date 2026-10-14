@@ -44,6 +44,9 @@ export default function PremiumScreen() {
   const { availabilityFor, buy, loading, offeringsError, packages, priceFor, restore } = useRevenueCat();
   const [purchaseResult, setPurchaseResult] = useState<{ ok: boolean; message: string } | null>(null);
   const [busyPlan, setBusyPlan] = useState<'monthly' | 'annual' | 'restore' | null>(null);
+  // T5 (14.10.2026): blocurile de diagnostic se arată DOAR la cerere (ținta invizibilă de 48x48 de mai
+  // jos). Implicit ascunse: ele nu au ce căuta pe ecranul unui client plătitor.
+  const [showDiagnostics, setShowDiagnostics] = useState(false);
 
   // Poziția B1 din audit: magazinul poate confirma un abonament înainte ca webhook-ul RevenueCat să
   // fi scris rândul din `subscriptions` (întârziere de câteva secunde, sau webhook oprit). În starea
@@ -412,6 +415,19 @@ export default function PremiumScreen() {
           <Text style={styles.legalLink}>{t('premium.terms')}</Text>
         </Pressable>
       </View>
+      {/* DIAGNOSTIC — ASCUNS, ca la playerul live (build 21, 11.10.2026): blocurile tehnice rămân în cod
+          (și în testele structurale care le fixează), dar NU se mai văd pe ecranul omului. Defect
+          dovedit 14.10.2026: captura din build-ul de CI (release) arăta „DIAGNOSTIC PREȚ (temporar)" și
+          „STAREA REVENUECAT — DIAGNOSTIC PERMANENT" pe ecranul utilizatorului. Se arată doar la cerere,
+          prin ținta invizibilă de 48x48 de mai jos — tiparul dovedit din `src/live/youtube-embed.native.tsx`. */}
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel={'Premium: detalii tehnice despre abonament'}
+        onPress={() => setShowDiagnostics((visible) => !visible)}
+        style={styles.diagnosticsToggle}
+      />
+      {showDiagnostics ? (
+        <>
       {/* DIAGNOSTIC TEMPORAR (preț iOS) — se scoate după ce citim valorile. */}
       <Card>
         <Text style={styles.diagTitle}>{'DIAGNOSTIC PREȚ (temporar)'}</Text>
@@ -446,6 +462,8 @@ export default function PremiumScreen() {
           <Text selectable style={styles.diagText}>{'INFORMATIV: randul din baza de date (scris de webhook-ul RevenueCat) acorda Premium, dar magazinul NU confirma niciun abonament activ (entitlements.active este gol). Ecranul afiseaza ce spune magazinul (o singura sursa de adevar, build 18 + T2, 10.10.2026), deci scrie „Plan Gratuit”.'}</Text>
         ) : null}
       </Card>
+        </>
+      ) : null}
     </Screen>
   );
 }
@@ -484,6 +502,9 @@ const styles = StyleSheet.create({
   legalDivider: { color: palette.muted, fontSize: 13 },
   /* DIAGNOSTIC TEMPORAR (preț iOS) — se scoate după ce citim valorile. */
   diagTitle: { color: palette.ink, fontSize: 13, fontWeight: '800', marginBottom: 6 },
+  /* Comutatorul INVIZIBIL al diagnosticului (tipar dovedit în `src/live/youtube-embed.native.tsx`):
+     48x48, fără text și fără chenar — blocul tehnic se arată doar la cerere, nu se scurge la client. */
+  diagnosticsToggle: { alignSelf: 'center', width: 48, height: 48 },
   /* CERINȚA 3 (build 14, 10.10.2026): titlul diagnosticului PERMANENT (starea din RevenueCat).
      `palette.muted` + literă mică: trebuie să fie citit de owner când are nevoie, dar să nu fure
      atenția de la planuri. */

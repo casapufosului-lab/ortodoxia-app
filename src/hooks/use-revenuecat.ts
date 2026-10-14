@@ -110,6 +110,9 @@ export function useRevenueCat() {
   // (`STORE_STATE_UNKNOWN_TIMEOUT_MS`). Se tine per utilizator (`userId`), ca un utilizator nou sa nu
   // mosteneasca ceasul expirat al celui dinainte.
   const [unknownWindow, setUnknownWindow] = useState<{ userId: string | null; elapsed: boolean }>({ userId: null, elapsed: false });
+  // T5 (14.10.2026) — aceeași fereastră „necunoscut", dar pentru CITIREA OFERTELOR (`getOfferings()`),
+  // care nu avea niciun plafon. Vezi `offeringsUnknownExpired` mai jos.
+  const [offeringsWindow, setOfferingsWindow] = useState<{ userId: string | null; elapsed: boolean }>({ userId: null, elapsed: false });
 
   const previousUserIdRef = useRef(userId);
   const mountedRef = useRef(true);
@@ -276,6 +279,24 @@ export function useRevenueCat() {
   }, [premiumKnown, userId]);
   const storeStateUnknownExpired = !premiumKnown && unknownWindow.userId === userId && unknownWindow.elapsed;
   const storeStateUnknownError = !premiumKnown && customerInfoError !== '';
+
+  // T5 (14.10.2026) — „NECUNOSCUT" NU E O STARE DE DURATĂ nici la CITIREA OFERTELOR. `getOfferings()`
+  // nu avea niciun plafon: dacă SDK-ul nu răspundea deloc, `offeringsLoad` rămânea `'loading'`, deci
+  // `availabilityFor(...)` rămânea `'checking'`, iar `purchaseAvailabilityMessageKey('checking')` este
+  // `null` PRIN PROIECTARE — cardul planului rămânea fără buton ȘI fără nicio explicație, iar ecranul
+  // nu ieșea niciodată din „se citesc valorile din magazin...". Dovadă (14.10.2026, build de CI iOS,
+  // iPhone 17 Pro / iOS 26.2): la picarea fluxului `premium`, ierarhia ȘI captura de ecran arătau
+  // `availabilityFor('monthly') = checking` după ~100 de secunde de la deschiderea ecranului.
+  // Aici fereastra se închide exact ca la `CustomerInfo` (T4, mai sus): același
+  // `STORE_STATE_UNKNOWN_TIMEOUT_MS`, iar starea degenerează onest în `offerings-error`, care are text
+  // (`premium.offeringsError` spune și ce poate face omul). Dacă răspunsul real vine mai târziu,
+  // `refresh()` publică ofertele și rescrie eroarea.
+  useEffect(() => {
+    if (offeringsLoad !== 'loading') return undefined;
+    const timeoutId = setTimeout(() => setOfferingsWindow({ userId, elapsed: true }), STORE_STATE_UNKNOWN_TIMEOUT_MS);
+    return () => clearTimeout(timeoutId);
+  }, [offeringsLoad, userId]);
+  const offeringsUnknownExpired = offeringsLoad === 'loading' && offeringsWindow.userId === userId && offeringsWindow.elapsed;
 
   const buy = useCallback(
     async (plan: RevenueCatPlan): Promise<PurchaseResult> => {
@@ -474,12 +495,13 @@ export function useRevenueCat() {
         storeConfigured: Boolean(isRevenueCatConfigured()),
         canMakePayments,
         offeringsLoad,
+        offeringsUnknownExpired,
         packageCount: packages?.length ?? 0,
         hasPackageForPlan: pkg !== null,
         storePrice: pkg ? packagePriceText(pkg) : null,
       });
     },
-    [canMakePayments, offeringsLoad, packages],
+    [canMakePayments, offeringsLoad, offeringsUnknownExpired, packages],
   );
 
   return {

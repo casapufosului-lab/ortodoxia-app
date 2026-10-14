@@ -64,6 +64,32 @@ appId: ro.ortodoxia.app
     label: "primul plan (lunar)"
 # Cardurile de plan sunt unul SUB altul, iar derularea se oprește de îndată ce ținta devine vizibilă
 # (poate rămâne chiar la marginea de jos). De aceea fiecare țintă are propriul pas de derulare.
+# REPARAȚIE (14.10.2026) — așteaptă IeșIREA din starea tranzitorie înainte de poartă. Poarta de mai jos
+# rămâne EXACT aceeași (aceleași texte acceptate), iar `checking` NU se adaugă la stările acceptate.
+# Dovada picării (rularea 38550077104, pass2 premium): la momentul picării, ierarhia ȘI captura de ecran
+# arătau `availabilityFor('monthly') = checking` (după ~100 de secunde) și NICIUNUL dintre textele
+# acceptate nu era pe ecran — nu era un defect de detecție, ci o stare reală, cinstită, pe care poarta
+# nu o aștepta. Cauza din aplicație: citirea ofertelor (`getOfferings()`) nu avea niciun plafon (reparat
+# în T5, cu `offeringsUnknownExpired` -> `offerings-error`, al cărui text e deja în lista de mai jos).
+# Pasul 1 (cu derulare) se oprește la PRIMUL text al cardului, inclusiv cel tranzitoriu („Preț în magazin"
+# apare exact cât timp ofertele nu s-au citit), ca să nu deruleze peste card până la subsol în timp ce
+# așteaptă. `centerElement: true` așază ținta la mijlocul ecranului, deci corpul cardului (butonul sau
+# textul care explică) rămâne în cadru pentru pasul următor.
+- scrollUntilVisible:
+    element:
+      text: '.*(Preț în magazin|Autentifică-te pentru Premium|Activează planul lunar|Treci la lunar|Planul tău actual|Se procesează…|Acest dispozitiv nu poate face cumpărături în magazin\. Instalează aplicația din Google Play sau App Store și încearcă din nou acolo — nu este o defecțiune a aplicației\.|Magazinul nu este disponibil momentan\.|Ofertele de abonament nu au putut fi încărcate\. Încearcă din nou\.|Planul ales nu este disponibil în magazin\.|Magazinul nu are deocamdată niciun abonament disponibil pentru acest cont\. Reîncearcă mai târziu\.|Magazinul nu a trimis prețul acestui plan, așa că nu îl putem afișa\. Reîncearcă mai târziu\.|Se deschide magazinul\. Schimbarea de plan se face prin App Store; data de la care se aplică și suma apar în fereastra magazinului\.).*'
+    direction: DOWN
+    centerElement: true
+    timeout: 20000
+    label: "POARTĂ: cardul lunar e pe ecran (text tranzitoriu SAU terminal — pasul următor cere o stare terminală)"
+# Pasul 2 (FĂRĂ derulare): ecranul nu se mai mișcă, deci textul terminal apare exact în locul în care era
+# cel tranzitoriu. Plafonul de 10 s din T5 garantează ieșirea din „checking" chiar dacă magazinul nu
+# răspunde niciodată (atunci cardul spune „Ofertele de abonament nu au putut fi încărcate...", acceptat).
+- extendedWaitUntil:
+    visible: '.*(Autentifică-te pentru Premium|Activează planul lunar|Treci la lunar|Planul tău actual|Se procesează…|Acest dispozitiv nu poate face cumpărături în magazin\. Instalează aplicația din Google Play sau App Store și încearcă din nou acolo — nu este o defecțiune a aplicației\.|Magazinul nu este disponibil momentan\.|Ofertele de abonament nu au putut fi încărcate\. Încearcă din nou\.|Planul ales nu este disponibil în magazin\.|Magazinul nu are deocamdată niciun abonament disponibil pentru acest cont\. Reîncearcă mai târziu\.|Magazinul nu a trimis prețul acestui plan, așa că nu îl putem afișa\. Reîncearcă mai târziu\.|Se deschide magazinul\. Schimbarea de plan se face prin App Store; data de la care se aplică și suma apar în fereastra magazinului\.).*'
+    timeout: 45000
+    label: "PORȚĂ: aplicația a ieșit din starea tranzitorie „se citesc valorile din magazin” și a ajuns într-o stare terminală reală"
+
 - scrollUntilVisible:
     element:
       text: '.*(Autentifică-te pentru Premium|Activează planul lunar|Treci la lunar|Planul tău actual|Se procesează…|Acest dispozitiv nu poate face cumpărături în magazin\. Instalează aplicația din Google Play sau App Store și încearcă din nou acolo — nu este o defecțiune a aplicației\.|Magazinul nu este disponibil momentan\.|Ofertele de abonament nu au putut fi încărcate\. Încearcă din nou\.|Planul ales nu este disponibil în magazin\.|Magazinul nu are deocamdată niciun abonament disponibil pentru acest cont\. Reîncearcă mai târziu\.|Magazinul nu a trimis prețul acestui plan, așa că nu îl putem afișa\. Reîncearcă mai târziu\.|Se deschide magazinul\. Schimbarea de plan se face prin App Store; data de la care se aplică și suma apar în fereastra magazinului\.).*'

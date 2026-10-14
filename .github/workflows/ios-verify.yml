@@ -389,6 +389,26 @@ jobs:
             esac
             ls -l "maestro-pass$pass-$FLOW.xml" 2>/dev/null || echo "  (nu s-a produs maestro-pass$pass-$FLOW.xml)"
             xcrun simctl io "$DEVICE_UDID" screenshot "ci-screenshots/pass$pass/$FLOW.png" || true
+            # DOVADA PER TRECERE (ceruta de verificatorul independent, 14.10.2026): instrumentul
+            # aplicatiei scrie `Documents/chat-latency.log` in containerul de date, iar `clearState` de
+            # la trecerea urmatoare il sterge. Fara copia de aici se pierd EXACT trecerile picate (cele
+            # care ne intereseaza): pe 13-14.10.2026 fisierul final avea doar trecerea 3 (verde), deci
+            # mecanismul de la chat-quota nu a putut fi decis (tap pierdut vs. cerere prea scurta).
+            # Se copiaza dupa FIECARE trecere, cu numele trecerii, trecuta sau picata.
+            APP_PASS=$(ls -d app-dir/*.app 2>/dev/null | head -1)
+            if [ -n "$APP_PASS" ]; then
+              BUNDLE_PASS=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$APP_PASS/Info.plist" 2>/dev/null)
+              if [ -n "$BUNDLE_PASS" ]; then
+                CONT_PASS=$(xcrun simctl get_app_container "$DEVICE_UDID" "$BUNDLE_PASS" data 2>/dev/null)
+                if [ -n "$CONT_PASS" ] && [ -f "$CONT_PASS/Documents/chat-latency.log" ]; then
+                  cp "$CONT_PASS/Documents/chat-latency.log" "chat-latency-fisier-pass$pass.txt"
+                  echo "trecerea $pass: chat-latency-fisier-pass$pass.txt ($(wc -l < "chat-latency-fisier-pass$pass.txt" | tr -d ' ') linii)"
+                  grep -F '[chat-latency]' "chat-latency-fisier-pass$pass.txt" || echo "  (nicio linie [chat-latency] in trecerea $pass)"
+                else
+                  echo "trecerea $pass: Documents/chat-latency.log lipseste (instrumentul nu a scris nimic)"
+                fi
+              fi
+            fi
           done
           echo "======== REZULTAT pentru $FLOW ========"
           cat flow-results.txt
@@ -465,6 +485,7 @@ jobs:
             hierarchy-pass*.txt
             chat-latency.txt
             chat-latency-fisier.txt
+            chat-latency-fisier-pass*.txt
             app-log.txt
 
   poarta:

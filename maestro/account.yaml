@@ -94,12 +94,47 @@ appId: ro.ortodoxia.app
 #     afara ecranului. Dovada: JUnit runda1fix-account — „Assertion is false: \"Calendar bisericesc\" is
 #     visible", comanda #31, ierarhia pas-032 arăta doar secțiunea Țară și limbă + bara de tab-uri.
 #     Se derulează LA element, iar aserțiunea rămâne EXACT aceeași (nu se slăbește nimic).
-- scrollUntilVisible:
-    element:
-      text: "Calendar bisericesc"
-    direction: DOWN
-    timeout: 20000
-    label: "PORȚI: secțiunea de calendar bisericesc e adusă pe ecran (elementul stătea sub listele de limbi)"
+- runFlow:
+    when:
+      platform: Android
+    commands:
+      - scrollUntilVisible:
+          element:
+            text: "Calendar bisericesc"
+          direction: DOWN
+          timeout: 20000
+          label: "POARTĂ: secțiunea de calendar bisericesc e adusă pe ecran (elementul stătea sub listele de limbi)"
+# REPARAȚIE (14.10.2026) — derularea pe iOS, în pași MICI, oprită de apariția elementului.
+# Dovada că `scrollUntilVisible` NU e de încredere pe iOS 26.2 (rularea 38550077104, pass1 account):
+# JUnit a scris „No visible element found: \"Calendar bisericesc\"", iar ierarhia salvată în același
+# moment arăta elementul PE ECRAN — accessibilityText=Calendar bisericesc; bounds=[39,397][363,413] —
+# cu bara de derulare la „4 pages; value=64%". E aceeași clasă de defect ca la `legal.yaml` (03d53dc),
+# unde gesturile fixe au rezolvat. Diferența față de `legal`: acolo ținta era ULTIMUL element al
+# documentului, deci un număr fix de gesturi mari nu putea derula peste ea; aici ținta stă la mijlocul
+# paginii, iar gesturile mari ar putea-o scoate pe sus din ecran. De aceea: pași de 40% din înălțime
+# (sub înălțimea ecranului, deci nu pot sări peste element), cel mult 12, iar bucla se oprește de
+# îndată ce elementul apare. Aserțiunea de după rămâne EXACT aceeași; traseul Android rămâne neatins.
+- runFlow:
+    when:
+      platform: iOS
+    commands:
+      - repeat:
+          times: 12
+          while:
+            notVisible: "Calendar bisericesc"
+          commands:
+            - swipe:
+                start: "50%, 70%"
+                end: "50%, 30%"
+                duration: 400
+      # Rețeta dovedită în depozit (legal.yaml:131-134): după ultimul gest, aștept AȘEZAREA derulării
+      # înainte de poarta strictă. `scrollUntilVisible` își face controlul imediat după gest, cu ecranul
+      # încă în inerție — de aceea raporta „nu e vizibil" pe un element aflat pe ecran. Aici controlul
+      # se face după animație; aserțiunea de mai jos rămâne EXACT aceeași.
+      - extendedWaitUntil:
+          visible: "Calendar bisericesc"
+          timeout: 15000
+          label: "toleranță pe iOS: aștept așezarea derulării înainte de poartă (controlul se face după animație)"
 - assertVisible: "Calendar bisericesc"
 # ── 4. NOTIFICĂRI (starea reală la prima pornire: oprite) și limita onestă a simulatoarelor:
 #     un push real (APNs/FCM) NU poate fi dovedit aici; se asertează starea și butoanele, nu livrarea.
