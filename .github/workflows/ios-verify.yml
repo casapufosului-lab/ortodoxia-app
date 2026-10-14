@@ -28,7 +28,7 @@ name: iOS verify (simulator + Maestro, fara publicare)
 #
 # STRUCTURA (paralelizata 12.10.2026):
 #   jobul `build`  = compileaza .app-ul O DATA (~20 min) si il publica ca artefact;
-#   joburile `flows` = 12 joburi IN PARALEL (unul per flow, 3 treceri fiecare) = 36 de rezultate;
+#   joburile `flows` = 13 joburi IN PARALEL (unul per flow, 3 treceri fiecare) = 39 de rezultate;
 #   jobul `poarta` = refuza suita daca oricare flow a picat sau nu a produs toate rezultatele.
 #   Timpul total scade de la ~75 min (secvential) la ~25-30 min; daca GitHub limiteaza concurenta,
 #   o parte din joburi asteapta, dar tot ramane mult mai rapid decat varianta secventiala.
@@ -50,7 +50,7 @@ env:
   XCODE_SCHEME: Ortodoxia
   APP_BUILD_NUMBER: "21"
   MAESTRO_CLI_NO_ANALYTICS: "1"
-  # 3 treceri = cerinta ownerului (72 de rezultate pe ambele platforme). Se poate da mai putin
+  # 3 treceri = cerinta ownerului (acelasi numar de treceri pe ambele platforme). Se poate da mai putin
   # pentru o iteratie rapida pe un singur flow (workflow_dispatch nu are inca input; se schimba aici).
   IOS_PASSES: "3"
 
@@ -195,7 +195,7 @@ jobs:
             fi
           } | tee entitlements.txt
           # Poarta: acest pas OPREste rularea daca seiful e inaccesibil. Altfel cele 12 joburi de
-          # flow-uri pornesc pe o aplicatie care nu-si poate salva sesiunea si dau 36 de rezultate
+          # flow-uri pornesc pe o aplicatie care nu-si poate salva sesiunea si dau 39 de rezultate
           # inselatoare, iar cauza (build nesemnat) nu se vede in niciunul dintre ele.
           if ! codesign -d --entitlements - "$APP" 2>/dev/null | grep -q "application-identifier"; then
             echo "::error::.app-ul nu are application-identifier: build-ul a iesit nesemnat, deci flow-urile care folosesc seiful (chat) ar cadea din cauza mediului, nu a aplicatiei."
@@ -242,21 +242,28 @@ jobs:
     # 3 treceri dintr-un flow ≈ 4-5 min + instalarea Maestro/simulatorului ≈ 2 min.
     timeout-minutes: 45
     strategy:
-      # Un flow picat NU opreste restul: vrem toate cele 36 de rezultate intr-o singura rulare.
+      # Un flow picat NU opreste restul: vrem toate cele 39 de rezultate intr-o singura rulare.
       fail-fast: false
       # Valuri: 12 joburi pe ACELASI runner macOS. Fara limita, ultimele flow-uri stau in coada si pot fi
       # anulate fara sa apuce sa ruleze (11.10.2026: bible si errors au stat 05:22:47 -> 05:44:32 in coada).
-      # Doua valuri de cate 6: toate cele 12 flow-uri apuca sa ruleze intr-o singura rulare.
+      # Valuri de cate 6: toate cele 13 flow-uri apuca sa ruleze intr-o singura rulare.
       max-parallel: 6
       matrix:
-        # Cele 12 flow-uri. `set-language-ro.yaml` e PROLOGUL (ruleaza in interiorul fiecarui flow),
+        # Cele 13 flow-uri. `set-language-ro.yaml` e PROLOGUL (ruleaza in interiorul fiecarui flow),
         # nu se ruleaza separat.
+        #
+        # `chat-quota` a fost ADAUGAT pe 14.10.2026: pana azi lipsea de aici, desi Codemagic il ruleaza
+        # (acolo lista se ia cu `ls maestro/*.yaml`), deci starea de cota epuizata nu era verificata
+        # deloc pe iOS de la aceasta cale. Reparatiile din `maestro/chat-quota.yaml` (v1 `edd9a6af`,
+        # v2 `bcfa06b`, v3 `bf3b986`) sunt VERZI pe Android (3/3, APK vc8) si asteptau verificarea pe
+        # iOS; pe GitHub ruleaza gratis si fara plafon de minute.
         flow:
           - home
           - prayers
           - calendar
           - bible
           - chat
+          - chat-quota
           - account
           - auth
           - live
@@ -442,7 +449,7 @@ jobs:
             app-log.txt
 
   poarta:
-    name: Poarta - toate cele 36 de rezultate
+    name: Poarta - toate cele 39 de rezultate
     needs: [flows]
     if: always()
     runs-on: ubuntu-latest
@@ -456,4 +463,4 @@ jobs:
             echo "::error::Cel putin un flow a picat sau nu a produs toate cele 3 rezultate. Suita NU e verde."
             exit 1
           fi
-          echo "VERDE: 12 flow-uri x 3 treceri = 36 de rezultate, zero picate."
+          echo "VERDE: 13 flow-uri x 3 treceri = 39 de rezultate, zero picate."
