@@ -802,8 +802,30 @@ const SECRET_SCAN_SKIP = new Set([
 /** Documentation legitimately names credential variables; only code is scanned. */
 const SECRET_SCAN_SKIP_DIRS = new Set(['docs']);
 
+/**
+ * Exceptii JUSTIFICATE, cu dovada masurata (nu presupuse).
+ *
+ * `google-services.json` (in radacina si in android/app/): singura valoare de tip
+ * AIza… din fisier este `client[0].api_key[0].current_key` - cheia de CLIENT
+ * Android (39 de caractere), pe care Firebase o cere prin constructie si care
+ * ajunge oricum, in clar, in APK-ul publicat. Nu este un secret: singura ei
+ * protectie reala este restrictia de pachet (`ro.ortodoxia.app`) plus amprenta
+ * SHA-1, setate in consola Google Cloud. Fisierul este cerut explicit de
+ * `app.json` (vezi si testul "Firebase config" de mai jos), deci stergerea lui ar
+ * rupe aplicatia, nu ar repara poarta.
+ *
+ * Exceptia este TINTA: se excepteaza doar tiparul "Google API key" pentru acest
+ * fisier. Orice alt tipar (cheie privata, JWT, sk_live_, sk-, EXPO_PUBLIC_*SECRET)
+ * ramane activ in el.
+ */
+const SECRET_PATTERN_ALLOWLIST = [
+  { file: 'google-services.json', pattern: 'Google API key' },
+  { file: 'android/app/google-services.json', pattern: 'Google API key' },
+];
+
 function checkSecretHygiene() {
   const findings = [];
+  const exceptate = [];
 
   function walk(dir) {
     for (const entry of readdirSync(dir, { withFileTypes: true })) {
@@ -819,7 +841,13 @@ function checkSecretHygiene() {
       const content = readFileSync(full, 'utf8');
       for (const { name, pattern } of SECRET_PATTERNS) {
         if (pattern.test(content)) {
-          findings.push(`${relative(ROOT, full).replace(/\\/g, '/')}: possible ${name}`);
+          const rel = relative(ROOT, full).replace(/\\/g, '/');
+          const exceptat = SECRET_PATTERN_ALLOWLIST.some((e) => e.file === rel && e.pattern === name);
+          if (exceptat) {
+            exceptate.push(`${rel}: ${name} (cheie de client, publica prin constructie)`);
+            continue;
+          }
+          findings.push(`${rel}: possible ${name}`);
         }
       }
     }
@@ -828,7 +856,12 @@ function checkSecretHygiene() {
   walk(ROOT);
 
   if (findings.length === 0) {
-    record('PASS', 'security', 'no hardcoded credential pattern found in the tracked tree');
+    record(
+      'PASS',
+      'security',
+      'no hardcoded credential pattern found in the tracked tree' +
+        (exceptate.length ? ` (exceptii justificate: ${exceptate.join('; ')})` : ''),
+    );
   } else {
     record('FAIL', 'security', `${findings.length} possible credential(s) in source`, findings.slice(0, 8).join('; '));
   }
