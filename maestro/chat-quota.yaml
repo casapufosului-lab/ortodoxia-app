@@ -46,8 +46,14 @@
 #   `maestro/chat.yaml`. Nu se slăbește NICIO aserțiune: „Trimite" rămâne cerut explicit la fiecare pas.
 appId: ro.ortodoxia.app
 ---
+# clearKeychain (adăugat 14.10.2026): pe iOS identitatea de dispozitiv trimisă ca `x-device-id`
+# (`src/lib/ai-limit-device.ts:24`) e ținută în Keychain, iar Keychain-ul SUPRAVIEȚUIEȘTE `clearState`.
+# Măsurat pe 14.10.2026: reluarea sondei a pornit cu cota deja consumată (contor „0 din 5"), deci
+# scara celor 5 întrebări nu mai putea rula — poarta „5 din 5" de mai jos trecea doar pentru că
+# aplicația își afișa valoarea implicită până la răspunsul serverului. Pe Android comanda nu are efect.
 - launchApp:
     clearState: true
+    clearKeychain: true
 # Prolog comun: așază aplicația pe limba ROMÂNĂ (emulatorul/simulatorul e implicit pe engleză, iar
 # aplicația urmează limba dispozitivului la prima pornire — altfel aserțiunile de mai jos pică).
 - runFlow: set-language-ro.yaml
@@ -93,11 +99,44 @@ appId: ro.ortodoxia.app
     direction: DOWN
     timeout: 30000
     label: "CICLUL 1/6: derulăm până la butonul de trimitere — același motiv ca la compozitor"
-- tapOn: ".*Trimite.*"
+# `enabled: true` = tap-ul se face doar când butonul e APĂSABIL. În cod e `disabled={isSending || isLoading}`
+# (`src/app/(tabs)/chat.tsx:809`), deci cât timp răspunsul precedent curge un tap ar fi înghițit tăcut
+# — exact cauza măsurată pe 14.10.2026 (5 tap-uri, 3 mesaje numărate, contorul s-a oprit la „2 din 5").
+- tapOn:
+    text: ".*Trimite.*"
+    enabled: true
+# DOVADA CĂ CEREREA A PLECAT: butonul de trimitere se blochează imediat ce cererea pleacă
+# (`chat.tsx:809`). Dacă tap-ul de mai sus a fost înghițit, butonul nu se blochează și pasul
+# acesta spune exact asta, în loc să lase flow-ul să se desincronizeze tăcut.
+- extendedWaitUntil:
+    visible:
+      text: ".*Trimite.*"
+      enabled: false
+    timeout: 20000
+    label: "CICLUL 1/6: cererea a plecat — butonul de trimitere s-a BLOCAT (chat.tsx:809)"
 - extendedWaitUntil:
     visible: ".*Raportează.*"
     timeout: 120000
     label: "TREAPTA 1/5: asistentul a terminat un răspuns complet (butonul de raportare există doar sub un răspuns complet)"
+# TREAPTA 1/5, dovada ADEVĂRATĂ (adăugat 14.10.2026): pasul „Raportează" de mai sus NU dovedea
+# terminarea răspunsului — cardul de bun venit are propriul buton „Raportează" și rămâne pe ecran
+# toată conversația (măsurat: ierarhia de la picare arată cardul de bun venit, conversația și cardul
+# de stop SIMULTAN; „TREAPTA 1/5" s-a încheiat la 1,7 s după tap, imposibil pentru un răspuns real).
+# Butonul de trimitere se deblochează abia când `isSending` devine false = răspunsul s-a terminat.
+- extendedWaitUntil:
+    visible:
+      text: ".*Trimite.*"
+      enabled: true
+    timeout: 120000
+    label: "TREAPTA 1/5: răspunsul s-a TERMINAT — butonul de trimitere s-a deblocat (aplicația e liberă pentru întrebarea următoare)"
+# Și contorul serverului, care scade EXACT cu 1 pe fiecare mesaj numărat (cadrul „meta" pleacă
+# ÎNAINTE de text: `supabase/functions/orthodox-chat/index.ts:687-696`).
+- scrollUntilVisible:
+    element:
+      text: "^4 din 5 întrebări gratuite rămase azi$"
+    direction: UP
+    timeout: 120000
+    label: "CICLUL 1/6: contorul serverului a scăzut la 4/5 — a 1-a întrebare a fost numărată în cota gratuită"
 # ── 2/5
 - scrollUntilVisible:
     element:
@@ -119,11 +158,44 @@ appId: ro.ortodoxia.app
     direction: DOWN
     timeout: 30000
     label: "CICLUL 2/6: derulăm până la butonul de trimitere — același motiv ca la compozitor"
-- tapOn: ".*Trimite.*"
+# `enabled: true` = tap-ul se face doar când butonul e APĂSABIL. În cod e `disabled={isSending || isLoading}`
+# (`src/app/(tabs)/chat.tsx:809`), deci cât timp răspunsul precedent curge un tap ar fi înghițit tăcut
+# — exact cauza măsurată pe 14.10.2026 (5 tap-uri, 3 mesaje numărate, contorul s-a oprit la „2 din 5").
+- tapOn:
+    text: ".*Trimite.*"
+    enabled: true
+# DOVADA CĂ CEREREA A PLECAT: butonul de trimitere se blochează imediat ce cererea pleacă
+# (`chat.tsx:809`). Dacă tap-ul de mai sus a fost înghițit, butonul nu se blochează și pasul
+# acesta spune exact asta, în loc să lase flow-ul să se desincronizeze tăcut.
+- extendedWaitUntil:
+    visible:
+      text: ".*Trimite.*"
+      enabled: false
+    timeout: 20000
+    label: "CICLUL 2/6: cererea a plecat — butonul de trimitere s-a BLOCAT (chat.tsx:809)"
 - extendedWaitUntil:
     visible: ".*Raportează.*"
     timeout: 120000
     label: "TREAPTA 2/5: asistentul a terminat un răspuns complet"
+# TREAPTA 2/5, dovada ADEVĂRATĂ (adăugat 14.10.2026): pasul „Raportează" de mai sus NU dovedea
+# terminarea răspunsului — cardul de bun venit are propriul buton „Raportează" și rămâne pe ecran
+# toată conversația (măsurat: ierarhia de la picare arată cardul de bun venit, conversația și cardul
+# de stop SIMULTAN; „TREAPTA 1/5" s-a încheiat la 1,7 s după tap, imposibil pentru un răspuns real).
+# Butonul de trimitere se deblochează abia când `isSending` devine false = răspunsul s-a terminat.
+- extendedWaitUntil:
+    visible:
+      text: ".*Trimite.*"
+      enabled: true
+    timeout: 120000
+    label: "TREAPTA 2/5: răspunsul s-a TERMINAT — butonul de trimitere s-a deblocat (aplicația e liberă pentru întrebarea următoare)"
+# Și contorul serverului, care scade EXACT cu 1 pe fiecare mesaj numărat (cadrul „meta" pleacă
+# ÎNAINTE de text: `supabase/functions/orthodox-chat/index.ts:687-696`).
+- scrollUntilVisible:
+    element:
+      text: "^3 din 5 întrebări gratuite rămase azi$"
+    direction: UP
+    timeout: 120000
+    label: "CICLUL 2/6: contorul serverului a scăzut la 3/5 — a 2-a întrebare a fost numărată în cota gratuită"
 # ── 3/5
 - scrollUntilVisible:
     element:
@@ -145,11 +217,44 @@ appId: ro.ortodoxia.app
     direction: DOWN
     timeout: 30000
     label: "CICLUL 3/6: derulăm până la butonul de trimitere — același motiv ca la compozitor"
-- tapOn: ".*Trimite.*"
+# `enabled: true` = tap-ul se face doar când butonul e APĂSABIL. În cod e `disabled={isSending || isLoading}`
+# (`src/app/(tabs)/chat.tsx:809`), deci cât timp răspunsul precedent curge un tap ar fi înghițit tăcut
+# — exact cauza măsurată pe 14.10.2026 (5 tap-uri, 3 mesaje numărate, contorul s-a oprit la „2 din 5").
+- tapOn:
+    text: ".*Trimite.*"
+    enabled: true
+# DOVADA CĂ CEREREA A PLECAT: butonul de trimitere se blochează imediat ce cererea pleacă
+# (`chat.tsx:809`). Dacă tap-ul de mai sus a fost înghițit, butonul nu se blochează și pasul
+# acesta spune exact asta, în loc să lase flow-ul să se desincronizeze tăcut.
+- extendedWaitUntil:
+    visible:
+      text: ".*Trimite.*"
+      enabled: false
+    timeout: 20000
+    label: "CICLUL 3/6: cererea a plecat — butonul de trimitere s-a BLOCAT (chat.tsx:809)"
 - extendedWaitUntil:
     visible: ".*Raportează.*"
     timeout: 120000
     label: "TREAPTA 3/5: asistentul a terminat un răspuns complet"
+# TREAPTA 3/5, dovada ADEVĂRATĂ (adăugat 14.10.2026): pasul „Raportează" de mai sus NU dovedea
+# terminarea răspunsului — cardul de bun venit are propriul buton „Raportează" și rămâne pe ecran
+# toată conversația (măsurat: ierarhia de la picare arată cardul de bun venit, conversația și cardul
+# de stop SIMULTAN; „TREAPTA 1/5" s-a încheiat la 1,7 s după tap, imposibil pentru un răspuns real).
+# Butonul de trimitere se deblochează abia când `isSending` devine false = răspunsul s-a terminat.
+- extendedWaitUntil:
+    visible:
+      text: ".*Trimite.*"
+      enabled: true
+    timeout: 120000
+    label: "TREAPTA 3/5: răspunsul s-a TERMINAT — butonul de trimitere s-a deblocat (aplicația e liberă pentru întrebarea următoare)"
+# Și contorul serverului, care scade EXACT cu 1 pe fiecare mesaj numărat (cadrul „meta" pleacă
+# ÎNAINTE de text: `supabase/functions/orthodox-chat/index.ts:687-696`).
+- scrollUntilVisible:
+    element:
+      text: "^2 din 5 întrebări gratuite rămase azi$"
+    direction: UP
+    timeout: 120000
+    label: "CICLUL 3/6: contorul serverului a scăzut la 2/5 — a 3-a întrebare a fost numărată în cota gratuită"
 # ── 4/5
 - scrollUntilVisible:
     element:
@@ -171,11 +276,44 @@ appId: ro.ortodoxia.app
     direction: DOWN
     timeout: 30000
     label: "CICLUL 4/6: derulăm până la butonul de trimitere — același motiv ca la compozitor"
-- tapOn: ".*Trimite.*"
+# `enabled: true` = tap-ul se face doar când butonul e APĂSABIL. În cod e `disabled={isSending || isLoading}`
+# (`src/app/(tabs)/chat.tsx:809`), deci cât timp răspunsul precedent curge un tap ar fi înghițit tăcut
+# — exact cauza măsurată pe 14.10.2026 (5 tap-uri, 3 mesaje numărate, contorul s-a oprit la „2 din 5").
+- tapOn:
+    text: ".*Trimite.*"
+    enabled: true
+# DOVADA CĂ CEREREA A PLECAT: butonul de trimitere se blochează imediat ce cererea pleacă
+# (`chat.tsx:809`). Dacă tap-ul de mai sus a fost înghițit, butonul nu se blochează și pasul
+# acesta spune exact asta, în loc să lase flow-ul să se desincronizeze tăcut.
+- extendedWaitUntil:
+    visible:
+      text: ".*Trimite.*"
+      enabled: false
+    timeout: 20000
+    label: "CICLUL 4/6: cererea a plecat — butonul de trimitere s-a BLOCAT (chat.tsx:809)"
 - extendedWaitUntil:
     visible: ".*Raportează.*"
     timeout: 120000
     label: "TREAPTA 4/5: asistentul a terminat un răspuns complet"
+# TREAPTA 4/5, dovada ADEVĂRATĂ (adăugat 14.10.2026): pasul „Raportează" de mai sus NU dovedea
+# terminarea răspunsului — cardul de bun venit are propriul buton „Raportează" și rămâne pe ecran
+# toată conversația (măsurat: ierarhia de la picare arată cardul de bun venit, conversația și cardul
+# de stop SIMULTAN; „TREAPTA 1/5" s-a încheiat la 1,7 s după tap, imposibil pentru un răspuns real).
+# Butonul de trimitere se deblochează abia când `isSending` devine false = răspunsul s-a terminat.
+- extendedWaitUntil:
+    visible:
+      text: ".*Trimite.*"
+      enabled: true
+    timeout: 120000
+    label: "TREAPTA 4/5: răspunsul s-a TERMINAT — butonul de trimitere s-a deblocat (aplicația e liberă pentru întrebarea următoare)"
+# Și contorul serverului, care scade EXACT cu 1 pe fiecare mesaj numărat (cadrul „meta" pleacă
+# ÎNAINTE de text: `supabase/functions/orthodox-chat/index.ts:687-696`).
+- scrollUntilVisible:
+    element:
+      text: "^o întrebare gratuită rămasă azi din 5$"
+    direction: UP
+    timeout: 120000
+    label: "CICLUL 4/6: contorul serverului a scăzut la 1/5 — a 4-a întrebare a fost numărată în cota gratuită"
 # ── 5/5 — ultima întrebare din cotă. Pe ecran, cât timp cota nu e epuizată, NU există cardul de stop.
 - assertNotVisible:
     text: "^Ai folosit toate cele 5 mesaje disponibile azi\\.$"
@@ -200,11 +338,44 @@ appId: ro.ortodoxia.app
     direction: DOWN
     timeout: 30000
     label: "CICLUL 5/6: derulăm până la butonul de trimitere — același motiv ca la compozitor"
-- tapOn: ".*Trimite.*"
+# `enabled: true` = tap-ul se face doar când butonul e APĂSABIL. În cod e `disabled={isSending || isLoading}`
+# (`src/app/(tabs)/chat.tsx:809`), deci cât timp răspunsul precedent curge un tap ar fi înghițit tăcut
+# — exact cauza măsurată pe 14.10.2026 (5 tap-uri, 3 mesaje numărate, contorul s-a oprit la „2 din 5").
+- tapOn:
+    text: ".*Trimite.*"
+    enabled: true
+# DOVADA CĂ CEREREA A PLECAT: butonul de trimitere se blochează imediat ce cererea pleacă
+# (`chat.tsx:809`). Dacă tap-ul de mai sus a fost înghițit, butonul nu se blochează și pasul
+# acesta spune exact asta, în loc să lase flow-ul să se desincronizeze tăcut.
+- extendedWaitUntil:
+    visible:
+      text: ".*Trimite.*"
+      enabled: false
+    timeout: 20000
+    label: "CICLUL 5/6: cererea a plecat — butonul de trimitere s-a BLOCAT (chat.tsx:809)"
 - extendedWaitUntil:
     visible: ".*Raportează.*"
     timeout: 120000
     label: "TREAPTA 5/5: asistentul a terminat un răspuns complet (a 5-a întrebare din cotă)"
+# TREAPTA 5/5, dovada ADEVĂRATĂ (adăugat 14.10.2026): pasul „Raportează" de mai sus NU dovedea
+# terminarea răspunsului — cardul de bun venit are propriul buton „Raportează" și rămâne pe ecran
+# toată conversația (măsurat: ierarhia de la picare arată cardul de bun venit, conversația și cardul
+# de stop SIMULTAN; „TREAPTA 1/5" s-a încheiat la 1,7 s după tap, imposibil pentru un răspuns real).
+# Butonul de trimitere se deblochează abia când `isSending` devine false = răspunsul s-a terminat.
+- extendedWaitUntil:
+    visible:
+      text: ".*Trimite.*"
+      enabled: true
+    timeout: 120000
+    label: "TREAPTA 5/5: răspunsul s-a TERMINAT — butonul de trimitere s-a deblocat (aplicația e liberă pentru întrebarea următoare)"
+# Și contorul serverului, care scade EXACT cu 1 pe fiecare mesaj numărat (cadrul „meta" pleacă
+# ÎNAINTE de text: `supabase/functions/orthodox-chat/index.ts:687-696`).
+- scrollUntilVisible:
+    element:
+      text: "^0 din 5 întrebări gratuite rămase azi$"
+    direction: UP
+    timeout: 120000
+    label: "CICLUL 5/6: contorul serverului a scăzut la 0/5 — a 5-a întrebare a fost numărată în cota gratuită"
 #    BUGET: masurat pe 13.10 (rularea chatquota2) - urcarea de la fundul unei conversatii de 5 raspunsuri
 #    pana la contorul din capul ecranului nu se termina in 30 s: pasul a ars bugetul si a raportat
 #    "No visible element found" desi textul era pe ecran (ierarhia + captura de la pasul 055).
@@ -256,7 +427,12 @@ appId: ro.ortodoxia.app
     direction: DOWN
     timeout: 30000
     label: "CICLUL 6/6 (al 6-lea mesaj, NU trebuie să plece): derulăm până la butonul de trimitere"
-- tapOn: ".*Trimite.*"
+# `enabled: true` = tap-ul se face doar când butonul e APĂSABIL. În cod e `disabled={isSending || isLoading}`
+# (`src/app/(tabs)/chat.tsx:809`), deci cât timp răspunsul precedent curge un tap ar fi înghițit tăcut
+# — exact cauza măsurată pe 14.10.2026 (5 tap-uri, 3 mesaje numărate, contorul s-a oprit la „2 din 5").
+- tapOn:
+    text: ".*Trimite.*"
+    enabled: true
 - extendedWaitUntil:
     notVisible: ".*Pregătesc răspunsul\\.\\.\\..*"
     timeout: 20000
