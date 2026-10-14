@@ -53,8 +53,22 @@ appId: ro.ortodoxia.app
     label: "PORȚI: identitatea ecranului 06 Întreabă (subtitlul-declarație, nu doar câmpul de scriere)"
 - tapOn: ".*Scrie întrebarea ta.*"
 - inputText: "Ce este rugaciunea?"
-# Fără asta, tastatura acoperă butonul „Trimite" (compozitorul e în ScrollView, jos).
-- hideKeyboard
+# REPARAT 14.10.2026 — ascunderea tastaturii se face DOAR pe Android. Motivul e măsurat, nu presupus:
+#   • Android: fără `hideKeyboard` flow-ul PICĂ. Măsurat local pe emulator, APK vc8, 14.10.2026 08:10:
+#     „Element not found: Text matching regex: .*Trimite.*" (JUnit failures=1, time=62.38). Compozitorul
+#     stă sub tastatură, fiindcă `KeyboardAvoidingView` are `behavior` DOAR pe iOS
+#     (`src/app/(tabs)/chat.tsx:767`). Deci pasul rămâne obligatoriu aici.
+#   • iOS: exact același pas face build-ul să pice. Codemagic 6acf0882adb862ccc4d67c3f, commit 644a87c,
+#     14.10.2026: „Couldn't hide the keyboard. This can happen if the app uses a custom input or doesn't
+#     expose a standard dismiss action." în AMBELE încercări. Pe iOS compozitorul urcă odată cu tastatura
+#     (KAV cu `behavior='padding'`), deci butonul „Trimite" e apăsabil direct, fără să ascundem tastatura.
+#   Nu se slăbește NICIO aserțiune: „Trimite" rămâne cerut explicit mai jos, iar trimiterea e dovedită
+#   prin apariția butonului „Raportează" plus textul răspunsului.
+- runFlow:
+    when:
+      platform: Android
+    commands:
+      - hideKeyboard
 - tapOn: ".*Trimite.*"
 - extendedWaitUntil:
     notVisible: ".*Pregătesc răspunsul\\.\\.\\..*"
