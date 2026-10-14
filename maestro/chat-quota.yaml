@@ -44,6 +44,17 @@
 #     compozitorul stă sub tastatură.
 #   Constructul de mai jos (`runFlow` cu `when.platform`) este deja dovedit VERDE pe AMBELE platforme în
 #   `maestro/chat.yaml`. Nu se slăbește NICIO aserțiune: „Trimite" rămâne cerut explicit la fiecare pas.
+# ── REPARAȚIE v4 (14.10.2026) — DOAR pe iOS; traseul Android rămâne cel dovedit VERDE 3/3 ──
+# Cauza măsurată (rularea GitHub 38550077104: pas1 și pas2 ROȘII, pas3 VERDE, aceeași poartă):
+#   poarta „CICLUL n/6: cererea a plecat — butonul de trimitere s-a BLOCAT" cade fiindcă textul nu a
+#   intrat în câmp. La picare: contorul „4 din 5" (deci ciclul 2), câmpul GOL (placeholder), zero
+#   elemente de tastatură în ierarhie, iar OCR pe captură arată același lucru. Butonul nu se blochează
+#   dacă nu pleacă nicio cerere (e enabled cât timp `isSending` e false — src/app/(tabs)/chat.tsx:809).
+#   Ciclurile 2+ sunt singurele precedate de o derulare înainte de tap-ul pe compozitor ⇒ tap-ul se
+#   face pe coordonate dintr-un instantaneu luat înainte ca derularea să se așeze și se pierde.
+# v4 adaugă, doar pe iOS: așteptare de așezare înainte de tap, tap cu „se repetă dacă nu schimbă
+# nimic", așteptarea ridicării tastaturii înainte de scriere, același tratament la „Trimite".
+# NICIO aserțiune nu se slăbește — toate porțile rămân exact cum erau.
 appId: ro.ortodoxia.app
 ---
 # clearKeychain (adăugat 14.10.2026): pe iOS identitatea de dispozitiv trimisă ca `x-device-id`
@@ -84,7 +95,29 @@ appId: ro.ortodoxia.app
     direction: DOWN
     timeout: 30000
     label: "CICLUL 1/6: derulăm până la compozitor — răspunsul lung îl împinge sub zona vizibilă (rețetă dovedită în chat.yaml:132-137)"
-- tapOn: ".*Scrie întrebarea ta.*"
+# v4 (iOS): derularea s-a terminat, tastatura s-a ridicat — abia apoi se scrie (vezi antetul)
+- runFlow:
+    when:
+      platform: iOS
+    commands:
+      - waitForAnimationToEnd:
+          timeout: 10000
+          optional: true
+          label: "CICLUL 1/6: ecranul s-a așezat (derulare) înainte de a atinge compozitorul"
+      - tapOn:
+          text: ".*Scrie întrebarea ta.*"
+          retryTapIfNoChange: true
+          waitToSettleTimeoutMs: 3000
+          label: "CICLUL 1/6: apăs pe compozitor (tap-ul se repetă dacă nu schimbă nimic)"
+      - waitForAnimationToEnd:
+          timeout: 10000
+          optional: true
+          label: "CICLUL 1/6: tastatura s-a ridicat complet înainte de a scrie"
+- runFlow:
+    when:
+      platform: Android
+    commands:
+      - tapOn: ".*Scrie întrebarea ta.*"
 - inputText: "Ce este rugaciunea?"
 # Ascunderea tastaturii DOAR pe Android (măsurat 14.10.2026; motivul întreg e în antet):
 # pe Android e obligatorie, pe iOS același pas face flow-ul să pice („Couldn't hide the keyboard").
@@ -102,9 +135,27 @@ appId: ro.ortodoxia.app
 # `enabled: true` = tap-ul se face doar când butonul e APĂSABIL. În cod e `disabled={isSending || isLoading}`
 # (`src/app/(tabs)/chat.tsx:809`), deci cât timp răspunsul precedent curge un tap ar fi înghițit tăcut
 # — exact cauza măsurată pe 14.10.2026 (5 tap-uri, 3 mesaje numărate, contorul s-a oprit la „2 din 5").
-- tapOn:
-    text: ".*Trimite.*"
-    enabled: true
+# v4 (iOS): butonul de trimitere e și el atins după o derulare — aceeași așteptare + tap repetat
+- runFlow:
+    when:
+      platform: iOS
+    commands:
+      - waitForAnimationToEnd:
+          timeout: 10000
+          optional: true
+          label: "butonul de trimitere: ecranul s-a așezat după derulare"
+      - tapOn:
+          text: ".*Trimite.*"
+          enabled: true
+          retryTapIfNoChange: true
+          waitToSettleTimeoutMs: 3000
+- runFlow:
+    when:
+      platform: Android
+    commands:
+      - tapOn:
+          text: ".*Trimite.*"
+          enabled: true
 # DOVADA CĂ CEREREA A PLECAT: butonul de trimitere se blochează imediat ce cererea pleacă
 # (`chat.tsx:809`). Dacă tap-ul de mai sus a fost înghițit, butonul nu se blochează și pasul
 # acesta spune exact asta, în loc să lase flow-ul să se desincronizeze tăcut.
@@ -146,7 +197,29 @@ appId: ro.ortodoxia.app
     direction: DOWN
     timeout: 30000
     label: "CICLUL 2/6: derulăm până la compozitor — răspunsul lung îl împinge sub zona vizibilă (rețetă dovedită în chat.yaml:132-137)"
-- tapOn: ".*Scrie întrebarea ta.*"
+# v4 (iOS): derularea s-a terminat, tastatura s-a ridicat — abia apoi se scrie (vezi antetul)
+- runFlow:
+    when:
+      platform: iOS
+    commands:
+      - waitForAnimationToEnd:
+          timeout: 10000
+          optional: true
+          label: "CICLUL 2/6: ecranul s-a așezat (derulare) înainte de a atinge compozitorul"
+      - tapOn:
+          text: ".*Scrie întrebarea ta.*"
+          retryTapIfNoChange: true
+          waitToSettleTimeoutMs: 3000
+          label: "CICLUL 2/6: apăs pe compozitor (tap-ul se repetă dacă nu schimbă nimic)"
+      - waitForAnimationToEnd:
+          timeout: 10000
+          optional: true
+          label: "CICLUL 2/6: tastatura s-a ridicat complet înainte de a scrie"
+- runFlow:
+    when:
+      platform: Android
+    commands:
+      - tapOn: ".*Scrie întrebarea ta.*"
 - inputText: "Cum ma rog dimineata?"
 # tastatura se ascunde doar pe Android — același motiv măsurat ca mai sus (vezi antetul)
 - runFlow:
@@ -163,9 +236,27 @@ appId: ro.ortodoxia.app
 # `enabled: true` = tap-ul se face doar când butonul e APĂSABIL. În cod e `disabled={isSending || isLoading}`
 # (`src/app/(tabs)/chat.tsx:809`), deci cât timp răspunsul precedent curge un tap ar fi înghițit tăcut
 # — exact cauza măsurată pe 14.10.2026 (5 tap-uri, 3 mesaje numărate, contorul s-a oprit la „2 din 5").
-- tapOn:
-    text: ".*Trimite.*"
-    enabled: true
+# v4 (iOS): butonul de trimitere e și el atins după o derulare — aceeași așteptare + tap repetat
+- runFlow:
+    when:
+      platform: iOS
+    commands:
+      - waitForAnimationToEnd:
+          timeout: 10000
+          optional: true
+          label: "butonul de trimitere: ecranul s-a așezat după derulare"
+      - tapOn:
+          text: ".*Trimite.*"
+          enabled: true
+          retryTapIfNoChange: true
+          waitToSettleTimeoutMs: 3000
+- runFlow:
+    when:
+      platform: Android
+    commands:
+      - tapOn:
+          text: ".*Trimite.*"
+          enabled: true
 # DOVADA CĂ CEREREA A PLECAT: butonul de trimitere se blochează imediat ce cererea pleacă
 # (`chat.tsx:809`). Dacă tap-ul de mai sus a fost înghițit, butonul nu se blochează și pasul
 # acesta spune exact asta, în loc să lase flow-ul să se desincronizeze tăcut.
@@ -207,7 +298,29 @@ appId: ro.ortodoxia.app
     direction: DOWN
     timeout: 30000
     label: "CICLUL 3/6: derulăm până la compozitor — răspunsul lung îl împinge sub zona vizibilă (rețetă dovedită în chat.yaml:132-137)"
-- tapOn: ".*Scrie întrebarea ta.*"
+# v4 (iOS): derularea s-a terminat, tastatura s-a ridicat — abia apoi se scrie (vezi antetul)
+- runFlow:
+    when:
+      platform: iOS
+    commands:
+      - waitForAnimationToEnd:
+          timeout: 10000
+          optional: true
+          label: "CICLUL 3/6: ecranul s-a așezat (derulare) înainte de a atinge compozitorul"
+      - tapOn:
+          text: ".*Scrie întrebarea ta.*"
+          retryTapIfNoChange: true
+          waitToSettleTimeoutMs: 3000
+          label: "CICLUL 3/6: apăs pe compozitor (tap-ul se repetă dacă nu schimbă nimic)"
+      - waitForAnimationToEnd:
+          timeout: 10000
+          optional: true
+          label: "CICLUL 3/6: tastatura s-a ridicat complet înainte de a scrie"
+- runFlow:
+    when:
+      platform: Android
+    commands:
+      - tapOn: ".*Scrie întrebarea ta.*"
 - inputText: "Ce este postul?"
 # tastatura se ascunde doar pe Android — același motiv măsurat ca mai sus (vezi antetul)
 - runFlow:
@@ -224,9 +337,27 @@ appId: ro.ortodoxia.app
 # `enabled: true` = tap-ul se face doar când butonul e APĂSABIL. În cod e `disabled={isSending || isLoading}`
 # (`src/app/(tabs)/chat.tsx:809`), deci cât timp răspunsul precedent curge un tap ar fi înghițit tăcut
 # — exact cauza măsurată pe 14.10.2026 (5 tap-uri, 3 mesaje numărate, contorul s-a oprit la „2 din 5").
-- tapOn:
-    text: ".*Trimite.*"
-    enabled: true
+# v4 (iOS): butonul de trimitere e și el atins după o derulare — aceeași așteptare + tap repetat
+- runFlow:
+    when:
+      platform: iOS
+    commands:
+      - waitForAnimationToEnd:
+          timeout: 10000
+          optional: true
+          label: "butonul de trimitere: ecranul s-a așezat după derulare"
+      - tapOn:
+          text: ".*Trimite.*"
+          enabled: true
+          retryTapIfNoChange: true
+          waitToSettleTimeoutMs: 3000
+- runFlow:
+    when:
+      platform: Android
+    commands:
+      - tapOn:
+          text: ".*Trimite.*"
+          enabled: true
 # DOVADA CĂ CEREREA A PLECAT: butonul de trimitere se blochează imediat ce cererea pleacă
 # (`chat.tsx:809`). Dacă tap-ul de mai sus a fost înghițit, butonul nu se blochează și pasul
 # acesta spune exact asta, în loc să lase flow-ul să se desincronizeze tăcut.
@@ -268,7 +399,29 @@ appId: ro.ortodoxia.app
     direction: DOWN
     timeout: 30000
     label: "CICLUL 4/6: derulăm până la compozitor — răspunsul lung îl împinge sub zona vizibilă (rețetă dovedită în chat.yaml:132-137)"
-- tapOn: ".*Scrie întrebarea ta.*"
+# v4 (iOS): derularea s-a terminat, tastatura s-a ridicat — abia apoi se scrie (vezi antetul)
+- runFlow:
+    when:
+      platform: iOS
+    commands:
+      - waitForAnimationToEnd:
+          timeout: 10000
+          optional: true
+          label: "CICLUL 4/6: ecranul s-a așezat (derulare) înainte de a atinge compozitorul"
+      - tapOn:
+          text: ".*Scrie întrebarea ta.*"
+          retryTapIfNoChange: true
+          waitToSettleTimeoutMs: 3000
+          label: "CICLUL 4/6: apăs pe compozitor (tap-ul se repetă dacă nu schimbă nimic)"
+      - waitForAnimationToEnd:
+          timeout: 10000
+          optional: true
+          label: "CICLUL 4/6: tastatura s-a ridicat complet înainte de a scrie"
+- runFlow:
+    when:
+      platform: Android
+    commands:
+      - tapOn: ".*Scrie întrebarea ta.*"
 - inputText: "Cine a fost Sfantul Ioan?"
 # tastatura se ascunde doar pe Android — același motiv măsurat ca mai sus (vezi antetul)
 - runFlow:
@@ -285,9 +438,27 @@ appId: ro.ortodoxia.app
 # `enabled: true` = tap-ul se face doar când butonul e APĂSABIL. În cod e `disabled={isSending || isLoading}`
 # (`src/app/(tabs)/chat.tsx:809`), deci cât timp răspunsul precedent curge un tap ar fi înghițit tăcut
 # — exact cauza măsurată pe 14.10.2026 (5 tap-uri, 3 mesaje numărate, contorul s-a oprit la „2 din 5").
-- tapOn:
-    text: ".*Trimite.*"
-    enabled: true
+# v4 (iOS): butonul de trimitere e și el atins după o derulare — aceeași așteptare + tap repetat
+- runFlow:
+    when:
+      platform: iOS
+    commands:
+      - waitForAnimationToEnd:
+          timeout: 10000
+          optional: true
+          label: "butonul de trimitere: ecranul s-a așezat după derulare"
+      - tapOn:
+          text: ".*Trimite.*"
+          enabled: true
+          retryTapIfNoChange: true
+          waitToSettleTimeoutMs: 3000
+- runFlow:
+    when:
+      platform: Android
+    commands:
+      - tapOn:
+          text: ".*Trimite.*"
+          enabled: true
 # DOVADA CĂ CEREREA A PLECAT: butonul de trimitere se blochează imediat ce cererea pleacă
 # (`chat.tsx:809`). Dacă tap-ul de mai sus a fost înghițit, butonul nu se blochează și pasul
 # acesta spune exact asta, în loc să lase flow-ul să se desincronizeze tăcut.
@@ -336,7 +507,29 @@ appId: ro.ortodoxia.app
     direction: DOWN
     timeout: 30000
     label: "CICLUL 5/6: derulăm până la compozitor — răspunsul lung îl împinge sub zona vizibilă (rețetă dovedită în chat.yaml:132-137)"
-- tapOn: ".*Scrie întrebarea ta.*"
+# v4 (iOS): derularea s-a terminat, tastatura s-a ridicat — abia apoi se scrie (vezi antetul)
+- runFlow:
+    when:
+      platform: iOS
+    commands:
+      - waitForAnimationToEnd:
+          timeout: 10000
+          optional: true
+          label: "CICLUL 5/6: ecranul s-a așezat (derulare) înainte de a atinge compozitorul"
+      - tapOn:
+          text: ".*Scrie întrebarea ta.*"
+          retryTapIfNoChange: true
+          waitToSettleTimeoutMs: 3000
+          label: "CICLUL 5/6: apăs pe compozitor (tap-ul se repetă dacă nu schimbă nimic)"
+      - waitForAnimationToEnd:
+          timeout: 10000
+          optional: true
+          label: "CICLUL 5/6: tastatura s-a ridicat complet înainte de a scrie"
+- runFlow:
+    when:
+      platform: Android
+    commands:
+      - tapOn: ".*Scrie întrebarea ta.*"
 - inputText: "Ce este Sfanta Liturghie?"
 # tastatura se ascunde doar pe Android — același motiv măsurat ca mai sus (vezi antetul)
 - runFlow:
@@ -353,9 +546,27 @@ appId: ro.ortodoxia.app
 # `enabled: true` = tap-ul se face doar când butonul e APĂSABIL. În cod e `disabled={isSending || isLoading}`
 # (`src/app/(tabs)/chat.tsx:809`), deci cât timp răspunsul precedent curge un tap ar fi înghițit tăcut
 # — exact cauza măsurată pe 14.10.2026 (5 tap-uri, 3 mesaje numărate, contorul s-a oprit la „2 din 5").
-- tapOn:
-    text: ".*Trimite.*"
-    enabled: true
+# v4 (iOS): butonul de trimitere e și el atins după o derulare — aceeași așteptare + tap repetat
+- runFlow:
+    when:
+      platform: iOS
+    commands:
+      - waitForAnimationToEnd:
+          timeout: 10000
+          optional: true
+          label: "butonul de trimitere: ecranul s-a așezat după derulare"
+      - tapOn:
+          text: ".*Trimite.*"
+          enabled: true
+          retryTapIfNoChange: true
+          waitToSettleTimeoutMs: 3000
+- runFlow:
+    when:
+      platform: Android
+    commands:
+      - tapOn:
+          text: ".*Trimite.*"
+          enabled: true
 # DOVADA CĂ CEREREA A PLECAT: butonul de trimitere se blochează imediat ce cererea pleacă
 # (`chat.tsx:809`). Dacă tap-ul de mai sus a fost înghițit, butonul nu se blochează și pasul
 # acesta spune exact asta, în loc să lase flow-ul să se desincronizeze tăcut.
@@ -427,7 +638,29 @@ appId: ro.ortodoxia.app
     direction: DOWN
     timeout: 30000
     label: "CICLUL 6/6 (al 6-lea mesaj): derulăm până la compozitor"
-- tapOn: ".*Scrie întrebarea ta.*"
+# v4 (iOS): derularea s-a terminat, tastatura s-a ridicat — abia apoi se scrie (vezi antetul)
+- runFlow:
+    when:
+      platform: iOS
+    commands:
+      - waitForAnimationToEnd:
+          timeout: 10000
+          optional: true
+          label: "CICLUL n/6: ecranul s-a așezat (derulare) înainte de a atinge compozitorul"
+      - tapOn:
+          text: ".*Scrie întrebarea ta.*"
+          retryTapIfNoChange: true
+          waitToSettleTimeoutMs: 3000
+          label: "CICLUL n/6: apăs pe compozitor (tap-ul se repetă dacă nu schimbă nimic)"
+      - waitForAnimationToEnd:
+          timeout: 10000
+          optional: true
+          label: "CICLUL n/6: tastatura s-a ridicat complet înainte de a scrie"
+- runFlow:
+    when:
+      platform: Android
+    commands:
+      - tapOn: ".*Scrie întrebarea ta.*"
 - inputText: "Mai am o intrebare?"
 # tastatura se ascunde doar pe Android — același motiv măsurat ca mai sus (vezi antetul)
 - runFlow:
@@ -444,9 +677,27 @@ appId: ro.ortodoxia.app
 # `enabled: true` = tap-ul se face doar când butonul e APĂSABIL. În cod e `disabled={isSending || isLoading}`
 # (`src/app/(tabs)/chat.tsx:809`), deci cât timp răspunsul precedent curge un tap ar fi înghițit tăcut
 # — exact cauza măsurată pe 14.10.2026 (5 tap-uri, 3 mesaje numărate, contorul s-a oprit la „2 din 5").
-- tapOn:
-    text: ".*Trimite.*"
-    enabled: true
+# v4 (iOS): butonul de trimitere e și el atins după o derulare — aceeași așteptare + tap repetat
+- runFlow:
+    when:
+      platform: iOS
+    commands:
+      - waitForAnimationToEnd:
+          timeout: 10000
+          optional: true
+          label: "butonul de trimitere: ecranul s-a așezat după derulare"
+      - tapOn:
+          text: ".*Trimite.*"
+          enabled: true
+          retryTapIfNoChange: true
+          waitToSettleTimeoutMs: 3000
+- runFlow:
+    when:
+      platform: Android
+    commands:
+      - tapOn:
+          text: ".*Trimite.*"
+          enabled: true
 - extendedWaitUntil:
     notVisible: ".*Pregătesc răspunsul\\.\\.\\..*"
     timeout: 20000
