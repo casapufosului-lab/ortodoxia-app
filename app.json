@@ -3,14 +3,14 @@
     "name": "Ortodoxia",
     "slug": "ortodoxia",
     "description": "Ghid creștin-ortodox: calendar, rugăciuni, mesajul zilei, slujbe live și chat AI.",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "ortodoxia",
     "userInterfaceStyle": "light",
     "ios": {
       "bundleIdentifier": "ro.ortodoxia.app",
-      "buildNumber": "14",
+      "buildNumber": "26",
       "supportsTablet": false,
       "usesAppleSignIn": true,
       "infoPlist": {
@@ -19,7 +19,18 @@
         "ITSAppUsesNonExemptEncryption": false,
         "NSPhotoLibraryUsageDescription": "Permite aplicației Ortodoxia să acceseze fotografiile tale pentru a afișa imaginile din aplicație.",
         "NSPhotoLibraryAddUsageDescription": "Permite aplicației Ortodoxia să salveze imagini în galeria ta.",
-        "CFBundleLocalizations": ["ro", "en", "el", "sr", "bg", "mk", "uk", "ka", "ru", "sq"]
+        "CFBundleLocalizations": [
+          "ro",
+          "en",
+          "el",
+          "sr",
+          "bg",
+          "mk",
+          "uk",
+          "ka",
+          "ru",
+          "sq"
+        ]
       }
     },
     "android": {
